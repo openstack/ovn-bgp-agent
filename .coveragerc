@@ -1,0 +1,6 @@
+[run]
+branch = True
+source = ovn_bgp_agent
+
+[report]
+ignore_errors = True
