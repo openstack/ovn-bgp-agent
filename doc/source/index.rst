@@ -13,6 +13,7 @@ Contents:
    :maxdepth: 2
 
    readme
+   contributor/index
 
 Indices and tables
 ==================

@@ -12,4 +12,6 @@ The OVN BGP Agent allows to expose VMs/Containers through BGP on OVN
 Features
 --------
 
-* TODO
+* Expose VMs with FIPs or on Provider Networks through BGP on OVN
+  environments.
+
