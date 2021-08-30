@@ -37,7 +37,7 @@ LOG = logging.getLogger(__name__)
 OVN_TABLES = ("Port_Binding", "Chassis", "Datapath_Binding", "Chassis_Private")
 
 
-class OSPOVNBGPDriver(driver_api.AgentDriverBase):
+class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def __init__(self):
         self._expose_tenant_networks = CONF.expose_tenant_networks
@@ -52,7 +52,7 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
         self.ovs_idl.start(constants.OVS_CONNECTION_STRING)
         self.chassis = self.ovs_idl.get_own_chassis_name()
         self.ovn_remote = self.ovs_idl.get_ovn_remote()
-        LOG.debug("Loaded chassis {}.".format(self.chassis))
+        LOG.debug("Loaded chassis %s.", self.chassis)
 
         events = ()
         for event in self._get_events():

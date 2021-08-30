@@ -133,11 +133,13 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
 
     def is_provider_network(self, datapath):
         cmd = self.db_find_rows('Port_Binding', ('datapath', '=', datapath),
-                                ('type', '=', 'localnet'))
+                                ('type', '=',
+                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
         return next(iter(cmd.execute(check_error=True)), None)
 
     def get_fip_associated(self, port):
-        cmd = self.db_find_rows('Port_Binding', ('type', '=', 'patch'))
+        cmd = self.db_find_rows(
+            'Port_Binding', ('type', '=', constants.OVN_PATCH_VIF_PORT_TYPE))
         for row in cmd.execute(check_error=True):
             for fip in row.nat_addresses:
                 if port in fip:

@@ -20,6 +20,7 @@ from ovn_bgp_agent import constants
 
 
 LOG = logging.getLogger(__name__)
+
 _SYNC_STATE_LOCK = lockutils.ReaderWriterLock()
 
 
@@ -43,6 +44,8 @@ class PortBindingChassisCreatedEvent(PortBindingChassisEvent):
 
     def match_fn(self, event, row, old):
         try:
+            if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
+                return False
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
@@ -52,14 +55,10 @@ class PortBindingChassisCreatedEvent(PortBindingChassisEvent):
             return False
 
     def run(self, event, row, old):
-        if row.type not in constants.OVN_VIF_PORT_TYPES:
+        if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = [row.mac[0].split(' ')[1]]
-            # for dual-stack
-            if len(row.mac[0].split(' ')) == 3:
-                ips.append(row.mac[0].split(' ')[2])
-            self.agent.expose_ip(ips, row)
+            self.agent.expose_ip(row, cr_lrp=True)
 
 
 class PortBindingChassisDeletedEvent(PortBindingChassisEvent):
@@ -70,6 +69,8 @@ class PortBindingChassisDeletedEvent(PortBindingChassisEvent):
 
     def match_fn(self, event, row, old):
         try:
+            if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
+                return False
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
@@ -83,110 +84,80 @@ class PortBindingChassisDeletedEvent(PortBindingChassisEvent):
             return False
 
     def run(self, event, row, old):
-        if row.type not in constants.OVN_VIF_PORT_TYPES:
+        if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = [row.mac[0].split(' ')[1]]
-            # for dual-stack
-            if len(row.mac[0].split(' ')) == 3:
-                ips.append(row.mac[0].split(' ')[2])
-            self.agent.withdraw_ip(ips, row)
-
-
-class FIPSetEvent(PortBindingChassisEvent):
-    def __init__(self, bgp_agent):
-        events = (self.ROW_UPDATE,)
-        super(FIPSetEvent, self).__init__(
-            bgp_agent, events)
-
-    def match_fn(self, event, row, old):
-        try:
-            return (not row.chassis and
-                    row.nat_addresses != old.nat_addresses and
-                    not row.logical_port.startswith('lrp-'))
-        except (AttributeError):
-            return False
-
-    def run(self, event, row, old):
-        if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
-            return
-        with _SYNC_STATE_LOCK.read_lock():
-            for nat in row.nat_addresses:
-                if nat not in old.nat_addresses:
-                    ip = nat.split(" ")[1]
-                    port = nat.split(" ")[2].split("\"")[1]
-                    self.agent.expose_ip([ip], row, associated_port=port)
-
-
-class FIPUnsetEvent(PortBindingChassisEvent):
-    def __init__(self, bgp_agent):
-        events = (self.ROW_UPDATE,)
-        super(FIPUnsetEvent, self).__init__(
-            bgp_agent, events)
-
-    def match_fn(self, event, row, old):
-        try:
-            return (not row.chassis and
-                    row.nat_addresses != old.nat_addresses and
-                    not row.logical_port.startswith('lrp-'))
-        except (AttributeError):
-            return False
-
-    def run(self, event, row, old):
-        if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
-            return
-        with _SYNC_STATE_LOCK.read_lock():
-            for nat in old.nat_addresses:
-                if nat not in row.nat_addresses:
-                    ip = nat.split(" ")[1]
-                    port = nat.split(" ")[2].split("\"")[1]
-                    self.agent.withdraw_ip([ip], row, associated_port=port)
+            self.agent.withdraw_ip(row, cr_lrp=True)
 
 
 class SubnetRouterAttachedEvent(PortBindingChassisEvent):
     def __init__(self, bgp_agent):
-        events = (self.ROW_CREATE,)
+        events = (self.ROW_UPDATE, self.ROW_CREATE,)
         super(SubnetRouterAttachedEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
         try:
-            # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
-                return False
-            return (not row.chassis and row.logical_port.startswith('lrp-'))
-        except (IndexError, AttributeError):
+            if event == self.ROW_UPDATE:
+                return (not row.chassis and
+                        not row.logical_port.startswith('lrp-') and
+                        row.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY] and
+                        row.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY] and
+                        (not old.external_ids.get(
+                            constants.OVN_EVPN_VNI_EXT_ID_KEY) or
+                         not old.external_ids.get(
+                             constants.constants.OVN_EVPN_AS_EXT_ID_KEY)))
+            else:
+                return (not row.chassis and
+                        not row.logical_port.startswith('lrp-') and
+                        row.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY] and
+                        row.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY])
+        except (IndexError, AttributeError, KeyError):
             return False
 
     def run(self, event, row, old):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ip_address = row.mac[0].split(' ')[1]
-            self.agent.expose_subnet(ip_address, row)
+            if row.nat_addresses:
+                self.agent.expose_ip(row)
+            else:
+                self.agent.expose_subnet(row)
 
 
 class SubnetRouterDetachedEvent(PortBindingChassisEvent):
     def __init__(self, bgp_agent):
-        events = (self.ROW_DELETE,)
+        events = (self.ROW_UPDATE, self.ROW_DELETE,)
         super(SubnetRouterDetachedEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
         try:
-            # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
-                return False
-            return (not row.chassis and row.logical_port.startswith('lrp-'))
-        except (IndexError, AttributeError):
+            if event == self.ROW_UPDATE:
+                return (not row.chassis and
+                        not row.logical_port.startswith('lrp-') and
+                        old.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY] and
+                        old.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY] and
+                        (not row.external_ids.get(
+                            constants.OVN_EVPN_VNI_EXT_ID_KEY) or
+                         not row.external_ids.get(
+                             constants.OVN_EVPN_AS_EXT_ID_KEY)))
+            else:
+                return (not row.chassis and
+                        not row.logical_port.startswith('lrp-') and
+                        row.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY] and
+                        row.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY])
+        except (IndexError, AttributeError, KeyError):
             return False
 
     def run(self, event, row, old):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ip_address = row.mac[0].split(' ')[1]
-            self.agent.withdraw_subnet(ip_address, row)
+            if row.nat_addresses:
+                self.agent.withdraw_ip(row)
+            else:
+                self.agent.withdraw_subnet(row)
 
 
 class TenantPortCreatedEvent(PortBindingChassisEvent):
@@ -200,7 +171,7 @@ class TenantPortCreatedEvent(PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
-            return (not old.chassis and
+            return (not old.chassis and row.chassis and
                     self.agent.ovn_local_lrps != [])
         except (IndexError, AttributeError):
             return False
@@ -219,7 +190,7 @@ class TenantPortCreatedEvent(PortBindingChassisEvent):
 
 class TenantPortDeletedEvent(PortBindingChassisEvent):
     def __init__(self, bgp_agent):
-        events = (self.ROW_DELETE,)
+        events = (self.ROW_DELETE, self.ROW_UPDATE,)
         super(TenantPortDeletedEvent, self).__init__(
             bgp_agent, events)
 
@@ -228,7 +199,11 @@ class TenantPortDeletedEvent(PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
-            return (self.agent.ovn_local_lrps != [])
+            if event == self.ROW_UPDATE:
+                return (old.chassis and not row.chassis and
+                        self.agent.ovn_local_lrps != [])
+            else:
+                return (self.agent.ovn_local_lrps != [])
         except (IndexError, AttributeError):
             return False
 

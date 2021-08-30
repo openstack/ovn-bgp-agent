@@ -40,10 +40,10 @@ the OVN overlay.
 
 This simple design allows the agent to implement different drivers, depending
 on what OVN SB DB events are being watched (watchers examples at
-``networking_bgp_onn/drivers/openstack/watchers/``), and what actions are
+``ovn_bgp_agent/drivers/openstack/watchers/``), and what actions are
 triggered in reaction to them (drivers examples at
-``networking_bgp_ovn/drivers/openstack/XXXX_driver.py``, implementing the
-``networking_bgp_von/drivers/driver_api.py``).
+``ovn_bgp_agent/drivers/openstack/XXXX_driver.py``, implementing the
+``ovn_bgp_agent/drivers/driver_api.py``).
 
 A new driver implements the support for EVPN capabilities with multitenancy
 (overlapping CIDRs), by leveraging VRFs and EVPN Type-5 Routes. The API used
@@ -55,7 +55,7 @@ react to the information being added by it into the OVN SB DB (using the
 Proposed Solution
 -----------------
 
-To support EVPN the functionality of the ``networking-bgp-ovn`` agent needs
+To support EVPN the functionality of the ``ovn_bgp_agent`` needs
 to be extended with a new driver that performs the extra steps
 required for the EVPN configuration and steering the traffic to/from the node
 from/to the OVN overlay. The only configuration needed is to enable the

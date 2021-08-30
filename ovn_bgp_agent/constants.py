@@ -33,7 +33,14 @@ IP_VERSION_6 = 6
 IP_VERSION_4 = 4
 
 BGP_MODE = 'BGP'
+EVPN_MODE = 'EVPN'
 
+OVN_EVPN_VNI_EXT_ID_KEY = 'neutron_bgpvpn:vni'
+OVN_EVPN_AS_EXT_ID_KEY = 'neutron_bgpvpn:as'
+OVN_EVPN_VRF_PREFIX = "vrf-"
+OVN_EVPN_BRIDGE_PREFIX = "br-"
+OVN_EVPN_VXLAN_PREFIX = "vxlan-"
+OVN_EVPN_LO_PREFIX = "lo-"
 OVN_INTEGRATION_BRIDGE = 'br-int'
 
 LINK_UP = "up"

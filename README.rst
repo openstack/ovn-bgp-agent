@@ -14,4 +14,4 @@ Features
 
 * Expose VMs with FIPs or on Provider Networks through BGP on OVN
   environments.
-
+* Expose VMs on Tenant Networks through EVPN on OVN environments.
