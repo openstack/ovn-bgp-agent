@@ -36,6 +36,5 @@ BGP_MODE = 'BGP'
 
 OVN_INTEGRATION_BRIDGE = 'br-int'
 
-
 LINK_UP = "up"
 LINK_DOWN = "down"

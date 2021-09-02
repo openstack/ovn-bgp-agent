@@ -240,8 +240,10 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
             ports = self.sb_idl.get_ports_on_datapath(
                 network_port_datapath)
             for port in ports:
-                if ((port.type != constants.OVN_VM_VIF_PORT_TYPE and port.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
-                        (port.type == constants.OVN_VM_VIF_PORT_TYPE and not port.chassis)):
+                if (port.type not in (constants.OVN_VM_VIF_PORT_TYPE,
+                                      constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
+                        (port.type == constants.OVN_VM_VIF_PORT_TYPE and
+                         not port.chassis)):
                     continue
                 try:
                     port_ips = [port.mac[0].split(' ')[1]]
@@ -338,8 +340,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
 
     def _expose_ip(self, ips, row, associated_port=None):
         # VM on provider Network
-        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE
-                or row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
+        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE or
+                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.info("Add BGP route for logical port with ip %s", ips)
             linux_net.add_ips_to_dev(constants.OVN_BGP_NIC, ips)
@@ -355,8 +357,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
                     vlan=vlan_tag)
 
         # VM with FIP
-        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE
-                or row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
+        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE or
+                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             # FIPs are only supported with IPv4
             fip_address, fip_datapath = self.sb_idl.get_fip_associated(
                 row.logical_port)
@@ -462,8 +464,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
         - CR-LRP OVN port
         '''
         # VM on provider Network
-        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE
-                 or row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
+        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE or
+                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.info("Delete BGP route for logical port with ip %s", ips)
             linux_net.del_ips_from_dev(constants.OVN_BGP_NIC, ips)
@@ -479,8 +481,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
                     vlan=vlan_tag)
 
         # VM with FIP
-        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE
-                or row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
+        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE or
+                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             # FIPs are only supported with IPv4
             fip_address, fip_datapath = self.sb_idl.get_fip_associated(
                 row.logical_port)
@@ -601,8 +603,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
         cr_lrp = self.sb_idl.is_router_gateway_on_chassis(row.datapath,
                                                           self.chassis)
         if cr_lrp:
-            LOG.info("Add IP Rules for network %s on chassis %s",
-                ip, self.chassis)
+            LOG.info("Add IP Rules for network %s on chassis %s", ip,
+                     self.chassis)
             self.ovn_local_lrps.add(row.logical_port)
             cr_lrp_info = self.ovn_local_cr_lrps.get(cr_lrp, {})
             cr_lrp_datapath = cr_lrp_info.get('provider_datapath')
@@ -636,7 +638,9 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
                     ports = self.sb_idl.get_ports_on_datapath(
                         network_port_datapath)
                     for port in ports:
-                        if port.type != constants.OVN_VM_VIF_PORT_TYPE and port.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                        if port.type not in (
+                                constants.OVN_VM_VIF_PORT_TYPE,
+                                constants.OVN_VIRTUAL_VIF_PORT_TYPE):
                             continue
                         try:
                             port_ips = [port.mac[0].split(' ')[1]]
@@ -660,8 +664,8 @@ class OSPOVNBGPDriver(driver_api.AgentDriverBase):
         cr_lrp = self.sb_idl.is_router_gateway_on_chassis(row.datapath,
                                                           self.chassis)
         if cr_lrp:
-            LOG.info("Delete IP Rules for network %s on chassis %s",
-                ip, self.chassis)
+            LOG.info("Delete IP Rules for network %s on chassis %s", ip,
+                     self.chassis)
             if row.logical_port in self.ovn_local_lrps:
                 self.ovn_local_lrps.remove(row.logical_port)
             cr_lrp_info = self.ovn_local_cr_lrps.get(cr_lrp, {})

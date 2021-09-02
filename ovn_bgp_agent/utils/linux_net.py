@@ -99,9 +99,8 @@ def ensure_dummy_device(device):
                 if iface['state'] != constants.LINK_UP:
                     iface['state'] = constants.LINK_UP
         except KeyError:
-            ndb.interfaces.create(
-                kind="dummy", ifname=device).set('state',
-                    constants.LINK_UP).commit()
+            ndb.interfaces.create(kind="dummy", ifname=device).set(
+                'state', constants.LINK_UP).commit()
 
 
 def ensure_ovn_device(ovn_ifname, vrf_name):
@@ -234,8 +233,8 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
         except KeyError:
             ndb.interfaces.create(
                 kind="vlan", ifname=vlan_device_name, vlan_id=vlan_tag,
-                link=ndb.interfaces[bridge]['index']).set('state',
-                                                          constants.LINK_UP).commit()
+                link=ndb.interfaces[bridge]['index']).set(
+                'state', constants.LINK_UP).commit()
 
     ipv4_flag = "net.ipv4.conf.{}/{}.proxy_arp".format(bridge, vlan_tag)
     _set_kernel_flag(ipv4_flag, 1)

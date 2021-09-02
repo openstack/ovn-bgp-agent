@@ -206,7 +206,8 @@ class TenantPortCreatedEvent(PortBindingChassisEvent):
             return False
 
     def run(self, event, row, old):
-        if row.type != constants.OVN_VM_VIF_PORT_TYPE and row.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+        if row.type not in (constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
         with _SYNC_STATE_LOCK.read_lock():
             ips = [row.mac[0].split(' ')[1]]
@@ -233,7 +234,8 @@ class TenantPortDeletedEvent(PortBindingChassisEvent):
             return False
 
     def run(self, event, row, old):
-        if row.type != constants.OVN_VM_VIF_PORT_TYPE and row.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+        if row.type not in (constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
         with _SYNC_STATE_LOCK.read_lock():
             ips = [row.mac[0].split(' ')[1]]
