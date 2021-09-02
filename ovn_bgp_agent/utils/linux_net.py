@@ -434,7 +434,8 @@ def del_ndp_proxy(ip, dev, vlan=None):
         dev_name = "{}.{}".format(dev, vlan)
     command = ["ip", "-6", "nei", "del", "proxy", net_ip, "dev", dev_name]
     try:
-        return processutils.execute(*command, run_as_root=True)
+        return processutils.execute(*command, run_as_root=True,
+                                    env_variables={'LC_ALL': 'C'})
     except Exception as e:
         if "No such file or directory" in e.stderr:
             # Already deleted
@@ -584,7 +585,8 @@ def add_unreachable_route(vrf_name):
         command = ["ip", ip_version, "route", "add", "vrf", vrf_name,
                    "unreachable", "default", "metric", "4278198272"]
         try:
-            return processutils.execute(*command, run_as_root=True)
+            return processutils.execute(*command, run_as_root=True,
+                                        env_variables={'LC_ALL': 'C'})
         except Exception as e:
             if "RTNETLINK answers: File exists" in e.stderr:
                 continue
