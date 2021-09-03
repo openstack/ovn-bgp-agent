@@ -17,6 +17,7 @@ from oslo_log import log as logging
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
 LOG = logging.getLogger(__name__)
@@ -24,19 +25,7 @@ LOG = logging.getLogger(__name__)
 _SYNC_STATE_LOCK = lockutils.ReaderWriterLock()
 
 
-class PortBindingChassisEvent(row_event.RowEvent):
-    def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
-        table = 'Port_Binding'
-        super(PortBindingChassisEvent, self).__init__(
-            events, table, None)
-        self.event_name = self.__class__.__name__
-
-    def _check_single_dual_stack_format(mac):
-        return len(mac.split(' ')) in [2, 3]
-
-
-class PortBindingChassisCreatedEvent(PortBindingChassisEvent):
+class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE,)
         super(PortBindingChassisCreatedEvent, self).__init__(
@@ -61,7 +50,7 @@ class PortBindingChassisCreatedEvent(PortBindingChassisEvent):
             self.agent.expose_ip(row, cr_lrp=True)
 
 
-class PortBindingChassisDeletedEvent(PortBindingChassisEvent):
+class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE, self.ROW_DELETE,)
         super(PortBindingChassisDeletedEvent, self).__init__(
@@ -90,7 +79,7 @@ class PortBindingChassisDeletedEvent(PortBindingChassisEvent):
             self.agent.withdraw_ip(row, cr_lrp=True)
 
 
-class SubnetRouterAttachedEvent(PortBindingChassisEvent):
+class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE, self.ROW_CREATE,)
         super(SubnetRouterAttachedEvent, self).__init__(
@@ -125,7 +114,7 @@ class SubnetRouterAttachedEvent(PortBindingChassisEvent):
                 self.agent.expose_subnet(row)
 
 
-class SubnetRouterDetachedEvent(PortBindingChassisEvent):
+class SubnetRouterDetachedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE, self.ROW_DELETE,)
         super(SubnetRouterDetachedEvent, self).__init__(
@@ -160,7 +149,7 @@ class SubnetRouterDetachedEvent(PortBindingChassisEvent):
                 self.agent.withdraw_subnet(row)
 
 
-class TenantPortCreatedEvent(PortBindingChassisEvent):
+class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE,)
         super(TenantPortCreatedEvent, self).__init__(
@@ -188,7 +177,7 @@ class TenantPortCreatedEvent(PortBindingChassisEvent):
             self.agent.expose_remote_ip(ips, row)
 
 
-class TenantPortDeletedEvent(PortBindingChassisEvent):
+class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_DELETE, self.ROW_UPDATE,)
         super(TenantPortDeletedEvent, self).__init__(

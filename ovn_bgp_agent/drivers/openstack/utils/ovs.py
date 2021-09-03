@@ -15,6 +15,7 @@
 import pyroute2
 
 from oslo_concurrency import processutils
+from oslo_log import log as logging
 from ovs.db import idl
 
 from ovn_bgp_agent import constants
@@ -25,6 +26,9 @@ from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
 
 
+LOG = logging.getLogger(__name__)
+
+
 def ovs_cmd(command, args, timeout=None):
     full_args = [command]
     if timeout is not None:
@@ -33,8 +37,8 @@ def ovs_cmd(command, args, timeout=None):
     try:
         return processutils.execute(*full_args, run_as_root=True)
     except Exception as e:
-        print("Unable to execute {} {}. Exception: {}".format(
-            command, full_args, e))
+        LOG.exception("Unable to execute %s %s. Exception: %s", command,
+                      full_args, e)
         raise
 
 

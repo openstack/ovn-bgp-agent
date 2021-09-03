@@ -77,8 +77,8 @@ def _run_vtysh_config(frr_config_file):
     try:
         return processutils.execute(*full_args, run_as_root=True)
     except Exception as e:
-        print("Unable to execute vtysh with {}. Exception: {}".format(
-            full_args, e))
+        LOG.exception("Unable to execute vtysh with %s. Exception: %s",
+                      full_args, e)
         raise
 
 
@@ -88,8 +88,8 @@ def _run_vtysh_command(command):
     try:
         return processutils.execute(*full_args, run_as_root=True)[0]
     except Exception as e:
-        print("Unable to execute vtysh with {}. Exception: {}".format(
-            full_args, e))
+        LOG.exception("Unable to execute vtysh with %s. Exception: %s",
+                      full_args, e)
         raise
 
 
