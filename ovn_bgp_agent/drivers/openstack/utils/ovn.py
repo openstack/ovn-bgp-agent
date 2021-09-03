@@ -117,9 +117,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def _get_port_by_name(self, port):
         cmd = self.db_find_rows('Port_Binding', ('logical_port', '=', port))
         port_info = cmd.execute(check_error=True)
-        if port_info:
-            return port_info[0]
-        return []
+        return port_info[0] if port_info else []
 
     def _get_ports_by_datapath(self, datapath, port_type=None):
         if port_type:
@@ -149,19 +147,15 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def is_port_on_chassis(self, port_name, chassis):
         port_info = self._get_port_by_name(port_name)
         try:
-            if (port_info and
+            return (port_info and
                     port_info.type == constants.OVN_VM_VIF_PORT_TYPE and
-                    port_info.chassis[0].name == chassis):
-                return True
+                    port_info.chassis[0].name == chassis)
         except IndexError:
             pass
         return False
 
     def is_port_deleted(self, port_name):
-        port_info = self._get_port_by_name(port_name)
-        if port_info:
-            return False
-        return True
+        return False if self._get_port_by_name(port_name) else True
 
     def get_ports_on_chassis(self, chassis):
         rows = self.db_list_rows('Port_Binding').execute(check_error=True)
@@ -182,7 +176,6 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             if (row.options and
                     row.options.get('network_name') == network_name):
                 return row.tag
-        return None
 
     def is_router_gateway_on_chassis(self, datapath, chassis):
         port_info = self._get_ports_by_datapath(
@@ -192,14 +185,12 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                 return port_info[0].logical_port
         except IndexError:
             pass
-        return None
 
     def get_lrp_port_for_datapath(self, datapath):
         for row in self._get_ports_by_datapath(
                 datapath, constants.OVN_PATCH_VIF_PORT_TYPE):
             if row.options:
                 return row.options['peer']
-        return None
 
     def get_lrp_ports_for_router(self, datapath):
         return self._get_ports_by_datapath(
@@ -209,7 +200,6 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         port_info = self._get_port_by_name(port_name)
         if port_info:
             return port_info.datapath
-        return None
 
     def get_ports_on_datapath(self, datapath):
         return self._get_ports_by_datapath(datapath)
@@ -236,17 +226,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
 
     def get_evpn_info(self, port):
         try:
-            evpn_info = {
-                'vni': int(port.external_ids[
-                    constants.OVN_EVPN_VNI_EXT_ID_KEY]),
-                'bgp_as': int(port.external_ids[
-                    constants.OVN_EVPN_AS_EXT_ID_KEY])}
-        except KeyError:
+            return {'vni': int(
+                    port.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY]),
+                    'bgp_as': int(
+                    port.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY])}
+        except (KeyError, ValueError):
             return {}
-        return evpn_info
 
     def get_port_if_local_chassis(self, port_name, chassis):
         port = self._get_port_by_name(port_name)
         if port.chassis[0].name == chassis:
             return port
-        return None
