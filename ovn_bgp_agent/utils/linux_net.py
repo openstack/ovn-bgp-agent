@@ -26,6 +26,7 @@ from oslo_concurrency import processutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent import exceptions as agent_exc
 
 LOG = logging.getLogger(__name__)
 
@@ -496,8 +497,7 @@ def add_ip_rule(ip, table, dev=None, lladdr=None):
         if ip_version == constants.IP_VERSION_6:
             rule['family'] = AF_INET6
     else:
-        LOG.error("Invalid ip: %s", ip)
-        return
+        raise agent_exc.InvalidPortIP(ip)
 
     with pyroute2.NDB() as ndb:
         try:

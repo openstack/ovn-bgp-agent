@@ -26,6 +26,7 @@ from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher as watcher
+from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -215,9 +216,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         rule_bridge, vlan_tag = self._get_bridge_for_datapath(
             gateway['provider_datapath'])
 
-        linux_net.add_ip_rule(router_port_ip,
-                              self.ovn_routing_tables[rule_bridge],
-                              rule_bridge)
+        try:
+            linux_net.add_ip_rule(router_port_ip,
+                                  self.ovn_routing_tables[rule_bridge],
+                                  rule_bridge)
+        except agent_exc.InvalidPortIP:
+            LOG.exception("Invalid IP to create a rule for the network router"
+                          " interface port: %s", router_port_ip)
+            return
+
         if router_port_ip in ovn_ip_rules.keys():
             del ovn_ip_rules[router_port_ip]
 
@@ -348,9 +355,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
             rule_bridge, vlan_tag = self._get_bridge_for_datapath(row.datapath)
             for ip in ips:
-                linux_net.add_ip_rule(ip,
-                                      self.ovn_routing_tables[rule_bridge],
-                                      rule_bridge)
+                try:
+                    linux_net.add_ip_rule(
+                        ip, self.ovn_routing_tables[rule_bridge], rule_bridge)
+                except agent_exc.InvalidPortIP:
+                    LOG.exception("Invalid IP to create a rule for the VM ip"
+                                  " on the provider network: %s", ip)
+                    return
                 linux_net.add_ip_route(
                     self.ovn_routing_tables_routes, ip,
                     self.ovn_routing_tables[rule_bridge], rule_bridge,
@@ -369,9 +380,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
                 rule_bridge, vlan_tag = self._get_bridge_for_datapath(
                     fip_datapath)
-                linux_net.add_ip_rule(fip_address,
-                                      self.ovn_routing_tables[rule_bridge],
-                                      rule_bridge)
+                try:
+                    linux_net.add_ip_rule(
+                        fip_address, self.ovn_routing_tables[rule_bridge],
+                        rule_bridge)
+                except agent_exc.InvalidPortIP:
+                    LOG.exception("Invalid IP to create a rule for the VM "
+                                  "floating IP: %s", fip_address)
+                    return
+
                 linux_net.add_ip_route(
                     self.ovn_routing_tables_routes, fip_address,
                     self.ovn_routing_tables[rule_bridge], rule_bridge,
@@ -391,9 +408,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 rule_bridge, vlan_tag = self._get_bridge_for_datapath(
                     row.datapath)
                 for ip in ips:
-                    linux_net.add_ip_rule(ip,
-                                          self.ovn_routing_tables[rule_bridge],
-                                          rule_bridge)
+                    try:
+                        linux_net.add_ip_rule(
+                            ip, self.ovn_routing_tables[rule_bridge],
+                            rule_bridge)
+                    except agent_exc.InvalidPortIP:
+                        LOG.exception("Invalid IP to create a rule for the "
+                                      "floating IP associated to the VM: %s",
+                                      ip)
+                        return
                     linux_net.add_ip_route(
                         self.ovn_routing_tables_routes, ip,
                         self.ovn_routing_tables[rule_bridge], rule_bridge,
@@ -422,9 +445,16 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
                 for ip in ips:
                     ip_without_mask = ip.split("/")[0]
-                    linux_net.add_ip_rule(
-                        ip_without_mask, self.ovn_routing_tables[rule_bridge],
-                        rule_bridge, lladdr=row.mac[0].split(' ')[0])
+                    try:
+                        linux_net.add_ip_rule(
+                            ip_without_mask,
+                            self.ovn_routing_tables[rule_bridge], rule_bridge,
+                            lladdr=row.mac[0].split(' ')[0])
+                    except agent_exc.InvalidPortIP:
+                        LOG.exception("Invalid IP to create a rule for the "
+                                      "router gateway port: %s",
+                                      ip_without_mask)
+                        return
                     linux_net.add_ip_route(
                         self.ovn_routing_tables_routes, ip_without_mask,
                         self.ovn_routing_tables[rule_bridge], rule_bridge,
@@ -613,9 +643,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                               for ip_address in cr_lrp_info.get('ips', [])]
                 rule_bridge, vlan_tag = self._get_bridge_for_datapath(
                     cr_lrp_datapath)
-                linux_net.add_ip_rule(ip,
-                                      self.ovn_routing_tables[rule_bridge],
-                                      rule_bridge)
+                try:
+                    linux_net.add_ip_rule(
+                        ip, self.ovn_routing_tables[rule_bridge], rule_bridge)
+                except agent_exc.InvalidPortIP:
+                    LOG.exception("Invalid IP to create a rule for the "
+                                  "network router interface port: %s", ip)
 
                 ip_version = linux_net.get_ip_version(ip)
                 for cr_lrp_ip in cr_lrp_ips:
