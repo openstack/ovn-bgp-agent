@@ -15,10 +15,10 @@
 import json
 
 from jinja2 import Template
-from oslo_concurrency import processutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+import ovn_bgp_agent.privileged.vtysh
 
 LOG = logging.getLogger(__name__)
 
@@ -70,31 +70,9 @@ router bgp {{ bgp_as }} vrf {{ vrf_name }}
 '''
 
 
-def _run_vtysh_config(frr_config_file):
-    vtysh_command = "copy {} running-config".format(frr_config_file)
-    full_args = ['/usr/bin/vtysh', '--vty_socket', constants.FRR_SOCKET_PATH,
-                 '-c', vtysh_command]
-    try:
-        return processutils.execute(*full_args, run_as_root=True)
-    except Exception as e:
-        LOG.exception("Unable to execute vtysh with %s. Exception: %s",
-                      full_args, e)
-        raise
-
-
-def _run_vtysh_command(command):
-    full_args = ['/usr/bin/vtysh', '--vty_socket', constants.FRR_SOCKET_PATH,
-                 '-c', command]
-    try:
-        return processutils.execute(*full_args, run_as_root=True)[0]
-    except Exception as e:
-        LOG.exception("Unable to execute vtysh with %s. Exception: %s",
-                      full_args, e)
-        raise
-
-
 def _get_router_id(bgp_as):
-    output = _run_vtysh_command(command='show ip bgp summary json')
+    output = ovn_bgp_agent.privileged.vtysh.run_vtysh_command(
+        command='show ip bgp summary json')
     return json.loads(output).get('ipv4Unicast', {}).get('routerId')
 
 
@@ -113,7 +91,7 @@ def vrf_leak(vrf, bgp_as, bgp_router_id=None):
     with open(frr_config_file, 'w') as vrf_config_file:
         vrf_config_file.write(vrf_config)
 
-    _run_vtysh_config(frr_config_file)
+    ovn_bgp_agent.privileged.vtysh.run_vtysh_config(frr_config_file)
 
 
 def vrf_reconfigure(evpn_info, action):
@@ -141,4 +119,4 @@ def vrf_reconfigure(evpn_info, action):
     with open(frr_config_file, 'w') as vrf_config_file:
         vrf_config_file.write(vrf_config)
 
-    _run_vtysh_config(frr_config_file)
+    ovn_bgp_agent.privileged.vtysh.run_vtysh_config(frr_config_file)

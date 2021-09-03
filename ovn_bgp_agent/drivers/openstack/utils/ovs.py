@@ -14,12 +14,13 @@
 
 import pyroute2
 
-from oslo_concurrency import processutils
 from oslo_log import log as logging
 from ovs.db import idl
 
 from ovn_bgp_agent import constants
+import ovn_bgp_agent.privileged.ovs_vsctl
 from ovn_bgp_agent.utils import linux_net
+
 
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
@@ -29,28 +30,16 @@ from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
 LOG = logging.getLogger(__name__)
 
 
-def ovs_cmd(command, args, timeout=None):
-    full_args = [command]
-    if timeout is not None:
-        full_args += ['--timeout=%s' % timeout]
-    full_args += args
-    try:
-        return processutils.execute(*full_args, run_as_root=True)
-    except Exception as e:
-        LOG.exception("Unable to execute %s %s. Exception: %s", command,
-                      full_args, e)
-        raise
-
-
 def get_ovs_flows_info(bridge, flows_info, cookie):
-    ovs_ports = ovs_cmd('ovs-vsctl',
-                        ['list-ports', bridge])[0].rstrip()
+    ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
     if not ovs_ports:
         flow = ("cookie={}/-1").format(cookie)
-        ovs_cmd('ovs-ofctl', ['del-flows', bridge, flow])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-ofctl', ['del-flows', bridge, flow])
         return
     for ovs_port in ovs_ports.split("\n"):
-        ovs_ofport = ovs_cmd(
+        ovs_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-vsctl',
             ['get', 'Interface', ovs_port, 'ofport'])[0].rstrip()
         flows_info[bridge]['in_port'].add(ovs_ofport)
@@ -65,11 +54,13 @@ def remove_extra_ovs_flows(flows_info, cookie):
             flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
                        "actions=mod_dl_dst:{},NORMAL".format(
                            cookie, in_port, info['mac']))
-            ovs_cmd('ovs-ofctl', ['add-flow', bridge, flow])
-            ovs_cmd('ovs-ofctl', ['add-flow', bridge, flow_v6])
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['add-flow', bridge, flow])
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['add-flow', bridge, flow_v6])
 
             cookie_id = ("cookie={}/-1").format(cookie)
-            current_flows = ovs_cmd(
+            current_flows = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
                 'ovs-ofctl', ['dump-flows', bridge, cookie_id]
                 )[0].split('\n')[1:-1]
             for flow in current_flows:
@@ -83,21 +74,23 @@ def remove_extra_ovs_flows(flows_info, cookie):
                     continue
                 in_port = flow.split("in_port=")[1].split(" ")[0]
                 del_flow = ('{},in_port={}').format(cookie_id, in_port)
-                ovs_cmd('ovs-ofctl', ['del-flows', bridge, del_flow])
+                ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                    'ovs-ofctl', ['del-flows', bridge, del_flow])
 
 
 def ensure_evpn_ovs_flow(bridge, cookie, mac, port, net, strip_vlan=False):
     ovs_port = None
-    ovs_ports = ovs_cmd('ovs-vsctl', ['list-ports', bridge])[0].rstrip()
+    ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
     for p in ovs_ports.split('\n'):
         if p.startswith('patch-provnet-'):
             ovs_port = p
     if not ovs_port:
         return
-    ovs_ofport = ovs_cmd(
+    ovs_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['get', 'Interface', ovs_port, 'ofport']
         )[0].rstrip()
-    vrf_ofport = ovs_cmd(
+    vrf_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['get', 'Interface', port, 'ofport']
         )[0].rstrip()
 
@@ -131,43 +124,48 @@ def ensure_evpn_ovs_flow(bridge, cookie, mac, port, net, strip_vlan=False):
                     "actions=mod_dl_dst:{},output={}".format(
                         cookie, ovs_ofport, mac, net,
                         ndb.interfaces[bridge]['address'], vrf_ofport))
-    ovs_cmd('ovs-ofctl', ['add-flow', bridge, flow])
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['add-flow', bridge, flow])
 
 
 def remove_evpn_router_ovs_flows(bridge, cookie, mac):
     cookie_id = ("cookie={}/-1").format(cookie)
 
     ovs_port = None
-    ovs_ports = ovs_cmd('ovs-vsctl', ['list-ports', bridge])[0].rstrip()
+    ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
     for p in ovs_ports.split('\n'):
         if p.startswith('patch-provnet-'):
             ovs_port = p
     if not ovs_port:
         return
-    ovs_ofport = ovs_cmd(
+    ovs_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['get', 'Interface', ovs_port, 'ofport']
         )[0].rstrip()
 
     flow = ("{},ip,in_port={},dl_src:{}".format(
             cookie_id, ovs_ofport, mac))
-    ovs_cmd('ovs-ofctl', ['del-flows', bridge, flow])
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['del-flows', bridge, flow])
 
     flow_v6 = ("{},ipv6,in_port={},dl_src:{}".format(cookie_id, ovs_ofport,
                                                      mac))
-    ovs_cmd('ovs-ofctl', ['del-flows', bridge, flow_v6])
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['del-flows', bridge, flow_v6])
 
 
 def remove_evpn_network_ovs_flow(bridge, cookie, mac, net):
     cookie_id = ("cookie={}/-1").format(cookie)
 
     ovs_port = None
-    ovs_ports = ovs_cmd('ovs-vsctl', ['list-ports', bridge])[0].rstrip()
+    ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
     for p in ovs_ports.split('\n'):
         if p.startswith('patch-provnet-'):
             ovs_port = p
     if not ovs_port:
         return
-    ovs_ofport = ovs_cmd(
+    ovs_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['get', 'Interface', ovs_port, 'ofport']
         )[0].rstrip()
 
@@ -178,20 +176,22 @@ def remove_evpn_network_ovs_flow(bridge, cookie, mac, net):
     else:
         flow = ("{},ip,in_port={},dl_src:{},nw_src={}".format(
                 cookie_id, ovs_ofport, mac, net))
-    ovs_cmd('ovs-ofctl', ['del-flows', bridge, flow])
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['del-flows', bridge, flow])
 
 
 def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
     cookie_id = ("cookie={}/-1").format(cookie)
     for bridge in ovn_bridge_mappings:
-        ovs_port = ovs_cmd('ovs-vsctl', ['list-ports', bridge])[0].rstrip()
+        ovs_port = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
         if not ovs_port:
             continue
-        ovs_ofport = ovs_cmd(
+        ovs_ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-vsctl', ['get', 'Interface', ovs_port, 'ofport']
             )[0].rstrip()
         flow_filter = ('{},in_port={}').format(cookie_id, ovs_ofport)
-        current_flows = ovs_cmd(
+        current_flows = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-ofctl', ['dump-flows', bridge, flow_filter]
             )[0].split('\n')[1:-1]
         if len(current_flows) == 1:
@@ -208,12 +208,14 @@ def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
                        "actions=mod_dl_dst:{},NORMAL".format(
                            cookie, ovs_ofport,
                            ndb.interfaces[bridge]['address']))
-        ovs_cmd('ovs-ofctl', ['add-flow', bridge, flow])
-        ovs_cmd('ovs-ofctl', ['add-flow', bridge, flow_v6])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-ofctl', ['add-flow', bridge, flow])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-ofctl', ['add-flow', bridge, flow_v6])
 
         # Remove unneeded flows
         port = 'in_port={}'.format(ovs_ofport)
-        current_flows = ovs_cmd(
+        current_flows = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-ofctl', ['dump-flows', bridge, cookie_id]
             )[0].split('\n')[1:-1]
         for flow in current_flows:
@@ -221,32 +223,37 @@ def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
                 continue
             in_port = flow.split("in_port=")[1].split(" ")[0]
             del_flow = ('{},in_port={}').format(cookie_id, in_port)
-            ovs_cmd('ovs-ofctl', ['del-flows', bridge, del_flow])
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['del-flows', bridge, del_flow])
 
 
 def add_device_to_ovs_bridge(device, bridge, vlan_tag=None):
     if vlan_tag:
         tag = "tag={}".format(vlan_tag)
-        ovs_cmd('ovs-vsctl', ['--may-exist', 'add-port', bridge, device, tag])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['--may-exist', 'add-port', bridge, device, tag])
     else:
-        ovs_cmd('ovs-vsctl', ['--may-exist', 'add-port', bridge, device])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['--may-exist', 'add-port', bridge, device])
 
 
 def del_device_from_ovs_bridge(device, bridge=None):
     if bridge:
-        ovs_cmd('ovs-vsctl', ['--if-exists', 'del-port', bridge, device])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['--if-exists', 'del-port', bridge, device])
     else:
-        ovs_cmd('ovs-vsctl', ['--if-exists', 'del-port', device])
+        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['--if-exists', 'del-port', device])
 
 
 def get_bridge_flows_by_cookie(bridge, cookie):
     cookie_id = ("cookie={}/-1").format(cookie)
-    return ovs_cmd('ovs-ofctl',
-                   ['dump-flows', bridge, cookie_id])[0].split('\n')[1:-1]
+    return ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['dump-flows', bridge, cookie_id])[0].split('\n')[1:-1]
 
 
 def get_device_port_at_ovs(device):
-    return ovs_cmd(
+    return ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['get', 'Interface', device, 'ofport'])[0].rstrip()
 
 
@@ -254,7 +261,8 @@ def del_flow(flow, bridge, cookie):
     cookie_id = ("cookie={}/-1").format(cookie)
     f = '{},priority{}'.format(
         cookie_id, flow.split(' actions')[0].split(' priority')[1])
-    ovs_cmd('ovs-ofctl', ['--strict', 'del-flows', bridge, f])
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['--strict', 'del-flows', bridge, f])
 
 
 def get_flow_info(flow):

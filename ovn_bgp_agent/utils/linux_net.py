@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import ipaddress
-import os
 import pyroute2
 import random
 import re
@@ -23,11 +22,11 @@ from pyroute2.netlink.rtnl import ndmsg
 from socket import AF_INET
 from socket import AF_INET6
 
-from oslo_concurrency import processutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
+import ovn_bgp_agent.privileged.linux_net
 
 LOG = logging.getLogger(__name__)
 
@@ -239,23 +238,14 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
                 'state', constants.LINK_UP).commit()
 
     ipv4_flag = "net.ipv4.conf.{}/{}.proxy_arp".format(bridge, vlan_tag)
-    _set_kernel_flag(ipv4_flag, 1)
+    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(ipv4_flag, 1)
     ipv6_flag = "net.ipv6.conf.{}/{}.proxy_ndp".format(bridge, vlan_tag)
-    _set_kernel_flag(ipv6_flag, 1)
+    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(ipv6_flag, 1)
 
 
 def delete_vlan_device_for_network(bridge, vlan_tag):
     vlan_device_name = '{}.{}'.format(bridge, vlan_tag)
     delete_device(vlan_device_name)
-
-
-def _set_kernel_flag(flag, value):
-    command = ["sysctl", "-w", "{}={}".format(flag, value)]
-    try:
-        return processutils.execute(*command, run_as_root=True)
-    except Exception as e:
-        LOG.error("Unable to execute %s. Exception: %s", command, e)
-        raise
 
 
 def get_exposed_ips(nic):
@@ -413,39 +403,11 @@ def delete_ip_routes(routes):
 
 
 def add_ndp_proxy(ip, dev, vlan=None):
-    # FIXME(ltomasbo): This should use pyroute instead but I didn't find
-    # out how
-    net_ip = str(ipaddress.IPv6Network(ip, strict=False).network_address)
-    dev_name = dev
-    if vlan:
-        dev_name = "{}.{}".format(dev, vlan)
-    command = ["ip", "-6", "nei", "add", "proxy", net_ip, "dev", dev_name]
-    try:
-        return processutils.execute(*command, run_as_root=True)
-    except Exception as e:
-        LOG.error("Unable to execute %s. Exception: %s", command, e)
-        raise
+    ovn_bgp_agent.privileged.linux_net.add_ndp_proxy(ip, dev, vlan)
 
 
 def del_ndp_proxy(ip, dev, vlan=None):
-    # FIXME(ltomasbo): This should use pyroute instead but I didn't find
-    # out how
-    net_ip = str(ipaddress.IPv6Network(ip, strict=False).network_address)
-    dev_name = dev
-    if vlan:
-        dev_name = "{}.{}".format(dev, vlan)
-    command = ["ip", "-6", "nei", "del", "proxy", net_ip, "dev", dev_name]
-    env = dict(os.environ)
-    env['LC_ALL'] = 'C'
-    try:
-        return processutils.execute(*command, run_as_root=True,
-                                    env_variables=env)
-    except Exception as e:
-        if "No such file or directory" in e.stderr:
-            # Already deleted
-            return
-        LOG.error("Unable to execute %s. Exception: %s", command, e)
-        raise
+    ovn_bgp_agent.privileged.linux_net.del_ndp_proxy(ip, dev, vlan)
 
 
 def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
@@ -582,21 +544,7 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
 
 
 def add_unreachable_route(vrf_name):
-    # FIXME: This should use pyroute instead but I didn't find
-    # out how
-    env = dict(os.environ)
-    env['LC_ALL'] = 'C'
-    for ip_version in [-4, -6]:
-        command = ["ip", ip_version, "route", "add", "vrf", vrf_name,
-                   "unreachable", "default", "metric", "4278198272"]
-        try:
-            return processutils.execute(*command, run_as_root=True,
-                                        env_variables=env)
-        except Exception as e:
-            if "RTNETLINK answers: File exists" in e.stderr:
-                continue
-            LOG.error("Unable to execute %s. Exception: %s", command, e)
-            raise
+    ovn_bgp_agent.privileged.linux_net.add_unreachable_route(vrf_name)
 
 
 def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
