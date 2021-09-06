@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import ipaddress
+import os
 import pyroute2
 import random
 import re
@@ -434,9 +435,11 @@ def del_ndp_proxy(ip, dev, vlan=None):
     if vlan:
         dev_name = "{}.{}".format(dev, vlan)
     command = ["ip", "-6", "nei", "del", "proxy", net_ip, "dev", dev_name]
+    env = dict(os.environ)
+    env['LC_ALL'] = 'C'
     try:
         return processutils.execute(*command, run_as_root=True,
-                                    env_variables={'LC_ALL': 'C'})
+                                    env_variables=env)
     except Exception as e:
         if "No such file or directory" in e.stderr:
             # Already deleted
@@ -581,12 +584,14 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
 def add_unreachable_route(vrf_name):
     # FIXME: This should use pyroute instead but I didn't find
     # out how
+    env = dict(os.environ)
+    env['LC_ALL'] = 'C'
     for ip_version in [-4, -6]:
         command = ["ip", ip_version, "route", "add", "vrf", vrf_name,
                    "unreachable", "default", "metric", "4278198272"]
         try:
             return processutils.execute(*command, run_as_root=True,
-                                        env_variables={'LC_ALL': 'C'})
+                                        env_variables=env)
         except Exception as e:
             if "RTNETLINK answers: File exists" in e.stderr:
                 continue
