@@ -108,7 +108,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         self._remove_extra_vrfs()
 
     def _ensure_network_exposed(self, router_port, gateway):
-        evpn_info = self.sb_idl.get_evpn_info_from_lrp_port_name(
+        evpn_info = self.sb_idl.get_evpn_info_from_port_name(
             router_port.logical_port)
         if not evpn_info:
             LOG.debug("No EVPN information for LRP Port %s. "
@@ -237,10 +237,10 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             ips.append(cr_lrp_port.mac[0].split(' ')[2])
 
         if cr_lrp:
-            evpn_info = self.sb_idl.get_evpn_info_from_crlrp_port_name(
+            evpn_info = self.sb_idl.get_evpn_info_from_port_name(
                 cr_lrp_port_name)
         else:
-            evpn_info = self.sb_idl.get_evpn_info_from_port(row)
+            evpn_info = self.sb_idl.get_evpn_info(row)
         if not evpn_info:
             LOG.debug("No EVPN information for CR-LRP Port with IPs %s. "
                       "Not exposing it.", ips)
@@ -359,7 +359,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             return
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
-            evpn_info = self.sb_idl.get_evpn_info_from_lrp_port_name(port_lrp)
+            evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
             if not evpn_info:
                 LOG.debug("No EVPN information for LRP Port %s. "
                           "Not exposing IPs: %s.", port_lrp, ips)
@@ -378,7 +378,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             return
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
-            evpn_info = self.sb_idl.get_evpn_info_from_lrp_port_name(port_lrp)
+            evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
             if not evpn_info:
                 LOG.debug("No EVPN information for LRP Port %s. "
                           "Not withdrawing IPs: %s.", port_lrp, ips)
@@ -390,7 +390,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized('evpn')
     def expose_subnet(self, row):
-        evpn_info = self.sb_idl.get_evpn_info_from_port(row)
+        evpn_info = self.sb_idl.get_evpn_info(row)
         ip = self.sb_idl.get_ip_from_port_peer(row)
         if not evpn_info:
             LOG.debug("No EVPN information for LRP Port %s. "

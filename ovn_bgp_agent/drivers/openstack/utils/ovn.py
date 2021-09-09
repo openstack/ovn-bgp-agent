@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from oslo_config import cfg
+from oslo_log import log as logging
 
 from ovs.stream import Stream
 from ovsdbapp.backend import ovs_idl
@@ -22,8 +23,10 @@ from ovsdbapp import event
 from ovsdbapp.schema.ovn_southbound import impl_idl as sb_impl_idl
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent import exceptions
 
 CONF = cfg.CONF
+LOG = logging.getLogger(__name__)
 
 
 class OvnIdl(connection.OvsdbIdl):
@@ -119,7 +122,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         port_info = cmd.execute(check_error=True)
         return port_info[0] if port_info else []
 
-    def _get_ports_by_datapath(self, datapath, port_type=None):
+    def get_ports_on_datapath(self, datapath, port_type=None):
         if port_type:
             cmd = self.db_find_rows('Port_Binding',
                                     ('datapath', '=', datapath),
@@ -133,7 +136,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         cmd = self.db_find_rows('Port_Binding', ('datapath', '=', datapath),
                                 ('type', '=',
                                  constants.OVN_LOCALNET_VIF_PORT_TYPE))
-        return next(iter(cmd.execute(check_error=True)), None)
+        return bool(cmd.execute(check_error=True))
 
     def get_fip_associated(self, port):
         cmd = self.db_find_rows(
@@ -162,7 +165,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
     def get_network_name_and_tag(self, datapath, bridge_mappings):
-        for row in self._get_ports_by_datapath(
+        for row in self.get_ports_on_datapath(
                 datapath, constants.OVN_LOCALNET_VIF_PORT_TYPE):
             if (row.options and
                     row.options.get('network_name') in bridge_mappings):
@@ -178,7 +181,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                 return row.tag
 
     def is_router_gateway_on_chassis(self, datapath, chassis):
-        port_info = self._get_ports_by_datapath(
+        port_info = self.get_ports_on_datapath(
             datapath, constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE)
         try:
             if port_info and port_info[0].chassis[0].name == chassis:
@@ -187,13 +190,13 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             pass
 
     def get_lrp_port_for_datapath(self, datapath):
-        for row in self._get_ports_by_datapath(
+        for row in self.get_ports_on_datapath(
                 datapath, constants.OVN_PATCH_VIF_PORT_TYPE):
             if row.options:
                 return row.options['peer']
 
     def get_lrp_ports_for_router(self, datapath):
-        return self._get_ports_by_datapath(
+        return self.get_ports_on_datapath(
             datapath, constants.OVN_PATCH_VIF_PORT_TYPE)
 
     def get_port_datapath(self, port_name):
@@ -201,26 +204,21 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         if port_info:
             return port_info.datapath
 
-    def get_ports_on_datapath(self, datapath):
-        return self._get_ports_by_datapath(datapath)
-
-    def get_evpn_info_from_crlrp_port_name(self, port_name):
-        router_gateway_port_name = port_name.split('cr-lrp-')[1]
-        return self.get_evpn_info_from_port_name(router_gateway_port_name)
-
-    def get_evpn_info_from_lrp_port_name(self, port_name):
-        router_interface_port_name = port_name.split('lrp-')[1]
-        return self.get_evpn_info_from_port_name(router_interface_port_name)
-
     def get_ip_from_port_peer(self, port):
         peer_name = port.options['peer']
         peer_port = self._get_port_by_name(peer_name)
-        return peer_port.mac[0].split(' ')[1]
-
-    def get_evpn_info_from_port(self, port):
-        return self.get_evpn_info(port)
+        try:
+            return peer_port.mac[0].split(' ')[1]
+        except AttributeError:
+            raise exceptions.PortNotFound(port=peer_name)
 
     def get_evpn_info_from_port_name(self, port_name):
+        if port_name.startswith(constants.OVN_CRLRP_PORT_NAME_PREFIX):
+            port_name = port_name.split(
+                constants.OVN_CRLRP_PORT_NAME_PREFIX)[1]
+        elif port_name.startswith(constants.OVN_LRP_PORT_NAME_PREFIX):
+            port_name = port_name.split(constants.OVN_LRP_PORT_NAME_PREFIX)[1]
+
         port = self._get_port_by_name(port_name)
         return self.get_evpn_info(port)
 
@@ -231,6 +229,11 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                     'bgp_as': int(
                     port.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY])}
         except (KeyError, ValueError):
+            LOG.error('Either "%s" or "%s" were not found or have an '
+                      'invalid value in the port %s '
+                      'external_ids %s', constants.OVN_EVPN_VNI_EXT_ID_KEY,
+                      constants.OVN_EVPN_AS_EXT_ID_KEY, port.name,
+                      port.external_ids)
             return {}
 
     def get_port_if_local_chassis(self, port_name, chassis):

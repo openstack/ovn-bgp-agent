@@ -40,3 +40,12 @@ class InvalidPortIP(OVNBGPAgentException):
     """
 
     message = _("OVN port with invalid IP: %(ip)s.")
+
+
+class PortNotFound(OVNBGPAgentException):
+    """OVN Port not found.
+
+    :param port: The port name or UUID.
+    """
+
+    message = _("OVN port was not found: %(port)s.")
