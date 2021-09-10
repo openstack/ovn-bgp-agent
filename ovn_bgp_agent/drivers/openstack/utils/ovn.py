@@ -34,11 +34,8 @@ class OvnIdl(connection.OvsdbIdl):
         super(OvnIdl, self).__init__(remote, schema)
         self.driver = driver
         self.notify_handler = OvnDbNotifyHandler(driver)
-        self.event_lock_name = "neutron_ovn_event_lock"
 
     def notify(self, event, row, updates=None):
-        if self.is_lock_contended:
-            return
         self.notify_handler.notify(event, row, updates)
 
 
