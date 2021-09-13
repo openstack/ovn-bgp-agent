@@ -15,9 +15,15 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+from unittest import mock
+
 from oslotest import base
 
 
 class TestCase(base.BaseTestCase):
 
     """Test case base class for all unit tests."""
+
+    def setUp(self):
+        super(TestCase, self).setUp()
+        self.addCleanup(mock.patch.stopall)
