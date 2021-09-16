@@ -713,9 +713,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
 
     def _remove_extra_ovs_flows(self):
         cr_lrp_mac_vrf_mappings = self._get_cr_lrp_mac_vrf_mapping()
+        cookie_id = "cookie={}/-1".format(constants.OVS_VRF_RULE_COOKIE)
         for bridge in set(self.ovn_bridge_mappings.values()):
-            current_flows = ovs.get_bridge_flows_by_cookie(
-                bridge, constants.OVS_VRF_RULE_COOKIE)
+            current_flows = ovs.get_bridge_flows(bridge, filter_=cookie_id)
             for flow in current_flows:
                 flow_info = ovs.get_flow_info(flow)
                 if not flow_info.get('mac'):

@@ -45,5 +45,7 @@ OVN_INTEGRATION_BRIDGE = 'br-int'
 OVN_LRP_PORT_NAME_PREFIX = 'lrp-'
 OVN_CRLRP_PORT_NAME_PREFIX = 'cr-lrp-'
 
+OVS_PATCH_PROVNET_PORT_PREFIX = 'patch-provnet-'
+
 LINK_UP = "up"
 LINK_DOWN = "down"
