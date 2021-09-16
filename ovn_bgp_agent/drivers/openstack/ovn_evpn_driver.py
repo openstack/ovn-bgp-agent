@@ -278,6 +278,14 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         self._connect_evpn_to_ovn(vrf, ips, datapath_bridge, evpn_info['vni'],
                                   vlan_tag)
 
+        nei_bridge = datapath_bridge
+        if vlan_tag:
+            nei_bridge = '{}.{}'.format(datapath_bridge, vlan_tag)
+        for ip in ips_without_mask:
+            linux_net.add_ip_nei(
+                ip, self.ovn_local_cr_lrps[cr_lrp_port_name]['mac'],
+                nei_bridge)
+
         # Check if there are networks attached to the router,
         # and if so, add the needed routes/rules
         lrp_ports = self.sb_idl.get_lrp_ports_for_router(
@@ -338,6 +346,14 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                                              cleanup_ndp_proxy=False)
             else:
                 self._disconnect_evpn_to_ovn(evpn_vni, datapath_bridge, ips)
+
+        nei_bridge = datapath_bridge
+        if vlan_tag:
+            nei_bridge = '{}.{}'.format(datapath_bridge, vlan_tag)
+        for ip in ips:
+            linux_net.del_ip_nei(
+                ip, self.ovn_local_cr_lrps[cr_lrp_port_name]['mac'],
+                nei_bridge)
 
         self._remove_evpn_devices(evpn_vni)
         ovs.remove_evpn_router_ovs_flows(datapath_bridge,

@@ -471,28 +471,38 @@ def add_ip_rule(ip, table, dev=None, lladdr=None):
             LOG.debug("Creating ip rule with: %s", rule)
             ndb.rules.create(rule).commit()
 
+    if lladdr:
+        add_ip_nei(ip, lladdr, dev)
+
+
+def add_ip_nei(ip, lladdr, dev):
+    """Add ip neighbor permament entry
+
+    param ip: IP of the neighbor to add an entry for
+    param lladdr: link layer address of the neighbor to associate to that IP
+    param dev: the interface to which the neighbor is attached
+    """
     # FIXME: There is no support for creating neighbours in NDB
     # So we are using iproute here
-    if lladdr:
-        ip_version = get_ip_version(ip)
-        with pyroute2.IPRoute() as iproute:
-            # This is doing something like:
-            # sudo ip nei replace 172.24.4.69
-            # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-            network_bridge_if = iproute.link_lookup(ifname=dev)[0]
-            if ip_version == constants.IP_VERSION_6:
-                iproute.neigh('set',
-                              dst=ip,
-                              lladdr=lladdr,
-                              family=AF_INET6,
-                              ifindex=network_bridge_if,
-                              state=ndmsg.states['permanent'])
-            else:
-                iproute.neigh('set',
-                              dst=ip,
-                              lladdr=lladdr,
-                              ifindex=network_bridge_if,
-                              state=ndmsg.states['permanent'])
+    ip_version = get_ip_version(ip)
+    with pyroute2.IPRoute() as iproute:
+        # This is doing something like:
+        # sudo ip nei replace 172.24.4.69
+        # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
+        network_bridge_if = iproute.link_lookup(ifname=dev)[0]
+        if ip_version == constants.IP_VERSION_6:
+            iproute.neigh('set',
+                          dst=ip,
+                          lladdr=lladdr,
+                          family=AF_INET6,
+                          ifindex=network_bridge_if,
+                          state=ndmsg.states['permanent'])
+        else:
+            iproute.neigh('set',
+                          dst=ip,
+                          lladdr=lladdr,
+                          ifindex=network_bridge_if,
+                          state=ndmsg.states['permanent'])
 
 
 def del_ip_rule(ip, table, dev=None, lladdr=None):
@@ -518,29 +528,39 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
         except KeyError:
             LOG.debug("Rule already deleted: %s", rule)
 
+    if lladdr:
+        del_ip_nei(ip, lladdr, dev)
+
+
+def del_ip_nei(ip, lladdr, dev):
+    """Del ip neighbor permament entry
+
+    param ip: IP of the neighbor to delete the entry
+    param lladdr: link layer address of the neighbor to disassociate
+    param dev: the interface to which the neighbor is attached
+    """
     # FIXME: There is no support for deleting neighbours in NDB
     # So we are using iproute here
-    if lladdr:
-        ip_version = get_ip_version(ip)
-        with pyroute2.IPRoute() as iproute:
-            # This is doing something like:
-            # sudo ip nei del 172.24.4.69
-            # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-            network_bridge_if = iproute.link_lookup(
-                ifname=dev)[0]
-            if ip_version == constants.IP_VERSION_6:
-                iproute.neigh('del',
-                              dst=ip.split("/")[0],
-                              lladdr=lladdr,
-                              family=AF_INET6,
-                              ifindex=network_bridge_if,
-                              state=ndmsg.states['permanent'])
-            else:
-                iproute.neigh('del',
-                              dst=ip.split("/")[0],
-                              lladdr=lladdr,
-                              ifindex=network_bridge_if,
-                              state=ndmsg.states['permanent'])
+    ip_version = get_ip_version(ip)
+    with pyroute2.IPRoute() as iproute:
+        # This is doing something like:
+        # sudo ip nei del 172.24.4.69
+        # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
+        network_bridge_if = iproute.link_lookup(
+            ifname=dev)[0]
+        if ip_version == constants.IP_VERSION_6:
+            iproute.neigh('del',
+                          dst=ip.split("/")[0],
+                          lladdr=lladdr,
+                          family=AF_INET6,
+                          ifindex=network_bridge_if,
+                          state=ndmsg.states['permanent'])
+        else:
+            iproute.neigh('del',
+                          dst=ip.split("/")[0],
+                          lladdr=lladdr,
+                          ifindex=network_bridge_if,
+                          state=ndmsg.states['permanent'])
 
 
 def add_unreachable_route(vrf_name):
