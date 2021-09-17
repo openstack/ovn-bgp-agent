@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pyroute2
+import re
 
 from oslo_log import log as logging
 from ovs.db import idl
@@ -214,12 +215,15 @@ def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
             'ovs-ofctl', ['add-flow', bridge, flow_v6])
 
         # Remove unneeded flows
-        port = 'in_port={}'.format(ovs_ofport)
         current_flows = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-ofctl', ['dump-flows', bridge, cookie_id]
             )[0].split('\n')[1:-1]
+        # The regex ensures that the next character after the port
+        # number is either a comma or end of line. This avoids things like
+        # "in_port=1" matching with "in_port=10" for example.
+        port_regex = 'in_port={}(,|$)'.format(ovs_ofport)
         for flow in current_flows:
-            if not flow or port in flow:
+            if not flow or re.search(port_regex, flow):
                 continue
             in_port = flow.split("in_port=")[1].split(" ")[0]
             del_flow = ('{},in_port={}').format(cookie_id, in_port)
