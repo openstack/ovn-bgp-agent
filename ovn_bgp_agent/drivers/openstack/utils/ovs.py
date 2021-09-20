@@ -189,9 +189,9 @@ def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
         # Remove unneeded flows
         current_flows = get_bridge_flows(bridge, cookie_id)
         # The regex ensures that the next character after the port
-        # number is either a comma or end of line. This avoids things like
-        # "in_port=1" matching with "in_port=10" for example.
-        port_regex = 'in_port={}(,|$)'.format(ovs_ofport)
+        # number is either a comma, end of line or a space. This avoids
+        # things like "in_port=1" matching with "in_port=10" for example.
+        port_regex = 'in_port={}(,|$| )'.format(ovs_ofport)
         for flow in current_flows:
             if not flow or re.search(port_regex, flow):
                 continue
