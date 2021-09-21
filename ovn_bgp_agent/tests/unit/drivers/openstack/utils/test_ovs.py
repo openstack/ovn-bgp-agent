@@ -142,10 +142,11 @@ class TestOVS(test_base.TestCase):
     @mock.patch.object(linux_net, 'get_ip_version')
     def _test_ensure_evpn_ovs_flow(self, mock_ip_version, mock_ofport,
                                    ip_version, strip_vlan=False):
-        address = '172.24.200.7'
-        self.fake_ndb.interfaces[self.bridge] = {'address': address}
+        address = '00:00:00:00:00:00'
         mock_ip_version.return_value = ip_version
         port = 'fake-port'
+        port_dst = 'fake-port-dst'
+        self.fake_ndb.interfaces[port_dst] = {'address': address}
         ovs_port = constants.OVS_PATCH_PROVNET_PORT_PREFIX + 'fake-port'
         port_iface = '1'
         ovs_port_iface = '2'
@@ -156,7 +157,7 @@ class TestOVS(test_base.TestCase):
 
         # Invoke the method
         ovs_utils.ensure_evpn_ovs_flow(
-            self.bridge, self.cookie, self.mac, port, net,
+            self.bridge, self.cookie, self.mac, port, port_dst, net,
             strip_vlan=strip_vlan)
 
         mock_ip_version.assert_called_once_with(net)
@@ -202,7 +203,8 @@ class TestOVS(test_base.TestCase):
         self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
 
         ret = ovs_utils.ensure_evpn_ovs_flow(
-            self.bridge, self.cookie, self.mac, port, 'fake-net')
+            self.bridge, self.cookie, self.mac, port, 'fake-port-dst',
+            'fake-net')
 
         self.assertIsNone(ret)
         self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(

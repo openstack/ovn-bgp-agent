@@ -84,6 +84,17 @@ def ensure_vxlan(vxlan_name, vni, lo_ip):
                     'state', constants.LINK_UP).commit()
 
 
+def ensure_veth(veth_name, veth_peer):
+    try:
+        set_device_status(veth_name, constants.LINK_UP)
+    except KeyError:
+        with pyroute2.NDB() as ndb:
+            ndb.interfaces.create(
+                kind="veth", ifname=veth_name, peer=veth_peer).set(
+                    'state', constants.LINK_UP).commit()
+    set_device_status(veth_peer, constants.LINK_UP)
+
+
 def set_master_for_device(device, master):
     with pyroute2.NDB() as ndb:
         # Check if already associated to the master, and associate it if not
@@ -91,6 +102,13 @@ def set_master_for_device(device, master):
                 ndb.interfaces[master]['index']):
             with ndb.interfaces[device] as iface:
                 iface.set('master', ndb.interfaces[master]['index'])
+
+
+def set_device_status(device, status):
+    with pyroute2.NDB() as ndb:
+        with ndb.interfaces[device] as dev:
+            if dev['state'] != status:
+                dev['state'] = status
 
 
 def ensure_dummy_device(device):
@@ -237,15 +255,24 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
                 link=ndb.interfaces[bridge]['index']).set(
                 'state', constants.LINK_UP).commit()
 
-    ipv4_flag = "net.ipv4.conf.{}/{}.proxy_arp".format(bridge, vlan_tag)
-    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(ipv4_flag, 1)
-    ipv6_flag = "net.ipv6.conf.{}/{}.proxy_ndp".format(bridge, vlan_tag)
-    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(ipv6_flag, 1)
+    device = "{}/{}".format(bridge, vlan_tag)
+    enable_proxy_arp(device)
+    enable_proxy_ndp(device)
 
 
 def delete_vlan_device_for_network(bridge, vlan_tag):
     vlan_device_name = '{}.{}'.format(bridge, vlan_tag)
     delete_device(vlan_device_name)
+
+
+def enable_proxy_ndp(device):
+    flag = "net.ipv6.conf.{}.proxy_ndp".format(device)
+    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
+
+
+def enable_proxy_arp(device):
+    flag = "net.ipv4.conf.{}.proxy_arp".format(device)
+    ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
 def get_exposed_ips(nic):
@@ -272,10 +299,15 @@ def get_nic_ip(nic, ip_version):
 def get_exposed_ips_on_network(nic, network):
     exposed_ips = []
     with pyroute2.NDB() as ndb:
-        exposed_ips = [ip.address
-                       for ip in ndb.interfaces[nic].ipaddr.summary()
-                       if ((ip.prefixlen == 32 or ip.prefixlen == 128) and
-                           ipaddress.ip_address(ip.address) in network)]
+        try:
+            exposed_ips = [ip.address
+                           for ip in ndb.interfaces[nic].ipaddr.summary()
+                           if ((ip.prefixlen == 32 or ip.prefixlen == 128) and
+                               ipaddress.ip_address(ip.address) in network)]
+        except KeyError:
+            # Nic does not exists
+            LOG.debug("Nic %s does not yet exists, so it does not have "
+                      "exposed IPs", nic)
     return exposed_ips
 
 
@@ -411,10 +443,11 @@ def del_ndp_proxy(ip, dev, vlan=None):
 
 
 def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
-    with pyroute2.NDB() as ndb:
+    already_added_ips = []
+    for ip in ips:
         try:
-            with ndb.interfaces[nic] as iface:
-                for ip in ips:
+            with pyroute2.NDB() as ndb:
+                with ndb.interfaces[nic] as iface:
                     address = '{}/32'.format(ip)
                     if get_ip_version(ip) == constants.IP_VERSION_6:
                         address = '{}/128'.format(ip)
@@ -422,16 +455,21 @@ def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
         except KeyError:
             # NDB raises KeyError: 'object exists'
             # if the ip is already added
-            pass
+            already_added_ips.append(ip)
 
     if clear_local_route_at_table:
-        with pyroute2.NDB() as ndb:
-            for ip in ips:
+        for ip in ips:
+            with pyroute2.NDB() as ndb:
+                oif = ndb.interfaces[nic]['index']
+                if ip in already_added_ips:
+                    continue
                 route = {'table': clear_local_route_at_table,
                          'proto': 2,
                          'scope': 254,
-                         'dst': ip}
+                         'dst': ip,
+                         'oif': oif}
                 try:
+                    LOG.debug("Deleting local route: %s", route)
                     with ndb.routes[route] as r:
                         r.remove()
                 except (KeyError, ValueError):
@@ -546,8 +584,14 @@ def del_ip_nei(ip, lladdr, dev):
         # This is doing something like:
         # sudo ip nei del 172.24.4.69
         # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-        network_bridge_if = iproute.link_lookup(
-            ifname=dev)[0]
+        try:
+            network_bridge_if = iproute.link_lookup(
+                ifname=dev)[0]
+        except IndexError:
+            # Neigbhbor device does not exists, continuing
+            LOG.debug("No need to remove nei for dev %s as it does not "
+                      "exists", dev)
+            return
         if ip_version == constants.IP_VERSION_6:
             iproute.neigh('del',
                           dst=ip.split("/")[0],
@@ -607,6 +651,7 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
             with ndb.routes[route] as r:
                 LOG.debug("Route already existing: %s", r)
         except KeyError:
+            LOG.debug("Creating route at table %s: %s", route_table, route)
             ndb.routes.create(route).commit()
             LOG.debug("Route created at table %s: %s", route_table, route)
     route_info = {'vlan': vlan, 'route': route}
@@ -631,11 +676,18 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
                 ip, strict=False).network_address)
 
     with pyroute2.NDB() as ndb:
-        if vlan:
-            oif_name = '{}.{}'.format(dev, vlan)
-            oif = ndb.interfaces[oif_name]['index']
-        else:
-            oif = ndb.interfaces[dev]['index']
+        try:
+            if vlan:
+                oif_name = '{}.{}'.format(dev, vlan)
+                oif = ndb.interfaces[oif_name]['index']
+            else:
+                oif = ndb.interfaces[dev]['index']
+        except KeyError:
+            LOG.debug("Device %s does not exists, so the associated "
+                      "routes should have been automatically deleted.", dev)
+            if ovn_routing_tables_routes.get(dev):
+                del ovn_routing_tables_routes[dev]
+            return
 
     route = {'dst': net_ip, 'dst_len': int(mask), 'oif': oif,
              'table': int(route_table), 'proto': 3}
@@ -649,6 +701,7 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
 
     with pyroute2.NDB() as ndb:
         try:
+            LOG.debug("Deleting route at table %s: %s", route_table, route)
             with ndb.routes[route] as r:
                 r.remove()
             LOG.debug("Route deleted at table %s: %s", route_table, route)

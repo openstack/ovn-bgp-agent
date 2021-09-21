@@ -29,6 +29,8 @@ LOG = logging.getLogger(__name__)
 
 
 def _find_ovs_port(bridge):
+    # TODO(ltomasbo): What happens if there are several patch ports on the
+    # same bridge?
     ovs_port = None
     ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
@@ -95,12 +97,13 @@ def remove_extra_ovs_flows(flows_info, cookie):
                     'ovs-ofctl', ['del-flows', bridge, del_flow])
 
 
-def ensure_evpn_ovs_flow(bridge, cookie, mac, port, net, strip_vlan=False):
+def ensure_evpn_ovs_flow(bridge, cookie, mac, output_port, port_dst, net,
+                         strip_vlan=False):
     ovs_port = _find_ovs_port(bridge)
     if not ovs_port:
         return
     ovs_ofport = get_device_port_at_ovs(ovs_port)
-    vrf_ofport = get_device_port_at_ovs(port)
+    vrf_ofport = get_device_port_at_ovs(output_port)
 
     strip_vlan_opt = 'strip_vlan,' if strip_vlan else ''
     ip_version = linux_net.get_ip_version(net)
@@ -110,14 +113,14 @@ def ensure_evpn_ovs_flow(bridge, cookie, mac, port, net, strip_vlan=False):
                 "cookie={},priority=1000,ipv6,in_port={},dl_src:{},"
                 "ipv6_src={} actions=mod_dl_dst:{},{}output={}".format(
                     cookie, ovs_ofport, mac, net,
-                    ndb.interfaces[bridge]['address'], strip_vlan_opt,
+                    ndb.interfaces[port_dst]['address'], strip_vlan_opt,
                     vrf_ofport))
         else:
             flow = (
                 "cookie={},priority=1000,ip,in_port={},dl_src:{},nw_src={}"
                 "actions=mod_dl_dst:{},{}output={}".format(
                     cookie, ovs_ofport, mac, net,
-                    ndb.interfaces[bridge]['address'], strip_vlan_opt,
+                    ndb.interfaces[port_dst]['address'], strip_vlan_opt,
                     vrf_ofport))
     ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-ofctl', ['add-flow', bridge, flow])
@@ -213,6 +216,15 @@ def del_device_from_ovs_bridge(device, bridge=None):
     if bridge:
         args.append(bridge)
     args.append(device)
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd('ovs-vsctl', args)
+
+
+def add_vlan_port_to_ovs_bridge(bridge, vlan, vlan_tag):
+    # ovs-vsctl add-port BRIDGE VLAN tag=VALN_ID
+    # -- set interface VLAN type=internal
+    args = [
+        '--may-exist', 'add-port', bridge, vlan, 'tag={}'.format(vlan_tag),
+        '--', 'set', 'interface', vlan, 'type=internal']
     ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd('ovs-vsctl', args)
 
 
