@@ -15,6 +15,8 @@
 
 from unittest import mock
 
+from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
+
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovs as ovs_utils
 from ovn_bgp_agent.tests import base as test_base
@@ -410,3 +412,65 @@ class TestOVS(test_base.TestCase):
                         'mac': 'fa:16:3e:15:9e:f0', 'nw_src': None,
                         'port': '3'}
         self.assertEqual(expected_ret, ret)
+
+
+class TestOvsIdl(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOvsIdl, self).setUp()
+        self.ovs_idl = ovs_utils.OvsIdl()
+        self.ovs_idl.idl_ovs = mock.Mock()
+        self.execute_ref = self.ovs_idl.idl_ovs.db_get.return_value.execute
+
+    @mock.patch('ovsdbapp.backend.ovs_idl.connection.Connection')
+    @mock.patch('ovs.db.idl.Idl')
+    @mock.patch('ovsdbapp.backend.ovs_idl.idlutils.get_schema_helper')
+    def test_start(self, mock_schema_helper, mock_idl, mock_conn):
+        conn_str = 'fake-connection'
+        self.ovs_idl.start(conn_str)
+
+        mock_schema_helper.assert_called_once_with(conn_str, 'Open_vSwitch')
+        helper = mock_schema_helper.return_value
+        expected_calls = [
+            mock.call('Open_vSwitch'), mock.call('Bridge'),
+            mock.call('Port'), mock.call('Interface')]
+        helper.register_table.assert_has_calls(expected_calls)
+        mock_idl.assert_called_once_with(conn_str, helper)
+        mock_conn.assert_called_once_with(
+            mock_idl.return_value, timeout=mock.ANY)
+        # Assert the OvsdbIdl instance was created
+        self.assertIsInstance(self.ovs_idl.idl_ovs, idl_ovs.OvsdbIdl)
+
+    def _test_ovs_ext_ids_getters(self, method, row, expected_return):
+        self.execute_ref.return_value = row
+        ret = method()
+        self.assertEqual(expected_return, ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')
+
+    def test_get_own_chassis_name(self):
+        expected_return = 'fake-sys'
+        row = {'system-id': expected_return}
+        self._test_ovs_ext_ids_getters(
+            self.ovs_idl.get_own_chassis_name, row, expected_return)
+
+    def test_get_ovn_remote(self):
+        expected_return = 'fake-ovn-remote'
+        row = {'ovn-remote': expected_return}
+        self._test_ovs_ext_ids_getters(
+            self.ovs_idl.get_ovn_remote, row, expected_return)
+
+    def test_get_ovn_bridge_mappings(self):
+        self.execute_ref.return_value = {
+            'ovn-bridge-mappings': 'net0:bridge0,net1:bridge1, net2:bridge2'}
+        ret = self.ovs_idl.get_ovn_bridge_mappings()
+        self.assertEqual(['net0:bridge0', 'net1:bridge1', 'net2:bridge2'], ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')
+
+    def test_get_ovn_bridge_mappings_not_set(self):
+        self.execute_ref.return_value = {}
+        ret = self.ovs_idl.get_ovn_bridge_mappings()
+        self.assertEqual([], ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')

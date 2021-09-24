@@ -260,31 +260,32 @@ class OvsIdl(object):
             ovs_idl, timeout=180)
         self.idl_ovs = idl_ovs.OvsdbIdl(conn)
 
+    def _get_from_ext_ids(self, key):
+        return self.idl_ovs.db_get(
+            'Open_vSwitch', '.', 'external_ids').execute()[key]
+
     def get_own_chassis_name(self):
         """Return the external_ids:system-id value of the Open_vSwitch table.
 
         As long as ovn-controller is running on this node, the key is
         guaranteed to exist and will include the chassis name.
         """
-        ext_ids = self.idl_ovs.db_get(
-            'Open_vSwitch', '.', 'external_ids').execute()
-        return ext_ids['system-id']
+        return self._get_from_ext_ids('system-id')
 
     def get_ovn_remote(self):
         """Return the external_ids:ovn-remote value of the Open_vSwitch table.
 
         """
-        ext_ids = self.idl_ovs.db_get(
-            'Open_vSwitch', '.', 'external_ids').execute()
-        return ext_ids['ovn-remote']
+        return self._get_from_ext_ids('ovn-remote')
 
     def get_ovn_bridge_mappings(self):
-        """Return the external_ids:ovn-bridge-mappings value of the Open_vSwitch table.
+        """Return a list of bridge mappings
 
+        Return a list of bridge mappings based on the
+        external_ids:ovn-bridge-mappings value of the Open_vSwitch table.
         """
-        ext_ids = self.idl_ovs.db_get(
-            'Open_vSwitch', '.', 'external_ids').execute()
         try:
-            return ext_ids['ovn-bridge-mappings'].split(",")
+            return [i.strip() for i in
+                    self._get_from_ext_ids('ovn-bridge-mappings').split(',')]
         except KeyError:
             return []
