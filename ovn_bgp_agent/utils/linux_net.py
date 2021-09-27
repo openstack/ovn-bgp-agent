@@ -49,9 +49,7 @@ def get_interface_index(nic):
 def ensure_vrf(vrf_name, vrf_table):
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.interfaces[vrf_name] as vrf:
-                if vrf['state'] != constants.LINK_UP:
-                    vrf['state'] = constants.LINK_UP
+            set_device_status(vrf_name, constants.LINK_UP, ndb=ndb)
         except KeyError:
             ndb.interfaces.create(
                 kind="vrf", ifname=vrf_name, vrf_table=int(vrf_table)).set(
@@ -61,9 +59,7 @@ def ensure_vrf(vrf_name, vrf_table):
 def ensure_bridge(bridge_name):
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.interfaces[bridge_name] as bridge:
-                if bridge['state'] != constants.LINK_UP:
-                    bridge['state'] = constants.LINK_UP
+            set_device_status(bridge_name, constants.LINK_UP, ndb=ndb)
         except KeyError:
             ndb.interfaces.create(
                 kind="bridge", ifname=bridge_name, br_stp_state=0).set(
@@ -73,9 +69,7 @@ def ensure_bridge(bridge_name):
 def ensure_vxlan(vxlan_name, vni, local_ip, dstport):
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.interfaces[vxlan_name] as vxlan:
-                if vxlan['state'] != constants.LINK_UP:
-                    vxlan['state'] = constants.LINK_UP
+            set_device_status(vxlan_name, constants.LINK_UP, ndb=ndb)
         except KeyError:
             # FIXME: Perhaps we need to set neigh_suppress on
             ndb.interfaces.create(
@@ -104,19 +98,23 @@ def set_master_for_device(device, master):
                 iface.set('master', ndb.interfaces[master]['index'])
 
 
-def set_device_status(device, status):
-    with pyroute2.NDB() as ndb:
-        with ndb.interfaces[device] as dev:
+def set_device_status(device, status, ndb=None):
+    _ndb = ndb
+    if ndb is None:
+        _ndb = pyroute2.NDB()
+    try:
+        with _ndb.interfaces[device] as dev:
             if dev['state'] != status:
                 dev['state'] = status
+    finally:
+        if ndb is None:
+            _ndb.close()
 
 
 def ensure_dummy_device(device):
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.interfaces[device] as iface:
-                if iface['state'] != constants.LINK_UP:
-                    iface['state'] = constants.LINK_UP
+            set_device_status(device, constants.LINK_UP, ndb=ndb)
         except KeyError:
             ndb.interfaces.create(kind="dummy", ifname=device).set(
                 'state', constants.LINK_UP).commit()
@@ -246,9 +244,7 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
 
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.interfaces[vlan_device_name] as iface:
-                if iface['state'] != constants.LINK_UP:
-                    iface['state'] = constants.LINK_UP
+            set_device_status(vlan_device_name, constants.LINK_UP, ndb=ndb)
         except KeyError:
             ndb.interfaces.create(
                 kind="vlan", ifname=vlan_device_name, vlan_id=vlan_tag,
@@ -362,7 +358,7 @@ def delete_bridge_ip_routes(routing_tables, routing_tables_routes,
                             extra_routes):
     with pyroute2.NDB() as ndb:
         for bridge, routes_info in routing_tables_routes.items():
-            if not extra_routes[bridge]:
+            if not extra_routes.get(bridge):
                 continue
             for route_info in routes_info:
                 oif = ndb.interfaces[bridge]['index']
@@ -502,7 +498,7 @@ def add_ip_rule(ip, table, dev=None, lladdr=None):
         if ip_version == constants.IP_VERSION_6:
             rule['family'] = AF_INET6
     else:
-        raise agent_exc.InvalidPortIP(ip)
+        raise agent_exc.InvalidPortIP(ip=ip)
 
     with pyroute2.NDB() as ndb:
         try:
@@ -687,8 +683,7 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
         except KeyError:
             LOG.debug("Device %s does not exists, so the associated "
                       "routes should have been automatically deleted.", dev)
-            if ovn_routing_tables_routes.get(dev):
-                del ovn_routing_tables_routes[dev]
+            ovn_routing_tables_routes.pop(dev, None)
             return
 
     route = {'dst': net_ip, 'dst_len': int(mask), 'oif': oif,
