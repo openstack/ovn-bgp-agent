@@ -12,8 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import shlex
+
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_privsep import priv_context
 
 LOG = logging.getLogger(__name__)
 
@@ -65,8 +68,40 @@ agent_opts = [
                      'default 4789 is being used.'),
 ]
 
+root_helper_opts = [
+    cfg.StrOpt('root_helper', default='sudo',
+               help=("Root helper application. "
+                     "Use 'sudo ovn-bgp-agent-rootwrap  "
+                     "/etc/ovn-bgp-agent/rootwrap.conf' to use the real "
+                     "root filter facility. Change to 'sudo' to skip the "
+                     "filtering and just run the command directly.")),
+    cfg.BoolOpt('use_helper_for_ns_read',
+                default=True,
+                help=("Use the root helper when listing the namespaces on a "
+                      "system. This may not be required depending on the "
+                      "security configuration. If the root helper is "
+                      "not required, set this to False for a performance "
+                      "improvement.")),
+    # We can't just use root_helper=sudo ovn-bgp-agent-rootwrap-daemon $cfg
+    # because it isn't appropriate for long-lived processes spawned with
+    # create_process. Having a bool use_rootwrap_daemon option precludes
+    # specifying the rootwrap daemon command, which may be necessary for Xen?
+    cfg.StrOpt('root_helper_daemon',
+               help=("""
+Root helper daemon application to use when possible.
+
+Use 'sudo ovn-bgp-agent-rootwrap-daemon /etc/ovn-bgp-agent/rootwrap.conf'
+to run rootwrap in "daemon mode" which has been reported to improve
+performance at scale. For more information on running rootwrap in
+"daemon mode", see:
+
+https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
+""")),
+]
+
 CONF = cfg.CONF
 CONF.register_opts(agent_opts)
+CONF.register_opts(root_helper_opts, "AGENT")
 
 logging.register_options(CONF)
 
@@ -79,3 +114,11 @@ def setup_logging():
     logging.setup(CONF, 'bgp-agent')
     logging.set_defaults(default_log_levels=logging.get_default_log_levels())
     LOG.info("Logging enabled!")
+
+
+def get_root_helper(conf):
+    return conf.AGENT.root_helper
+
+
+def setup_privsep():
+    priv_context.init(root_helper=shlex.split(get_root_helper(cfg.CONF)))

@@ -72,6 +72,7 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
 def start():
     config.init(sys.argv[1:])
     config.setup_logging()
+    config.setup_privsep()
 
     bgp_agent_launcher = service.launch(config.CONF, BGPAgent())
     bgp_agent_launcher.wait()
