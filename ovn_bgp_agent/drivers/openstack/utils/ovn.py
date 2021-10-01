@@ -226,10 +226,10 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                     'bgp_as': int(
                     port.external_ids[constants.OVN_EVPN_AS_EXT_ID_KEY])}
         except (KeyError, ValueError):
-            LOG.error('Either "%s" or "%s" were not found or have an '
+            LOG.debug('Either "%s" or "%s" were not found or have an '
                       'invalid value in the port %s '
                       'external_ids %s', constants.OVN_EVPN_VNI_EXT_ID_KEY,
-                      constants.OVN_EVPN_AS_EXT_ID_KEY, port.name,
+                      constants.OVN_EVPN_AS_EXT_ID_KEY, port.logical_port,
                       port.external_ids)
             return {}
 

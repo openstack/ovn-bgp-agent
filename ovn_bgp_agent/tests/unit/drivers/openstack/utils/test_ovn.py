@@ -325,7 +325,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def _test_get_evpn_info(self, value_error=False):
         vni = 'invalid-vni' if value_error else '1001'
         port = fakes.create_object({
-            'name': 'fake-port',
+            'logical_port': 'fake-port',
             'external_ids': {constants.OVN_EVPN_VNI_EXT_ID_KEY: vni,
                              constants.OVN_EVPN_AS_EXT_ID_KEY: '123'}})
         ret = self.sb_idl.get_evpn_info(port)
@@ -343,7 +343,8 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self._test_get_evpn_info(value_error=True)
 
     def test_get_evpn_info_key_error(self):
-        port = fakes.create_object({'name': 'fake-port', 'external_ids': {}})
+        port = fakes.create_object({'logical_port': 'fake-port',
+                                    'external_ids': {}})
         ret = self.sb_idl.get_evpn_info(port)
         self.assertEqual({}, ret)
 
