@@ -314,23 +314,37 @@ To do that it needs to:
         '''
 
 3. Connect EVPN to OVN overlay so that traffic can be redirected from the node
-   to the OVN virtual networking. It needs to:
+   to the OVN virtual networking. It needs to connect the VRF to the OVS
+   provider bridge:
 
-   - Attach the VRF device to the OVS provider bridge (e.g., br-ex)
+   - Create veth device and attach one end to the OVS provider bridge, and the
+     other to the vrf:
 
      .. code-block:: ini
 
-        ovs-vsctl add-port br-ex vrf-1001
+        ip link add veth-vrf type veth peer name veth-ovs
+        ovs-vsctl add-port br-ex veth-ovs
+        ip link set veth-vrf master vrf-1001
+        ip link set up dev veth-ovs
+        ip link set up dev veth-vrf
+
+   - Or the equivalent steps (vlan device) for the vlan provider network cases:
+
+     .. code-block:: ini
+
+        ovs-vsctl add-port br-vlan br-vlan-1001 tag=ID -- set interface br-vlan-1001 type=internal
+        ip link set br-vlan-1001 up
+        ip link set br-vlan-1001 master vrf-1001
 
    - Add route on the VRF routing table for both the router gateway port IP
      and the subnet CIDR so that the traffic is redirected to the OVS provider
-     bridge (e.g., br-ex)
+     bridge (e.g., br-ex) through the veth/vlan device
 
      .. code-block:: ini
 
         $ ip route show vrf vrf-1001
-        10.0.0.0/26 via 172.24.4.146 dev br-ex
-        172.24.4.146 dev br-ex scope link
+        10.0.0.0/26 via 172.24.4.146 dev veth-vrf-1001|br-vlan-1001
+        172.24.4.146 dev veth-vrf-1001|br-vlan-1001 scope link
 
 4. Add needed OVS flows into the OVS provider bridge (e.g., br-ex) to redirect
    the traffic back from OVN to the proper VRF, based on the subnet CIDR and
@@ -338,7 +352,7 @@ To do that it needs to:
 
    .. code-block:: ini
 
-      $ ovs-ofctl add-flow br-ex cookie=0x3e7,priority=1000,ip,in_port=1,dl_src:ROUTER_GATEWAY_PORT_MAC,nw_src=SUBNET_CIDR, actions=mod_dl_dst:BR_EX_MAC,output=VRF_PORT
+      $ ovs-ofctl add-flow br-ex cookie=0x3e7,priority=1000,ip,in_port=1,dl_src:ROUTER_GATEWAY_PORT_MAC,nw_src=SUBNET_CIDR, actions=mod_dl_dst:VETH|VLAN_MAC,output=VETH|VLAN_PORT
 
 5. Add IPs to expose to VRF associated dummy device. This interface is only
    used for the purpose of exposing the IPs, but not meant to receive the
@@ -423,14 +437,14 @@ default routing table (action=NORMAL). To that end, the next rule is added:
 
 .. code-block:: ini
 
-   cookie=0x3e6, duration=4.141s, table=0, n_packets=0, n_bytes=0, priority=1000,ip,in_port="patch-provnet-c",dl_src=fa:16:3e:b7:cc:47,nw_src=20.0.0.0/24 actions=mod_dl_dst:1e:8b:ac:5d:98:4a,output:"vrf-101"
+   cookie=0x3e6, duration=4.141s, table=0, n_packets=0, n_bytes=0, priority=1000,ip,in_port="patch-provnet-c",dl_src=fa:16:3e:b7:cc:47,nw_src=20.0.0.0/24 actions=mod_dl_dst:1e:8b:ac:5d:98:4a,output:"veth-ovs-101"
 
 It matches the traffic coming from the router gateway port (cr-lrp port) from
 br-int (in_port="patch-provnet-c"), with the MAC address of the router gateway
 port (dl_src=fa:16:3e:b7:cc:47) and from the exposed network (nw_src=20.0.0.0/24).
-For that case it changes the MAC by the br-ex device one
+For that case it changes the MAC by the veth-vrf-101 device one
 (mod_dl_dst:1e:8b:ac:5d:98:4a), and redirect the traffic to the vrf device
-(output:"vrf-101").
+through the veth/vlan device (output:"veth-ovs-101").
 
 
 Agent deployment
