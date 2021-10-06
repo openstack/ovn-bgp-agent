@@ -70,7 +70,7 @@ def ensure_bridge(bridge_name):
                     'state', constants.LINK_UP).commit()
 
 
-def ensure_vxlan(vxlan_name, vni, lo_ip):
+def ensure_vxlan(vxlan_name, vni, local_ip, dstport):
     with pyroute2.NDB() as ndb:
         try:
             with ndb.interfaces[vxlan_name] as vxlan:
@@ -80,8 +80,8 @@ def ensure_vxlan(vxlan_name, vni, lo_ip):
             # FIXME: Perhaps we need to set neigh_suppress on
             ndb.interfaces.create(
                 kind="vxlan", ifname=vxlan_name, vxlan_id=int(vni),
-                vxlan_port=4789, vxlan_local=lo_ip, vxlan_learning=False).set(
-                    'state', constants.LINK_UP).commit()
+                vxlan_port=dstport, vxlan_local=local_ip,
+                vxlan_learning=False).set('state', constants.LINK_UP).commit()
 
 
 def ensure_veth(veth_name, veth_peer):
@@ -284,15 +284,17 @@ def get_exposed_ips(nic):
     return exposed_ips
 
 
-def get_nic_ip(nic, ip_version):
-    prefix = 32
-    if ip_version == constants.IP_VERSION_6:
-        prefix = 128
+def get_nic_ip(nic, prefixlen_filter=None):
     exposed_ips = []
     with pyroute2.NDB() as ndb:
-        exposed_ips = [ip.address
-                       for ip in ndb.interfaces[nic].ipaddr.summary().filter(
-                           prefixlen=prefix)]
+        if prefixlen_filter:
+            exposed_ips = [ip.address
+                           for ip in ndb.interfaces[nic].ipaddr.summary(
+                               ).filter(prefixlen=prefixlen_filter)]
+        else:
+            exposed_ips = [ip.address
+                           for ip in ndb.interfaces[nic].ipaddr.summary()]
+
     return exposed_ips
 
 

@@ -47,6 +47,22 @@ agent_opts = [
                default=None,
                help='Router ID to be used by the Agent when running in BGP '
                     'mode and configuring the VRF route leaking.'),
+    cfg.IPOpt('evpn_local_ip',
+              default=None,
+              help='IP address of local EVPN VXLAN (tunnel) endpoint. '
+                   'This option can be used instead of the evpn_nic one. '
+                   'If none specified, it will take the one from the '
+                   'loopback device.'),
+    cfg.StrOpt('evpn_nic',
+               default=None,
+               help='NIC with the IP address to use for the local EVPN '
+                    'VXLAN (tunnel) endpoint. This option can be used '
+                    'instead of the evpn_local_ip one. If none specified, '
+                    'it will take the one from the loopback device.'),
+    cfg.PortOpt('evpn_udp_dstport',
+                default=4789,
+                help='The UDP port used for EVPN VXLAN communication. By '
+                     'default 4789 is being used.'),
 ]
 
 CONF = cfg.CONF

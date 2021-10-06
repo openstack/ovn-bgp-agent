@@ -571,14 +571,23 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
 
         # ensure vxlan device
         vxlan_name = constants.OVN_EVPN_VXLAN_PREFIX + str(vni)
-        # NOTE: assuming only 1 IP on the loopback device with /32 prefix
-        lo_ip = linux_net.get_nic_ip('lo',
-                                     ip_version=constants.IP_VERSION_4)[0]
-        if not lo_ip:
-            LOG.error("Loopback IP must have a /32 IP associated for the "
-                      "EVPN local ip")
+
+        local_ip = CONF.evpn_local_ip
+        if not local_ip:
+            local_nic = 'lo'
+            prefixlen_filter = 32  # assuming IPv4
+            if CONF.evpn_nic:
+                local_nic = CONF.evpn_nic
+                prefixlen_filter = False
+            # NOTE(ltomasbo): assuming only 1 IP on the device with /32 prefix
+            local_ip = linux_net.get_nic_ip(local_nic, prefixlen_filter)[0]
+
+        if not local_ip:
+            LOG.error("EVPN device must have an IP associated for the "
+                      "VXLAN local ip")
             return None, None
-        linux_net.ensure_vxlan(vxlan_name, vni, lo_ip)
+        linux_net.ensure_vxlan(vxlan_name, vni, local_ip,
+                               CONF.evpn_udp_dstport)
         # connect vxlan to bridge
         linux_net.set_master_for_device(vxlan_name, bridge_name)
 
