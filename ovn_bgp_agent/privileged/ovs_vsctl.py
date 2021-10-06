@@ -23,6 +23,8 @@ LOG = logging.getLogger(__name__)
 @ovn_bgp_agent.privileged.ovs_vsctl_cmd.entrypoint
 def ovs_cmd(command, args, timeout=None):
     full_args = [command]
+    if command == 'ovs-ofctl':
+        full_args += ['-O', 'OpenFlow13']
     if timeout is not None:
         full_args += ['--timeout=%s' % timeout]
     full_args += args
