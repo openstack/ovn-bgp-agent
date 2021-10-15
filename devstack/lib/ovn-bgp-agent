@@ -1,0 +1,162 @@
+#!/bin/bash
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+# ``stack.sh`` calls the entry points in this order:
+#
+# - install_frr
+# - configure_frr
+# - init_frr
+# - install_ovn_bgp_agent
+# - configure_ovn_bgp_agent
+# - init_ovn_bgp_agent
+# - start_ovn_bgp_agent
+# - stop_ovn_bgp_agent
+# - cleanup_ovn_bgp_agent
+
+function install_frr {
+    echo_summary "Installing FRR"
+
+    setup_develop $OVN_BGP_AGENT_DIR
+
+    if is_ubuntu; then
+        apt_get install frr
+    fi
+
+    if is_fedora; then
+        sudo dnf install frr -y
+    fi
+}
+
+function configure_frr {
+    echo_summary "Configuring FRR"
+
+    # Create the configuration dir
+    sudo install -d -o $STACK_USER $FRR_CONF_DIR
+
+    # Configure frr daemons
+    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/frr/* $FRR_CONF_DIR/
+
+}
+
+function init_frr {
+    echo_summary "Initializing (restart) FRR"
+    sudo systemctl restart $FRR_SYSTEMD_SERVICE
+}
+
+function start_frr {
+    echo_summary "Starting FRR"
+
+    start_service $FRR_SYSTEMD_SERVICE
+}
+
+function stop_frr {
+    echo_summary "Stopping FRR"
+
+    stop_service $FRR_SYSTEMD_SERVICE
+}
+
+function cleanup_frr {
+    echo_summary "Cleaning FRR"
+
+    # Remove FRR
+    disable_service $$FRR_SYSTEMD_SERVICE
+    if is_ubuntu; then
+        apt_get remove frr
+    fi
+
+    if is_fedora; then
+        sudo dnf remove frr -y
+    fi
+
+    # Clean the FRRt configuration dir
+    sudo rm -rf $FRR_CONF_DIR
+}
+
+function install_ovn_bgp_agent {
+    echo_summary "Installing OVN BGP Agent"
+
+    setup_develop $OVN_BGP_AGENT_DIR
+
+    # Create the systemd unit file
+    local cmd
+    cmd=$(which ovn-bgp-agent)
+    cmd+=" --config-dir $OVN_BGP_AGENT_CONF_DIR"
+    write_user_unit_file $OVN_BGP_AGENT_SYSTEMD_SERVICE "$cmd" "" "root"
+    $SYSTEMCTL daemon-reload
+    enable_service $OVN_BGP_AGENT_SYSTEMD_SERVICE
+}
+
+function configure_ovn_bgp_agent {
+    echo_summary "Configuring OVN BGP Agent"
+
+    # Create the configuration dir
+    sudo install -d -o $STACK_USER $OVN_BGP_AGENT_CONF_DIR
+
+    if ! is_service_enabled tls-proxy; then
+        die $LINENO "OVN BGP Agent requires TLS to be enabled. Please set ENABLE_TLS=True and enable tls-proxy in your local.conf"
+    fi
+
+    if [[ $OVN_BGP_AGENT_DRIVER != "ovn_bgp_driver" ]]; then
+        die $LINENO "\"ovn_bgp_driver\" is the only supported driver at the moment"
+    fi
+
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT driver $OVN_BGP_AGENT_DRIVER
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT debug $OVN_BGP_AGENT_DEBUG
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT expose_tenant_networks $OVN_BGP_AGENT_TENANT
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovsdb_connection $OVN_BGP_AGENT_OVS_DB
+
+    # Configure TLS/SSL
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_ca_cert "$INT_CA_DIR/ca-chain.pem"
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_ca_cert "$INT_CA_DIR/ca-chain.pem"
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
+    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
+
+    # Configure rootwrap
+    sudo install -d -o root -g root -m 755 $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
+    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.d/*.filters $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
+    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.conf $OVN_BGP_AGENT_CONF_DIR
+    iniset $OVN_BGP_AGENT_CONF_FILE AGENT root_helper "$OVN_BGP_AGENT_ROOTWRAP_COMMAND"
+    iniset $OVN_BGP_AGENT_CONF_FILE AGENT root_helper_daemon "$OVN_BGP_AGENT_ROOTWRAP_DAEMON"
+}
+
+function init_ovn_bgp_agent {
+    echo_summary "Initializing OVN BGP Agent"
+}
+
+function start_ovn_bgp_agent {
+    echo_summary "Starting OVN BGP Agent"
+
+    start_service $OVN_BGP_AGENT_SYSTEMD_SERVICE
+}
+
+function stop_ovn_bgp_agent {
+    echo_summary "Stopping OVN BGP Agent"
+
+    stop_service $OVN_BGP_AGENT_SYSTEMD_SERVICE
+}
+
+function cleanup_ovn_bgp_agent {
+    echo_summary "Cleaning OVN BGP Agent"
+
+    # Clean the OVN BGP Agent systemd unit
+    disable_service $OVN_BGP_AGENT_SYSTEMD_SERVICE
+    local unitfile="$SYSTEMD_DIR/$OVN_BGP_AGENT_SYSTEMD_SERVICE"
+    sudo rm -f $unitfile
+    $SYSTEMCTL daemon-reload
+
+    # Clean the OVN BGP Agent configuration dir
+    sudo rm -rf $OVN_BGP_AGENT_CONF_DIR
+}
