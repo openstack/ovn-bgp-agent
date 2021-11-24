@@ -254,3 +254,7 @@ class ChassisCreateEventBase(row_event.RowEvent):
 
 class ChassisCreateEvent(ChassisCreateEventBase):
     table = 'Chassis'
+
+
+class ChassisPrivateCreateEvent(ChassisCreateEventBase):
+    table = 'Chassis_Private'

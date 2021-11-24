@@ -62,7 +62,9 @@ class OvnSbIdl(OvnIdl):
         super(OvnSbIdl, self).__init__(
             None, connection_string, helper)
         if chassis:
-            self.tables['Chassis'].condition = [['name', '==', chassis]]
+            table = ('Chassis_Private' if 'Chassis_Private' in tables
+                     else 'Chassis')
+            self.tables[table].condition = [['name', '==', chassis]]
 
     def _get_ovsdb_helper(self, connection_string):
         return idlutils.get_schema_helper(connection_string, self.SCHEMA)

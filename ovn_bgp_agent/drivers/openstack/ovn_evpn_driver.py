@@ -34,7 +34,7 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ("Port_Binding", "Chassis", "Datapath_Binding")
+OVN_TABLES = ("Port_Binding", "Chassis", "Datapath_Binding", "Chassis_Private")
 EVPN_INFO = collections.namedtuple(
     'EVPNInfo', ['vrf_name', 'lo_name', 'bridge_name', 'vxlan_name',
                  'veth_vrf', 'veth_ovs', 'vlan_name'])
