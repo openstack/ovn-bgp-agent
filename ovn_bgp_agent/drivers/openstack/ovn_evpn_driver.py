@@ -34,7 +34,7 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ("Port_Binding", "Chassis", "Datapath_Binding", "Chassis_Private")
+OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding"]
 EVPN_INFO = collections.namedtuple(
     'EVPNInfo', ['vrf_name', 'lo_name', 'bridge_name', 'vxlan_name',
                  'veth_vrf', 'veth_ovs', 'vlan_name'])
@@ -61,11 +61,21 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             event_class = getattr(watcher, event)
             events += (event_class(self),)
 
-        self._sb_idl = ovn.OvnSbIdl(
-            self.ovn_remote,
-            chassis=self.chassis,
-            tables=OVN_TABLES,
-            events=events)
+        # TODO(lucasagomes): The OVN package in the ubuntu LTS is old
+        # and does not support Chassis_Private. Once the package is updated
+        # we can remove this fallback mode.
+        try:
+            self._sb_idl = ovn.OvnSbIdl(
+                self.ovn_remote,
+                chassis=self.chassis,
+                tables=OVN_TABLES + ["Chassis_Private"],
+                events=events)
+        except AssertionError:
+            self._sb_idl = ovn.OvnSbIdl(
+                self.ovn_remote,
+                chassis=self.chassis,
+                tables=OVN_TABLES,
+                events=events)
 
     def start(self):
         # start the subscriptions to the OSP events. This ensures the watcher
