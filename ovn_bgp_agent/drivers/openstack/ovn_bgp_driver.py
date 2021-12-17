@@ -15,6 +15,7 @@
 import collections
 import ipaddress
 import pyroute2
+import threading
 
 from oslo_concurrency import lockutils
 from oslo_config import cfg
@@ -49,6 +50,25 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # {'br-ex': [route1, route2]}
         self.ovn_routing_tables_routes = collections.defaultdict()
 
+        self._sb_idl = None
+        self._post_fork_event = threading.Event()
+
+    @property
+    def sb_idl(self):
+        if not self._sb_idl:
+            self._post_fork_event.wait()
+        return self._sb_idl
+
+    @sb_idl.setter
+    def sb_idl(self, val):
+        self._sb_idl = val
+
+    def start(self):
+        # Ensure FRR is configure to leak the routes
+        # NOTE: If we want to recheck this every X time, we should move it
+        # inside the sync function instead
+        frr.vrf_leak(constants.OVN_BGP_VRF, CONF.bgp_AS, CONF.bgp_router_id)
+
         self.ovs_idl = ovs.OvsIdl()
         self.ovs_idl.start(constants.OVS_CONNECTION_STRING)
         self.chassis = self.ovs_idl.get_own_chassis_name()
@@ -60,31 +80,25 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             event_class = getattr(watcher, event)
             events += (event_class(self),)
 
+        self._post_fork_event.clear()
         # TODO(lucasagomes): The OVN package in the ubuntu LTS is old
         # and does not support Chassis_Private. Once the package is updated
         # we can remove this fallback mode.
         try:
-            self._sb_idl = ovn.OvnSbIdl(
+            self.sb_idl = ovn.OvnSbIdl(
                 self.ovn_remote,
                 chassis=self.chassis,
                 tables=OVN_TABLES + ["Chassis_Private"],
-                events=events)
+                events=events).start()
         except AssertionError:
-            self._sb_idl = ovn.OvnSbIdl(
+            self.sb_idl = ovn.OvnSbIdl(
                 self.ovn_remote,
                 chassis=self.chassis,
                 tables=OVN_TABLES,
-                events=events)
+                events=events).start()
 
-    def start(self):
-        # Ensure FRR is configure to leak the routes
-        # NOTE: If we want to recheck this every X time, we should move it
-        # inside the sync function instead
-        frr.vrf_leak(constants.OVN_BGP_VRF, CONF.bgp_AS, CONF.bgp_router_id)
-
-        # start the subscriptions to the OSP events. This ensures the watcher
-        # calls the relevant driver methods upon registered events
-        self.sb_idl = self._sb_idl.start()
+        # Now IDL connections can be safely used
+        self._post_fork_event.set()
 
     def _get_events(self):
         events = set(["PortBindingChassisCreatedEvent",
