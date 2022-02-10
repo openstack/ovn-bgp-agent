@@ -148,7 +148,6 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         port_info = self._get_port_by_name(port_name)
         try:
             return (port_info and
-                    port_info.type == constants.OVN_VM_VIF_PORT_TYPE and
                     port_info.chassis[0].name == chassis)
         except IndexError:
             pass
