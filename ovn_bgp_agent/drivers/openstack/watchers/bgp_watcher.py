@@ -100,11 +100,22 @@ class FIPSetEvent(base_watcher.PortBindingChassisEvent):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
+            # NOTE(ltomasbo): nat_addresses has the same format, where
+            # different IPs can be present:
+            # ["fa:16:3e:77:7f:9c 172.24.100.229 172.24.100.112
+            #  is_chassis_resident(\"
+            #      cr-lrp-add962d2-21ab-4733-b6ef-35538eff25a8\")"]
+            old_cr_lrps = {}
+            for nat in old.nat_addresses:
+                ips = nat.split(" ")[1:-1]
+                port = nat.split(" ")[-1].split("\"")[1]
+                old_cr_lrps.setdefault(port, set()).update(ips)
             for nat in row.nat_addresses:
-                if nat not in old.nat_addresses:
-                    ip = nat.split(" ")[1]
-                    port = nat.split(" ")[2].split("\"")[1]
-                    self.agent.expose_ip([ip], row, associated_port=port)
+                ips = nat.split(" ")[1:-1]
+                port = nat.split(" ")[-1].split("\"")[1]
+                ips_to_expose = [ip for ip in ips
+                                 if ip not in old_cr_lrps[port]]
+                self.agent.expose_ip(ips_to_expose, row, associated_port=port)
 
 
 class FIPUnsetEvent(base_watcher.PortBindingChassisEvent):
@@ -125,11 +136,23 @@ class FIPUnsetEvent(base_watcher.PortBindingChassisEvent):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
+            # NOTE(ltomasbo): nat_addresses has the same format, where
+            # different IPs can be present:
+            # ["fa:16:3e:77:7f:9c 172.24.100.229 172.24.100.112
+            #  is_chassis_resident(\"
+            #      cr-lrp-add962d2-21ab-4733-b6ef-35538eff25a8\")"]
+            current_cr_lrps = {}
+            for nat in row.nat_addresses:
+                ips = nat.split(" ")[1:-1]
+                port = nat.split(" ")[-1].split("\"")[1]
+                current_cr_lrps.setdefault(port, set()).update(ips)
             for nat in old.nat_addresses:
-                if nat not in row.nat_addresses:
-                    ip = nat.split(" ")[1]
-                    port = nat.split(" ")[2].split("\"")[1]
-                    self.agent.withdraw_ip([ip], row, associated_port=port)
+                ips = nat.split(" ")[1:-1]
+                port = nat.split(" ")[-1].split("\"")[1]
+                ips_to_withdraw = [ip for ip in ips
+                                   if ip not in current_cr_lrps[port]]
+                self.agent.withdraw_ip(ips_to_withdraw, row,
+                                       associated_port=port)
 
 
 class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
