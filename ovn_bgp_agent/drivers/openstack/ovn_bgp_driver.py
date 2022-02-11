@@ -172,6 +172,11 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         for port in ports:
             self._ensure_port_exposed(port, exposed_ips, ovn_ip_rules)
 
+        cr_lrp_ports = self.sb_idl.get_cr_lrp_ports_on_chassis(self.chassis)
+        for cr_lrp_port in cr_lrp_ports:
+            self._ensure_cr_lrp_associated_ports_exposed(
+                cr_lrp_port, exposed_ips, ovn_ip_rules)
+
         # add missing route/ips for tenant network VMs
         if self._expose_tenant_networks:
             for cr_lrp_info in self.ovn_local_cr_lrps.values():
@@ -194,6 +199,23 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         linux_net.delete_bridge_ip_routes(self.ovn_routing_tables,
                                           self.ovn_routing_tables_routes,
                                           extra_routes)
+
+    def _ensure_cr_lrp_associated_ports_exposed(self, cr_lrp_port,
+                                                exposed_ips, ovn_ip_rules):
+        ips, patch_port_row = self.sb_idl.get_cr_lrp_nat_addresses_info(
+            cr_lrp_port)
+        if not ips:
+            return
+        self._expose_ip(ips, patch_port_row, associated_port=cr_lrp_port)
+        for ip in ips:
+            ip_version = linux_net.get_ip_version(ip)
+            if ip_version == constants.IP_VERSION_6:
+                ip_dst = "{}/128".format(ip)
+            else:
+                ip_dst = "{}/32".format(ip)
+            if ip in exposed_ips:
+                exposed_ips.remove(ip)
+            ovn_ip_rules.pop(ip_dst, None)
 
     def _ensure_port_exposed(self, port, exposed_ips, ovn_ip_rules):
         if port.type not in constants.OVN_VIF_PORT_TYPES:

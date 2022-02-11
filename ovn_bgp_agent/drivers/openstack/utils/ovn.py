@@ -160,6 +160,26 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         rows = self.db_list_rows('Port_Binding').execute(check_error=True)
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
+    def get_cr_lrp_ports_on_chassis(self, chassis):
+        rows = self.db_find_rows(
+            'Port_Binding',
+            ('type', '=', constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE)
+            ).execute(check_error=True)
+        return [r.logical_port for r in rows
+                if r.chassis and r.chassis[0].name == chassis]
+
+    def get_cr_lrp_nat_addresses_info(self, cr_lrp_port_name):
+        # NOTE: Assuming logical_port format is "cr-lrp-XXXX"
+        patch_port_name = cr_lrp_port_name.split("cr-lrp-")[1]
+        patch_port_row = self._get_port_by_name(patch_port_name)
+        if not patch_port_row:
+            return [], None
+        ips = []
+        for row in patch_port_row.nat_addresses:
+            nat_ips = row.split(" ")[1:-1]
+            ips.extend(nat_ips)
+        return ips, patch_port_row
+
     def get_network_name_and_tag(self, datapath, bridge_mappings):
         for row in self.get_ports_on_datapath(
                 datapath, constants.OVN_LOCALNET_VIF_PORT_TYPE):
