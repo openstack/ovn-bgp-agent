@@ -232,8 +232,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if fip in exposed_ips:
                 exposed_ips.remove(fip)
             fip_dst = "{}/32".format(fip)
-            if fip_dst in ovn_ip_rules.keys():
-                del ovn_ip_rules[fip_dst]
+            ovn_ip_rules.pop(fip_dst, None)
 
         for port_ip in port_ips:
             ip_address = port_ip.split("/")[0]
@@ -245,8 +244,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if ip_address in exposed_ips:
                 # remove each ip to add from the list of current ips on dev OVN
                 exposed_ips.remove(ip_address)
-            if ip_dst in ovn_ip_rules.keys():
-                del ovn_ip_rules[ip_dst]
+            ovn_ip_rules.pop(ip_dst, None)
 
     def _ensure_network_exposed(self, router_port, gateway, exposed_ips=[],
                                 ovn_ip_rules={}):
@@ -271,8 +269,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                           " interface port: %s", router_port_ip)
             return
 
-        if router_port_ip in ovn_ip_rules.keys():
-            del ovn_ip_rules[router_port_ip]
+        ovn_ip_rules.pop(router_port_ip, None)
 
         router_port_ip_version = linux_net.get_ip_version(router_port_ip)
         for gateway_ip in gateway_ips:
@@ -319,8 +316,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         else:
                             ip_dst = "{}/32".format(port_ip)
 
-                        if ip_dst in ovn_ip_rules.keys():
-                            del ovn_ip_rules[ip_dst]
+                        ovn_ip_rules.pop(ip_dst, None)
 
     def _remove_network_exposed(self, router_port, gateway):
         gateway_ips = [ip.split('/')[0] for ip in gateway['ips']]
