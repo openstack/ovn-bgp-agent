@@ -80,7 +80,7 @@ def add_unreachable_route(vrf_name):
         command = ["ip", ip_version, "route", "add", "vrf", vrf_name,
                    "unreachable", "default", "metric", "4278198272"]
         try:
-            return processutils.execute(*command, env_variables=env)
+            processutils.execute(*command, env_variables=env)
         except Exception as e:
             if "RTNETLINK answers: File exists" in e.stderr:
                 continue
