@@ -36,7 +36,7 @@ class TestPrivilegedVtysh(test_base.TestCase):
 
     def setUp(self):
         super(TestPrivilegedVtysh, self).setUp()
-        # Mock pyroute2.NDB context manager object
+        # Mock processutils.execute()
         self.mock_exc = mock.patch.object(processutils, 'execute').start()
 
     def test_run_vtysh_config(self):
