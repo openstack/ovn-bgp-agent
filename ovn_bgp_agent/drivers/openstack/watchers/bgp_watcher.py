@@ -66,8 +66,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
                 return (old.chassis[0].name == self.agent.chassis and
                         not row.chassis)
             else:
-                if row.chassis[0].name == self.agent.chassis:
-                    return True
+                return row.chassis[0].name == self.agent.chassis
         except (IndexError, AttributeError):
             return False
 
