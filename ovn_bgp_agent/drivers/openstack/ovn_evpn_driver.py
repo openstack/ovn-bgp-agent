@@ -66,7 +66,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
 
     def start(self):
         self.ovs_idl = ovs.OvsIdl()
-        self.ovs_idl.start(constants.OVS_CONNECTION_STRING)
+        self.ovs_idl.start(CONF.ovsdb_connection)
         self.chassis = self.ovs_idl.get_own_chassis_name()
         self.ovn_remote = self.ovs_idl.get_ovn_remote()
         LOG.debug("Loaded chassis %s.", self.chassis)

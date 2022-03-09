@@ -30,6 +30,11 @@ agent_opts = [
     cfg.StrOpt('driver',
                help='Driver to be used',
                default='ovn_bgp_driver'),
+    cfg.StrOpt('ovsdb_connection',
+               default='unix:/usr/local/var/run/openvswitch/db.sock',
+               help=_('The connection string for the native OVSDB backend.\n'
+                      'Use tcp:IP:PORT for TCP connection.\n'
+                      'Use unix:FILE for unix domain socket connection.')),
     cfg.StrOpt('ovn_sb_private_key',
                default='/etc/pki/tls/private/ovn_controller.key',
                help='The PEM file with private key for SSL connection to '
