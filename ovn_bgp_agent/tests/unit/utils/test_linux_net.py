@@ -117,6 +117,17 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.delete_device('fake-dev')
         mock_delete_device.assert_called_once_with('fake-dev')
 
+    @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ip_to_dev')
+    def test_ensure_arp_ndp_enabed_for_bridge(self, mock_add_ip_to_dev):
+        linux_net.ensure_arp_ndp_enabed_for_bridge('fake-bridge', 511)
+        # NOTE(ltomasbo): hardoced starting ipv4 is 192.168.0.0, and ipv6 is
+        # fd53:d91e:400:7f17::0
+        ipv4 = '192.168.1.255'  # base + 511 offset
+        ipv6 = 'fd53:d91e:400:7f17::1ff'  # base + 5122 offset (to hex)
+        calls = [mock.call(ipv4, 'fake-bridge'),
+                 mock.call(ipv6, 'fake-bridge')]
+        mock_add_ip_to_dev.assert_has_calls(calls)
+
     def test_ensure_routing_table_for_bridge(self):
         # TODO(lucasagomes): This method is massive and complex, perhaps
         #  break it into helper methods for both readibility and maintenance

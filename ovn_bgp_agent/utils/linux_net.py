@@ -79,6 +79,13 @@ def delete_device(device):
     ovn_bgp_agent.privileged.linux_net.delete_device(device)
 
 
+def ensure_arp_ndp_enabed_for_bridge(bridge, offset):
+    ipv4 = "192.168." + str(int(offset / 256)) + "." + str(offset % 256)
+    ipv6 = "fd53:d91e:400:7f17::%x" % offset
+    ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv4, bridge)
+    ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv6, bridge)
+
+
 def create_routing_table_for_bridge(table_number, bridge):
     with open('/etc/iproute2/rt_tables', 'a') as rt_tables:
         rt_tables.write('{} {}\n'.format(table_number, bridge))

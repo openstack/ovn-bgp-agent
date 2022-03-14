@@ -135,10 +135,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # 2) Get macs for bridge mappings
         extra_routes = {}
         with pyroute2.NDB() as ndb:
-            for bridge_mapping in bridge_mappings:
+            for bridge_index, bridge_mapping in enumerate(bridge_mappings):
                 network = bridge_mapping.split(":")[0]
                 bridge = bridge_mapping.split(":")[1]
                 self.ovn_bridge_mappings[network] = bridge
+
+                linux_net.ensure_arp_ndp_enabed_for_bridge(bridge,
+                                                           bridge_index)
                 if not extra_routes.get(bridge):
                     extra_routes[bridge] = (
                         linux_net.ensure_routing_table_for_bridge(
