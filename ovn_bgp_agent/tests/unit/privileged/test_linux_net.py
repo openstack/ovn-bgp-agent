@@ -149,8 +149,8 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         iface_dict = {'fake-dev': dev}
         self.fake_ndb.interfaces = iface_dict
 
-        priv_linux_net.delete_device('fake-dev')
-        dev.remove.assert_called_once_with()
+        priv_linux_net.delete_device('fake-dev-2')
+        dev.remove.assert_not_called()
 
     def test_route_create(self):
         fake_route = {'dst': 'default',
@@ -166,6 +166,12 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.fake_ndb.routes.__getitem__.return_value = fake_route
         priv_linux_net.route_delete(fake_route)
         fake_route.__enter__().remove.assert_called_once_with()
+
+    def test_route_delete_keyerror(self):
+        fake_route = mock.MagicMock()
+        self.fake_ndb.routes.__getitem__.side_effect = KeyError
+        priv_linux_net.route_delete(fake_route)
+        fake_route.__enter__().remove.assert_not_called()
 
     @mock.patch.object(priv_linux_net, 'set_device_status')
     def test_ensure_vlan_device_for_network(self, mock_dev_status):
@@ -208,6 +214,19 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.fake_ndb.rules.__getitem__.return_value = fake_rule
         priv_linux_net.rule_create(fake_rule)
         self.fake_ndb.rules.create.assert_not_called()
+
+    def test_rule_delete(self):
+        fake_rule = mock.MagicMock()
+        rules_dict = {'fake-rule': fake_rule}
+        self.fake_ndb.rules = rules_dict
+        priv_linux_net.rule_delete('fake-rule')
+        fake_rule.remove.assert_called_once()
+
+    def test_rule_delete_keyerror(self):
+        fake_rule = mock.MagicMock()
+        self.fake_ndb.rules.__getitem__.side_effect = KeyError
+        priv_linux_net.rule_delete(fake_rule)
+        fake_rule.__enter__().remove.assert_not_called()
 
     def test_delete_ip_rules(self):
         rule0 = mock.MagicMock()
@@ -341,6 +360,13 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.fake_iproute.neigh.assert_called_once_with(
             'del', dst=self.ipv6, family=AF_INET6,
             lladdr=self.mac, ifindex=mock.ANY, state=mock.ANY)
+
+    def test_del_ip_nei_index_error(self):
+        self.fake_iproute.link_lookup.side_effect = IndexError
+        priv_linux_net.del_ip_nei(self.ip, self.mac, self.dev)
+
+        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
+        self.fake_iproute.neigh.assert_not_called()
 
     def test_add_unreachable_route(self):
         priv_linux_net.add_unreachable_route('fake-vrf')
