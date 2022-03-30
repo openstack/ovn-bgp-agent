@@ -116,7 +116,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         # 1) Get bridge mappings: xxxx:br-ex,yyyy:br-ex2
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
         # 2) Get macs for bridge mappings
-        for bridge_index, bridge_mapping in enumerate(bridge_mappings):
+        for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
             network = bridge_mapping.split(":")[0]
             bridge = bridge_mapping.split(":")[1]
             self.ovn_bridge_mappings[network] = bridge
