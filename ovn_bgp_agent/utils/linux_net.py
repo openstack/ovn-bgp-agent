@@ -86,11 +86,6 @@ def ensure_arp_ndp_enabed_for_bridge(bridge, offset):
     ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv6, bridge)
 
 
-def create_routing_table_for_bridge(table_number, bridge):
-    with open('/etc/iproute2/rt_tables', 'a') as rt_tables:
-        rt_tables.write('{} {}\n'.format(table_number, bridge))
-
-
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
     # check a routing table with the bridge name exists on
     # /etc/iproute2/rt_tables
@@ -121,7 +116,8 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
                       "at /etc/iproute2/rt_tables", bridge)
             sys.exit()
 
-        create_routing_table_for_bridge(table_number, bridge)
+        ovn_bgp_agent.privileged.linux_net.create_routing_table_for_bridge(
+            table_number, bridge)
         ovn_routing_tables[bridge] = int(table_number)
         LOG.debug("Added routing table for %s with number: %s", bridge,
                   table_number)

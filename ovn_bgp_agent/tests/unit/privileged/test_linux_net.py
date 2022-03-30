@@ -389,3 +389,9 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         exp.stderr = 'RTNETLINK answers: File exists'
         self.mock_exc.side_effect = exp
         self.assertIsNone(priv_linux_net.add_unreachable_route('fake-vrf'))
+
+    @mock.patch('builtins.open', new_callable=mock.mock_open())
+    def test_create_routing_table_for_bridge(self, mock_o):
+        priv_linux_net.create_routing_table_for_bridge(17, 'fake-bridge')
+        mock_o.assert_called_once_with('/etc/iproute2/rt_tables', 'a')
+        mock_o().__enter__().write.assert_called_once_with('17 fake-bridge\n')

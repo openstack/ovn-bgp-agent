@@ -340,3 +340,9 @@ def add_unreachable_route(vrf_name):
                 continue
             LOG.error("Unable to execute %s. Exception: %s", command, e)
             raise
+
+
+@ovn_bgp_agent.privileged.default.entrypoint
+def create_routing_table_for_bridge(table_number, bridge):
+    with open('/etc/iproute2/rt_tables', 'a') as rt_tables:
+        rt_tables.write('{} {}\n'.format(table_number, bridge))
