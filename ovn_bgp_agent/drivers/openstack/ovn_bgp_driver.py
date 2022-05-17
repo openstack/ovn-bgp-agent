@@ -206,7 +206,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _ensure_cr_lrp_associated_ports_exposed(self, cr_lrp_port,
                                                 exposed_ips, ovn_ip_rules):
         ips, patch_port_row = self.sb_idl.get_cr_lrp_nat_addresses_info(
-            cr_lrp_port)
+            cr_lrp_port, self.chassis, self.sb_idl)
         if not ips:
             return
         self._expose_ip(ips, patch_port_row, associated_port=cr_lrp_port)

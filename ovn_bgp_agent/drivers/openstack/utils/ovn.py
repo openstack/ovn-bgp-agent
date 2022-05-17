@@ -168,7 +168,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return [r.logical_port for r in rows
                 if r.chassis and r.chassis[0].name == chassis]
 
-    def get_cr_lrp_nat_addresses_info(self, cr_lrp_port_name):
+    def get_cr_lrp_nat_addresses_info(self, cr_lrp_port_name, chassis, sb_idl):
         # NOTE: Assuming logical_port format is "cr-lrp-XXXX"
         patch_port_name = cr_lrp_port_name.split("cr-lrp-")[1]
         patch_port_row = self._get_port_by_name(patch_port_name)
@@ -177,7 +177,9 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         ips = []
         for row in patch_port_row.nat_addresses:
             nat_ips = row.split(" ")[1:-1]
-            ips.extend(nat_ips)
+            port = row.split(" ")[-1].split("\"")[1]
+            if port and sb_idl and sb_idl.is_port_on_chassis(port, chassis):
+                ips.extend(nat_ips)
         return ips, patch_port_row
 
     def get_network_name_and_tag(self, datapath, bridge_mappings):
