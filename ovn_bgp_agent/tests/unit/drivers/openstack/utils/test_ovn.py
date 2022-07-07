@@ -366,3 +366,20 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def test_get_port_if_local_chassis_wrong_chassis(self):
         self._test_get_port_if_local_chassis(wrong_chassis=True)
+
+    def test_get_ovn_lb_on_provider_datapath(self):
+        dp = 'fake-datapath'
+        ovn_lb1 = fakes.create_object(
+            {'name': 'ovn-lb1', 'datapaths': ['dp1']})
+        ovn_lb2 = fakes.create_object(
+            {'name': 'ovn-lb2', 'datapaths': ['dp1', dp]})
+        ovn_lb3 = fakes.create_object(
+            {'name': 'ovn-lb3', 'datapaths': [dp]})
+
+        self.sb_idl.db_list_rows.return_value.execute.return_value = [
+            ovn_lb1, ovn_lb2, ovn_lb3]
+
+        ret = self.sb_idl.get_ovn_lb_on_provider_datapath(dp)
+        self.assertIn(ovn_lb2, ret)
+        self.assertNotIn(ovn_lb1, ret)
+        self.assertNotIn(ovn_lb3, ret)

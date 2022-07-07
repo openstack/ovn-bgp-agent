@@ -17,6 +17,7 @@ from oslo_log import log as logging
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
@@ -254,6 +255,50 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
             if len(row.mac[0].split(' ')) == 3:
                 ips.append(row.mac[0].split(' ')[2])
             self.agent.withdraw_remote_ip(ips, row)
+
+
+class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(OVNLBMemberUpdateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # Only interested in update events related to associated datapaths
+        try:
+            if row.datapaths == old.datapaths:
+                return False
+        except (AttributeError):
+            return False
+
+        # Only process event if the local node has a cr-lrp ports associated
+        return bool(self.agent.ovn_local_cr_lrps)
+
+    def run(self, event, row, old):
+        # Only process event if the local node has a cr-lrp port whose provider
+        # datapath is included into the loadbalancer. This means the
+        # loadbalancer has the VIP on a provider network
+        provider_dp = ""
+        for cr_lrp in self.agent.ovn_local_cr_lrps.values():
+            if cr_lrp.get('provider_datapath') in row.datapaths:
+                provider_dp = cr_lrp.get('provider_datapath')
+                break
+        if not provider_dp:
+            return
+        # NOTE(ltomasbo): It is assumed that the rest of the datapaths in
+        # the datapaths fields belongs to networks (Logical_Switch)
+        # connected to the provider network datapath through a single
+        # router (cr-lrp)
+        if len(old.datapaths) == 1 and len(row.datapaths) > 1:
+            # first member added, time to expose the VIP through the cr-lrp
+            for vip in row.vips.keys():
+                ip = driver_utils.parse_vip_from_lb_table(vip)
+                if ip:
+                    return self.agent.expose_ovn_lb_on_provider(row.name, ip,
+                                                                provider_dp)
+        if len(row.datapaths) == 1 and len(old.datapaths) > 1:
+            # last member deleted, time to withdraw the VIP through the cr-lrp
+            self.agent.withdraw_ovn_lb_on_provider(row.name, provider_dp)
 
 
 class ChassisCreateEventBase(row_event.RowEvent):

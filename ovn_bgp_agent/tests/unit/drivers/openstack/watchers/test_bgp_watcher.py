@@ -528,6 +528,76 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         self.agent.withdraw_remote_ip.assert_not_called()
 
 
+class TestOVNLBMemberUpdateEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOVNLBMemberUpdateEvent, self).setUp()
+        self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.ovn_local_cr_lrps = {
+            'cr-lrp1': {'provider_datapath': 'dp1'}}
+        self.event = bgp_watcher.OVNLBMemberUpdateEvent(self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(datapaths=['dp1'])
+        old = utils.create_row(datapaths=['dp1', 'dp2'])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_dp_change(self):
+        row = utils.create_row(datapaths=['dp1'])
+        old = utils.create_row(datapaths=['dp1'])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_removed_dp(self):
+        row = utils.create_row(datapaths=['dp1'])
+        old = utils.create_row(datapaths=[])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_cr_lrp(self):
+        self.agent.ovn_local_cr_lrps = {}
+        row = utils.create_row(datapaths=['dp1'])
+        old = utils.create_row(datapaths=['dp1', 'dp2'])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_run(self):
+        row = utils.create_row(name='ovn-lb1',
+                               datapaths=['dp1', 'dp2'],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        old = utils.create_row(datapaths=['dp1'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
+            'ovn-lb1', '172.24.100.66', 'dp1')
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_no_provider_dp(self):
+        row = utils.create_row(datapaths=['dp2'])
+        self.event.run(mock.Mock(), row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_removed_dp(self):
+        row = utils.create_row(name='ovn-lb1', datapaths=['dp1'])
+        old = utils.create_row(datapaths=['dp1', 'dp2'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
+            'ovn-lb1', 'dp1')
+
+    def test_run_no_member(self):
+        row = utils.create_row(datapaths=['dp1'])
+        old = utils.create_row(datapaths=['dp1'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_member_removal(self):
+        row = utils.create_row(datapaths=['dp1', 'dp2'])
+        old = utils.create_row(datapaths=['dp1', 'dp2', 'dp3'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+
 class TestChassisCreateEvent(test_base.TestCase):
     _event = bgp_watcher.ChassisCreateEvent
 

@@ -258,3 +258,16 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         port = self._get_port_by_name(port_name)
         if port.chassis[0].name == chassis:
             return port
+
+    def get_ovn_lb_on_provider_datapath(self, datapath):
+        # TODO(ltomasbo): Once ovsdbapp supports {>=} operator we can query
+        # it directly with:
+        # ovn_lbs = self.db_find_rows(
+        #     'Load_Balancer',
+        #     ('datapaths', '{>=}', [datapath])).execute(check_error=True)
+        # return [ovn_lb for ovn_lb in ovn_lbs if len(ovn_lb.datapaths) > 1]
+        ovn_lbs = self.db_list_rows('Load_Balancer').execute(
+            check_error=True)
+        return [ovn_lb for ovn_lb in ovn_lbs
+                if (len(ovn_lb.datapaths) > 1 and
+                    datapath in ovn_lb.datapaths)]

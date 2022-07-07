@@ -25,3 +25,12 @@ class PortBindingChassisEvent(row_event.RowEvent):
 
     def _check_single_dual_stack_format(self, mac):
         return len(mac.split(' ')) in [2, 3]
+
+
+class OVNLBMemberEvent(row_event.RowEvent):
+    def __init__(self, bgp_agent, events):
+        self.agent = bgp_agent
+        table = 'Load_Balancer'
+        super(OVNLBMemberEvent, self).__init__(
+            events, table, None)
+        self.event_name = self.__class__.__name__

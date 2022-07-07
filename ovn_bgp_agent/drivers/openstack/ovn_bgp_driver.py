@@ -23,6 +23,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -36,7 +37,7 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding"]
+OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer"]
 
 
 class OVNBGPDriver(driver_api.AgentDriverBase):
@@ -49,6 +50,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_lrps = set([])
         # {'br-ex': [route1, route2]}
         self.ovn_routing_tables_routes = collections.defaultdict()
+        # {ovn_lb: VIP1, VIP2}
+        self.ovn_lb_datapath_vips = collections.defaultdict()
 
         self._sb_idl = None
         self._post_fork_event = threading.Event()
@@ -105,6 +108,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "PortBindingChassisDeletedEvent",
                       "FIPSetEvent",
                       "FIPUnsetEvent",
+                      "OVNLBMemberUpdateEvent",
                       "ChassisCreateEvent"])
         if self._expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
@@ -118,6 +122,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = set([])
         self.ovn_routing_tables_routes = collections.defaultdict()
+        self.ovn_lb_datapath_vips = collections.defaultdict()
 
         LOG.debug("Ensuring VRF configuration for advertising routes")
         # Create VRF
@@ -190,6 +195,25 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         continue
                     self._ensure_network_exposed(
                         lrp, cr_lrp_info, exposed_ips, ovn_ip_rules)
+
+        # add missing routes/ips related to ovn-octavia loadbalancers
+        # on the provider networks
+        for cr_lrp_info in self.ovn_local_cr_lrps.values():
+            ovn_lbs = self.sb_idl.get_ovn_lb_on_provider_datapath(
+                cr_lrp_info['provider_datapath'])
+            for ovn_lb in ovn_lbs:
+                for vip in ovn_lb.vips.keys():
+                    ip = driver_utils.parse_vip_from_lb_table(vip)
+                    self._expose_ovn_lb_on_provider(
+                        ovn_lb.name, ip, cr_lrp_info['provider_datapath'])
+                    if ip in exposed_ips:
+                        exposed_ips.remove(ip)
+                    ip_version = linux_net.get_ip_version(ip)
+                    if ip_version == constants.IP_VERSION_6:
+                        ip_dst = "{}/128".format(ip)
+                    else:
+                        ip_dst = "{}/32".format(ip)
+                    ovn_ip_rules.pop(ip_dst, None)
 
         # remove extra routes/ips
         # remove all the leftovers on the list of current ips on dev OVN
@@ -371,6 +395,44 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 return self.ovn_bridge_mappings[network_name], network_tag[0]
             return self.ovn_bridge_mappings[network_name], None
         return None, None
+
+    @lockutils.synchronized('bgp')
+    def expose_ovn_lb_on_provider(self, ovn_lb, ip, provider_dp):
+        self._expose_ovn_lb_on_provider(ovn_lb, ip, provider_dp)
+
+    def _expose_ovn_lb_on_provider(self, ovn_lb, ip, provider_dp):
+        self.ovn_lb_datapath_vips.setdefault(ovn_lb, []).append(ip)
+
+        LOG.info("Add BGP route for loadbalancer VIP %s", ip)
+        linux_net.add_ips_to_dev(constants.OVN_BGP_NIC, [ip])
+
+        rule_bridge, vlan_tag = self._get_bridge_for_datapath(provider_dp)
+        try:
+            linux_net.add_ip_rule(
+                ip, self.ovn_routing_tables[rule_bridge], rule_bridge)
+        except agent_exc.InvalidPortIP:
+            LOG.exception("Invalid IP to create a rule for the VM ip"
+                          " on the provider network: %s", ip)
+            return
+        linux_net.add_ip_route(
+            self.ovn_routing_tables_routes, ip,
+            self.ovn_routing_tables[rule_bridge], rule_bridge,
+            vlan=vlan_tag)
+
+    @lockutils.synchronized('bgp')
+    def withdraw_ovn_lb_on_provider(self, ovn_lb, provider_dp):
+        for ip in self.ovn_lb_datapath_vips[ovn_lb].copy():
+            LOG.info("Delete BGP route for loadbalancer VIP %s", ip)
+            linux_net.del_ips_from_dev(constants.OVN_BGP_NIC, [ip])
+
+            rule_bridge, vlan_tag = self._get_bridge_for_datapath(provider_dp)
+
+            linux_net.del_ip_rule(ip, self.ovn_routing_tables[rule_bridge],
+                                  rule_bridge)
+            linux_net.del_ip_route(self.ovn_routing_tables_routes, ip,
+                                   self.ovn_routing_tables[rule_bridge],
+                                   rule_bridge, vlan=vlan_tag)
+            self.ovn_lb_datapath_vips[ovn_lb].remove(ip)
 
     @lockutils.synchronized('bgp')
     def expose_ip(self, ips, row, associated_port=None):
