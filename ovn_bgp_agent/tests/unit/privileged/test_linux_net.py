@@ -14,7 +14,7 @@
 #    under the License.
 
 import imp
-import pyroute2
+from pyroute2 import netlink as pyroute_netlink
 from socket import AF_INET6
 from unittest import mock
 
@@ -245,7 +245,7 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         rule0 = mock.MagicMock()
         self.fake_ndb.rules.__getitem__.side_effect = (
             KeyError('Limbo'),
-            pyroute2.netlink.exceptions.NetlinkError(123))
+            pyroute_netlink.exceptions.NetlinkError(123))
 
         ip_rules = {'10/128': {'table': 7, 'family': 'fake'},
                     '6/128': {'table': 10, 'family': 'fake'}}

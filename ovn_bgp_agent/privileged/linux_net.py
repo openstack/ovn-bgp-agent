@@ -16,6 +16,7 @@ import ipaddress
 import os
 import pyroute2
 
+from pyroute2 import netlink as pyroute_netlink
 from pyroute2.netlink.rtnl import ndmsg
 from socket import AF_INET6
 
@@ -207,7 +208,7 @@ def delete_ip_rules(ip_rules):
                     r.remove()
             except KeyError:
                 LOG.debug("Rule {} already deleted".format(rule))
-            except pyroute2.netlink.exceptions.NetlinkError:
+            except pyroute_netlink.exceptions.NetlinkError:
                 # FIXME: There is a issue with NDB and ip rules deletion:
                 # https://github.com/svinota/pyroute2/issues/771
                 LOG.debug("This should not happen, skipping: NetlinkError "

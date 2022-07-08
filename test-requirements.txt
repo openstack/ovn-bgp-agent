@@ -7,5 +7,6 @@ hacking>=3.0,<3.1 # Apache-2.0
 coverage>=4.0,!=4.4 # Apache-2.0
 python-subunit>=0.0.18 # Apache-2.0/BSD
 oslotest>=1.10.0 # Apache-2.0
+pyroute2>=0.6.4;sys_platform!='win32' # Apache-2.0 (+ dual licensed GPL2)
 stestr>=1.0.0 # Apache-2.0
 testtools>=1.4.0 # MIT
