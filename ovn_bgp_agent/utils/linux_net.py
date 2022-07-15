@@ -494,8 +494,8 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
 
     with pyroute2.NDB() as ndb:
         try:
-            with ndb.routes[route] as r:
-                LOG.debug("Route already existing: %s", r)
+            with ndb.routes[route]:
+                LOG.debug("Route already existing: %s", route)
         except KeyError:
             LOG.debug("Creating route at table %s: %s", route_table, route)
             ovn_bgp_agent.privileged.linux_net.route_create(route)
@@ -549,4 +549,5 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     ovn_bgp_agent.privileged.linux_net.route_delete(route)
     LOG.debug("Route deleted at table %s: %s", route_table, route)
     route_info = {'vlan': vlan, 'route': route}
-    ovn_routing_tables_routes[dev].remove(route_info)
+    if route_info in ovn_routing_tables_routes[dev]:
+        ovn_routing_tables_routes[dev].remove(route_info)

@@ -266,7 +266,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         lrp_ports = self.sb_idl.get_lrp_ports_for_router(
             cr_lrp_port.datapath)
         for lrp in lrp_ports:
-            if lrp.chassis:
+            if lrp.chassis or "chassis-redirect-port" in lrp.options.keys():
                 continue
             self._ensure_network_exposed(
                 lrp, self.ovn_local_cr_lrps[cr_lrp_port_name])

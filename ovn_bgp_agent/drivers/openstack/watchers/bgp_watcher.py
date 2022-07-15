@@ -167,7 +167,9 @@ class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
-            return (not row.chassis and row.logical_port.startswith('lrp-'))
+            return (not row.chassis and
+                    row.logical_port.startswith('lrp-') and
+                    "chassis-redirect-port" not in row.options.keys())
         except (IndexError, AttributeError):
             return False
 
@@ -190,7 +192,9 @@ class SubnetRouterDetachedEvent(base_watcher.PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_single_dual_stack_format(row.mac[0]):
                 return False
-            return (not row.chassis and row.logical_port.startswith('lrp-'))
+            return (not row.chassis and
+                    row.logical_port.startswith('lrp-') and
+                    "chassis-redirect-port" not in row.options.keys())
         except (IndexError, AttributeError):
             return False
 
@@ -268,7 +272,7 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         try:
             if row.datapaths == old.datapaths:
                 return False
-        except (AttributeError):
+        except AttributeError:
             return False
 
         # Only process event if the local node has a cr-lrp ports associated
@@ -278,13 +282,24 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         # Only process event if the local node has a cr-lrp port whose provider
         # datapath is included into the loadbalancer. This means the
         # loadbalancer has the VIP on a provider network
+        # Also, the cr-lrp port needs to have subnet datapaths (LS) associated
+        # to it that include the load balancer
         provider_dp = ""
-        for cr_lrp in self.agent.ovn_local_cr_lrps.values():
-            if cr_lrp.get('provider_datapath') in row.datapaths:
-                provider_dp = cr_lrp.get('provider_datapath')
+        ovn_lb_cr_lrp = ""
+        for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
+            if cr_lrp_info.get('provider_datapath') not in row.datapaths:
+                continue
+            match_subnets_datapaths = [
+                subnet_dp for subnet_dp in cr_lrp_info[
+                    'subnets_datapath'].values()
+                if subnet_dp in row.datapaths or subnet_dp in old.datapaths]
+            if match_subnets_datapaths:
+                provider_dp = cr_lrp_info.get('provider_datapath')
+                ovn_lb_cr_lrp = cr_lrp_port
                 break
         if not provider_dp:
             return
+
         # NOTE(ltomasbo): It is assumed that the rest of the datapaths in
         # the datapaths fields belongs to networks (Logical_Switch)
         # connected to the provider network datapath through a single
@@ -295,10 +310,12 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
                 ip = driver_utils.parse_vip_from_lb_table(vip)
                 if ip:
                     return self.agent.expose_ovn_lb_on_provider(row.name, ip,
-                                                                provider_dp)
+                                                                provider_dp,
+                                                                ovn_lb_cr_lrp)
         if len(row.datapaths) == 1 and len(old.datapaths) > 1:
             # last member deleted, time to withdraw the VIP through the cr-lrp
-            self.agent.withdraw_ovn_lb_on_provider(row.name, provider_dp)
+            self.agent.withdraw_ovn_lb_on_provider(row.name, provider_dp,
+                                                   ovn_lb_cr_lrp)
 
 
 class ChassisCreateEventBase(row_event.RowEvent):

@@ -123,8 +123,11 @@ def delete_device(device):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def route_create(route):
-    with pyroute2.NDB() as ndb:
-        ndb.routes.create(route).commit()
+    try:
+        with pyroute2.NDB() as ndb:
+            ndb.routes.create(route).commit()
+    except KeyError:  # Already exists
+        LOG.debug("Route %s already exists.", route)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
@@ -269,22 +272,28 @@ def del_ndp_proxy(ip, dev, vlan=None):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_to_dev(ip, nic):
-    with pyroute2.NDB() as ndb:
-        with ndb.interfaces[nic] as iface:
-            address = '{}/32'.format(ip)
-            if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
-                address = '{}/128'.format(ip)
-            iface.add_ip(address)
+    try:
+        with pyroute2.NDB() as ndb:
+            with ndb.interfaces[nic] as iface:
+                address = '{}/32'.format(ip)
+                if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
+                    address = '{}/128'.format(ip)
+                iface.add_ip(address)
+    except KeyError:  # Already exists
+        LOG.debug("IP %s already added to interface %s.", address, nic)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_from_dev(ip, nic):
-    with pyroute2.NDB() as ndb:
-        with ndb.interfaces[nic] as iface:
-            address = '{}/32'.format(ip)
-            if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
-                address = '{}/128'.format(ip)
-            iface.del_ip(address)
+    try:
+        with pyroute2.NDB() as ndb:
+            with ndb.interfaces[nic] as iface:
+                address = '{}/32'.format(ip)
+                if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
+                    address = '{}/128'.format(ip)
+                iface.del_ip(address)
+    except KeyError:  # Already deleted
+        LOG.debug("IP %s already deleted from interface %s.", address, nic)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint

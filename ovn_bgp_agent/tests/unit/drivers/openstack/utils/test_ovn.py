@@ -171,6 +171,35 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         # Port-1 is bound to chassis-1
         self.assertNotIn(port1, ret)
 
+    def _test_get_provider_datapath_from_cr_lrp(self, port, found_port=True):
+        ret_value = (fakes.create_object({'datapath': 'dp1'})
+                     if found_port else None)
+        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+            mock_p.return_value = ret_value
+            if found_port:
+                self.assertEqual(
+                    self.sb_idl.get_provider_datapath_from_cr_lrp(port),
+                    'dp1')
+            else:
+                self.assertIsNone(
+                    self.sb_idl.get_provider_datapath_from_cr_lrp(port))
+            if port.startswith('cr-lrp'):
+                mock_p.assert_called_once_with(port.split("cr-lrp-")[1])
+            else:
+                mock_p.assert_not_called()
+
+    def test_get_provider_datapath_from_cr_lrp(self):
+        port = 'cr-lrp-port'
+        self._test_get_provider_datapath_from_cr_lrp(port)
+
+    def test_get_provider_datapath_from_cr_lrp_no_cr_lrp(self):
+        port = 'port'
+        self._test_get_provider_datapath_from_cr_lrp(port, found_port=False)
+
+    def test_get_provider_datapath_from_cr_lrp_no_port(self):
+        port = 'cr-lrp-port'
+        self._test_get_provider_datapath_from_cr_lrp(port, found_port=False)
+
     def _test_get_network_name_and_tag(self, network_in_bridge_map=True):
         tag = 1001
         network = 'public' if network_in_bridge_map else 'spongebob'

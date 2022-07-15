@@ -182,6 +182,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                 ips.extend(nat_ips)
         return ips, patch_port_row
 
+    def get_provider_datapath_from_cr_lrp(self, cr_lrp):
+        if cr_lrp.startswith('cr-lrp'):
+            provider_port = cr_lrp.split("cr-lrp-")[1]
+            port_info = self._get_port_by_name(provider_port)
+            if port_info:
+                return port_info.datapath
+        return None
+
     def get_network_name_and_tag(self, datapath, bridge_mappings):
         for row in self.get_ports_on_datapath(
                 datapath, constants.OVN_LOCALNET_VIF_PORT_TYPE):

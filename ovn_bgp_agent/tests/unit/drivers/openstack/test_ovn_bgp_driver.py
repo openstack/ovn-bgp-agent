@@ -19,6 +19,7 @@ from oslo_config import cfg
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import ovn_bgp_driver
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -51,15 +52,18 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.fip = '172.24.4.33'
         self.mac = 'aa:bb:cc:dd:ee:ff'
         self.loadbalancer = 'fake-lb'
-        self.bgp_driver.ovn_lb_datapath_vips = {
+        self.bgp_driver.ovn_lb_vips = {
             self.loadbalancer: [self.ipv4, self.ipv6]}
         self.bgp_driver.ovs_idl = self.mock_ovs_idl
 
         self.cr_lrp0 = 'cr-fake-logical-port'
         self.cr_lrp1 = 'cr-fake-logical-port1'
+        self.lrp0 = 'lrp-fake-logical-port'
         self.bgp_driver.ovn_local_cr_lrps = {
             self.cr_lrp0: {'provider_datapath': 'fake-provider-dp',
-                           'ips': [self.fip]},
+                           'ips': [self.fip],
+                           'subnets_datapath': {self.lrp0: 'fake-lrp-dp'},
+                           'ovn_lbs': []},
             self.cr_lrp1: {'provider_datapath': 'fake-provider-dp'}}
 
         # Mock pyroute2.NDB context manager object
@@ -183,7 +187,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.assertEqual(['192.168.1.20'], exposed_ips)
         self.assertEqual({}, ip_rules)
 
-    def test___ensure_port_exposed(self):
+    def test__ensure_port_exposed(self):
         fip = '172.24.4.225'
         mock_expose_ip = mock.patch.object(
             self.bgp_driver, '_expose_ip').start()
@@ -202,7 +206,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.assertEqual([], exposed_ips)
         self.assertEqual({}, ip_rules)
 
-    def test___ensure_port_exposed_wrong_port_type(self):
+    def test__ensure_port_exposed_wrong_port_type(self):
         mock_expose_ip = mock.patch.object(
             self.bgp_driver, '_expose_ip').start()
         port = fakes.create_object({
@@ -220,8 +224,8 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
     @mock.patch.object(linux_net, 'get_ip_version')
-    def test___ensure_network_exposed(self, mock_ip_version, mock_add_rule,
-                                      mock_add_route, mock_add_ips_dev):
+    def test__ensure_network_exposed(self, mock_ip_version, mock_add_rule,
+                                     mock_add_route, mock_add_ips_dev):
         mock_ip_version.return_value = constants.IP_VERSION_4
         gateway = {}
         gateway['ips'] = ['{}/32'.format(self.fip),
@@ -245,8 +249,15 @@ class TestOVNBGPDriver(test_base.TestCase):
         dp_port1 = fakes.create_object({
             'name': 'fake-port-dp1',
             'type': 'fake-type',
+            'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.12 192.168.1.13'],
             'chassis': 'fake-chassis2'})
-        self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1]
+        dp_port2 = fakes.create_object({
+            'name': 'fake-port-dp2',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': 'fake-chassis2'})
+        self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
+                                                          dp_port2]
 
         self.bgp_driver._ensure_network_exposed(router_port, gateway)
 
@@ -263,7 +274,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
     @mock.patch.object(linux_net, 'get_ip_version')
-    def test___ensure_network_exposed_invalid_ip(
+    def test__ensure_network_exposed_invalid_ip(
             self, mock_ip_version, mock_add_rule, mock_add_route):
         mock_ip_version.return_value = constants.IP_VERSION_4
         gateway = {}
@@ -346,7 +357,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_get_bridge.return_value = (self.bridge, 10)
 
         self.bgp_driver.expose_ovn_lb_on_provider(
-            self.loadbalancer, self.ipv4, 'fake-provider-dp')
+            self.loadbalancer, self.ipv4, 'fake-provider-dp', self.cr_lrp0)
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
@@ -369,7 +380,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_rule.side_effect = agent_exc.InvalidPortIP(ip=self.ipv4)
 
         self.bgp_driver.expose_ovn_lb_on_provider(
-            self.loadbalancer, self.ipv4, 'fake-provider-dp')
+            self.loadbalancer, self.ipv4, 'fake-provider-dp', self.cr_lrp0)
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
@@ -388,7 +399,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_get_bridge.return_value = (self.bridge, 10)
 
         self.bgp_driver.withdraw_ovn_lb_on_provider(
-            self.loadbalancer, 'fake-provider-dp')
+            self.loadbalancer, 'fake-provider-dp', self.cr_lrp0)
 
         # Assert that the del methods were called
         expected_calls = [mock.call(constants.OVN_BGP_NIC, [self.ipv4]),
@@ -524,6 +535,7 @@ class TestOVNBGPDriver(test_base.TestCase):
                                     self.bridge, vlan=10)]
         mock_add_route.assert_has_calls(expected_calls)
 
+    @mock.patch.object(driver_utils, 'parse_vip_from_lb_table')
     @mock.patch.object(linux_net, 'add_ndp_proxy')
     @mock.patch.object(linux_net, 'get_ip_version')
     @mock.patch.object(linux_net, 'add_ip_route')
@@ -531,16 +543,25 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test_expose_ip_chassisredirect_port(
             self, mock_add_ip_dev, mock_add_rule, mock_add_route,
-            mock_ip_version, mock_ndp_proxy):
-        self.sb_idl.get_fip_associated.return_value = (
-            self.fip, 'fake-dp')
+            mock_ip_version, mock_ndp_proxy, mock_parse_vip):
+        self.sb_idl.get_provider_datapath_from_cr_lrp.return_value = (
+            'fake-provider-dp')
         mock_get_bridge = mock.patch.object(
             self.bgp_driver, '_get_bridge_for_datapath').start()
         mock_get_bridge.return_value = (self.bridge, 10)
 
-        lrp0 = fakes.create_object({'chassis': 'fake-chassis'})
-        lrp1 = fakes.create_object({'chassis': ''})
-        self.sb_idl.get_lrp_ports_for_router.return_value = [lrp0, lrp1]
+        lrp0 = fakes.create_object({'logical_port': self.lrp0,
+                                    'chassis': '',
+                                    'options': {}})
+        lrp1 = fakes.create_object({'logical_port': 'lrp-1',
+                                    'chassis': 'fake-chassis',
+                                    'options': {}})
+        lrp2 = fakes.create_object({'logical_port': 'fake-lrp',
+                                    'chassis': '',
+                                    'options': {}})
+        self.sb_idl.get_lrp_ports_for_router.return_value = [lrp0, lrp1, lrp2]
+
+        self.sb_idl.get_port_datapath.return_value = 'fake-lrp-dp'
 
         mock_ensure_net_exposed = mock.patch.object(
             self.bgp_driver, '_ensure_network_exposed').start()
@@ -552,7 +573,21 @@ class TestOVNBGPDriver(test_base.TestCase):
             'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE,
             'logical_port': self.cr_lrp0,
             'mac': ['{} {} {}'.format(self.mac, self.ipv4, self.ipv6)],
-            'datapath': 'fake-dp'})
+            'datapath': 'fake-router-dp'})
+
+        ovn_lb_vip = '172.24.4.5'
+        ovn_lb_vip_port = ovn_lb_vip + ':80'
+        ovn_lb1 = fakes.create_object({
+            'name': 'ovn_lb1', 'datapaths': [self.cr_lrp0, 'fake-lrp-dp'],
+            'vips': {ovn_lb_vip_port: '192.168.100.5:::8080'}})
+        ovn_lb2 = fakes.create_object({
+            'name': 'ovn_lb2', 'datapaths': [self.cr_lrp0, 'fake-lrp1-db'],
+            'vips': {'172.24.4.6:80': '192.168.200.5:::8080'}})
+        self.sb_idl.get_ovn_lb_on_provider_datapath.return_value = [ovn_lb1,
+                                                                    ovn_lb2]
+        mock_expose_ovn_lb_on_provider = mock.patch.object(
+            self.bgp_driver, '_expose_ovn_lb_on_provider').start()
+        mock_parse_vip.return_value = ovn_lb_vip
 
         ips = [self.ipv4, self.ipv6]
         self.bgp_driver.expose_ip(ips, row)
@@ -576,9 +611,17 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, 10)
 
         mock_ensure_net_exposed.assert_called_once_with(
-            lrp1,
-            {'router_datapath': 'fake-dp', 'provider_datapath': 'fake-dp',
-             'ips': ips})
+            lrp0,
+            {'router_datapath': 'fake-router-dp',
+             'provider_datapath': 'fake-provider-dp',
+             'ips': ips,
+             'subnets_datapath': {self.lrp0: 'fake-lrp-dp'},
+             # ovn_lbs is already filled in by the sync funcion
+             'ovn_lbs': ['ovn_lb1']})
+
+        mock_parse_vip.assert_called_once_with(ovn_lb_vip_port)
+        mock_expose_ovn_lb_on_provider.assert_called_once_with(
+            'ovn_lb1', ovn_lb_vip, 'fake-provider-dp', row.logical_port)
 
     @mock.patch.object(linux_net, 'del_ip_route')
     @mock.patch.object(linux_net, 'del_ip_rule')
@@ -701,15 +744,20 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_withdraw_ip_chassisredirect_port(
             self, mock_del_ip_dev, mock_del_rule, mock_del_route,
             mock_ip_version, mock_ndp_proxy):
-        self.sb_idl.get_fip_associated.return_value = (
-            self.fip, 'fake-dp')
         mock_get_bridge = mock.patch.object(
             self.bgp_driver, '_get_bridge_for_datapath').start()
         mock_get_bridge.return_value = (self.bridge, 10)
 
-        lrp0 = fakes.create_object({'chassis': 'fake-chassis'})
-        lrp1 = fakes.create_object({'chassis': ''})
-        self.sb_idl.get_lrp_ports_for_router.return_value = [lrp0, lrp1]
+        lrp0 = fakes.create_object({'logical_port': self.lrp0,
+                                    'chassis': '',
+                                    'options': {}})
+        lrp1 = fakes.create_object({'logical_port': 'lrp-1',
+                                    'chassis': 'fake-chassis',
+                                    'options': {}})
+        lrp2 = fakes.create_object({'logical_port': 'fake-lrp',
+                                    'chassis': '',
+                                    'options': {}})
+        self.sb_idl.get_lrp_ports_for_router.return_value = [lrp0, lrp1, lrp2]
 
         mock_remove_net_exposed = mock.patch.object(
             self.bgp_driver, '_remove_network_exposed').start()
@@ -723,7 +771,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE,
             'logical_port': self.cr_lrp0,
             'mac': ['{} {} {}'.format(self.mac, self.ipv4, self.ipv6)],
-            'datapath': 'fake-dp'})
+            'datapath': 'fake-router-dp'})
 
         ips = [self.ipv4, self.ipv6]
         self.bgp_driver.withdraw_ip(ips, row)
@@ -747,7 +795,9 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, 10)
 
         mock_remove_net_exposed.assert_called_once_with(
-            lrp1, {'provider_datapath': 'fake-provider-dp', 'ips': [self.fip]})
+            lrp0, {'provider_datapath': 'fake-provider-dp', 'ips': [self.fip],
+                   'subnets_datapath': {self.lrp0: 'fake-lrp-dp'},
+                   'ovn_lbs': []})
 
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test_expose_remote_ip(self, mock_add_ip_dev):
@@ -853,8 +903,15 @@ class TestOVNBGPDriver(test_base.TestCase):
         dp_port1 = fakes.create_object({
             'name': 'fake-port-dp1',
             'type': 'fake-type',
+            'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.12 192.168.1.13'],
             'chassis': 'fake-chassis2'})
-        self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1]
+        dp_port2 = fakes.create_object({
+            'name': 'fake-port-dp1',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': 'fake-chassis2'})
+        self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
+                                                          dp_port2]
 
         self.bgp_driver.expose_subnet('{}/32'.format(self.ipv4), row)
 
@@ -878,6 +935,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ip_version.return_value = constants.IP_VERSION_4
         mock_get_exposed_ips.return_value = [self.ipv4]
         self.sb_idl.is_router_gateway_on_chassis.return_value = self.cr_lrp0
+        self.bgp_driver.ovn_local_lrps = [self.lrp0]
         mock_get_bridge = mock.patch.object(
             self.bgp_driver, '_get_bridge_for_datapath').start()
         mock_get_bridge.return_value = (self.bridge, 10)
