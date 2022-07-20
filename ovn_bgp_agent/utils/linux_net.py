@@ -543,6 +543,7 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
         route['scope'] = 253
     if get_ip_version(net_ip) == constants.IP_VERSION_6:
         route['family'] = AF_INET6
+        del route['scope']
 
     LOG.debug("Deleting route at table %s: %s", route_table, route)
     ovn_bgp_agent.privileged.linux_net.route_delete(route)

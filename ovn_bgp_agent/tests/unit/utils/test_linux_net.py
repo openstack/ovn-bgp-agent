@@ -576,7 +576,6 @@ class TestLinuxNet(test_base.TestCase):
                                   'family': AF_INET6,
                                   'oif': mock.ANY,
                                   'proto': 3,
-                                  'scope': 253,
                                   'table': 7},
                         'vlan': None}]}
         route = copy.deepcopy(routes[self.dev][0]['route'])
