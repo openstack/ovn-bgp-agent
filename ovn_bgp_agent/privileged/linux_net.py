@@ -182,7 +182,13 @@ def rule_create(rule):
             ndb.rules[rule]
         except KeyError:
             LOG.debug("Creating ip rule with: %s", rule)
-            ndb.rules.create(rule).commit()
+            try:
+                ndb.rules.create(rule).commit()
+            except ValueError:
+                # FIXME: There is an issue with NDB and ip rules
+                # Remove try/except once the next is fixed:
+                # https://github.com/svinota/pyroute2/issues/967
+                pass
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
@@ -193,6 +199,11 @@ def rule_delete(rule):
             LOG.debug("Deleting ip rule with: %s", rule)
         except KeyError:
             LOG.debug("Rule already deleted: %s", rule)
+        except ValueError:
+            # FIXME: There is an issue with NDB and ip rules
+            # Remove except once the next is fixed:
+            # https://github.com/svinota/pyroute2/issues/967
+            pass
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
