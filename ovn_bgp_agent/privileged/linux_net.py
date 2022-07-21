@@ -203,6 +203,8 @@ def rule_delete(rule):
             # FIXME: There is an issue with NDB and ip rules
             # Remove except once the next is fixed:
             # https://github.com/svinota/pyroute2/issues/967
+            # fixed on pyroute2 0.7.2 version, remove it when that version
+            # is the minimal one supported
             pass
 
 
@@ -222,6 +224,8 @@ def delete_ip_rules(ip_rules):
             except pyroute_netlink.exceptions.NetlinkError:
                 # FIXME: There is a issue with NDB and ip rules deletion:
                 # https://github.com/svinota/pyroute2/issues/771
+                # fixed on pyroute2 0.7.2 version, remove it when that version
+                # is the minimal one supported
                 LOG.debug("This should not happen, skipping: NetlinkError "
                           "deleting rule %s", rule)
 
