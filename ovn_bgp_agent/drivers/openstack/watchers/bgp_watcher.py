@@ -263,12 +263,15 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
 
 class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
     def __init__(self, bgp_agent):
-        events = (self.ROW_UPDATE,)
+        events = (self.ROW_UPDATE, self.ROW_DELETE,)
         super(OVNLBMemberUpdateEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
         # Only interested in update events related to associated datapaths
+        if event == self.ROW_DELETE:
+            return bool(self.agent.ovn_local_cr_lrps)
+
         try:
             if row.datapaths == old.datapaths:
                 return False
@@ -300,6 +303,18 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         if not provider_dp:
             return
 
+        if event == self.ROW_DELETE:
+            # loadbalancer deleted. Withdraw the VIP through the cr-lrp
+            return self.agent.withdraw_ovn_lb_on_provider(row.name,
+                                                          provider_dp,
+                                                          ovn_lb_cr_lrp)
+
+        if len(row.datapaths) == 1 and len(old.datapaths) > 1:
+            # last member deleted. Withdraw the VIP through the cr-lrp
+            return self.agent.withdraw_ovn_lb_on_provider(row.name,
+                                                          provider_dp,
+                                                          ovn_lb_cr_lrp)
+
         # NOTE(ltomasbo): It is assumed that the rest of the datapaths in
         # the datapaths fields belongs to networks (Logical_Switch)
         # connected to the provider network datapath through a single
@@ -312,10 +327,6 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
                     return self.agent.expose_ovn_lb_on_provider(row.name, ip,
                                                                 provider_dp,
                                                                 ovn_lb_cr_lrp)
-        if len(row.datapaths) == 1 and len(old.datapaths) > 1:
-            # last member deleted, time to withdraw the VIP through the cr-lrp
-            self.agent.withdraw_ovn_lb_on_provider(row.name, provider_dp,
-                                                   ovn_lb_cr_lrp)
 
 
 class ChassisCreateEventBase(row_event.RowEvent):
