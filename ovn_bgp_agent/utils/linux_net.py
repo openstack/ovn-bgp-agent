@@ -551,3 +551,8 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     route_info = {'vlan': vlan, 'route': route}
     if route_info in ovn_routing_tables_routes[dev]:
         ovn_routing_tables_routes[dev].remove(route_info)
+
+
+def set_device_status(device, status, ndb=None):
+    ovn_bgp_agent.privileged.linux_net.set_device_status(
+        device, status, ndb=ndb)
