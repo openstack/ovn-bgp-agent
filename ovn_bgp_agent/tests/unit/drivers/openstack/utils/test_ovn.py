@@ -15,11 +15,18 @@
 
 from unittest import mock
 
+from oslo_config import cfg
+from ovs.stream import Stream
+from ovsdbapp.backend.ovs_idl import connection
+from ovsdbapp.backend.ovs_idl import idlutils
+
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovn as ovn_utils
 from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests.unit import fakes
+
+CONF = cfg.CONF
 
 
 class TestOvsdbSbOvnIdl(test_base.TestCase):
@@ -412,3 +419,39 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self.assertIn(ovn_lb2, ret)
         self.assertNotIn(ovn_lb1, ret)
         self.assertNotIn(ovn_lb3, ret)
+
+
+class TestOvnSbIdl(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOvnSbIdl, self).setUp()
+        mock.patch.object(idlutils, 'get_schema_helper').start()
+        mock.patch.object(ovn_utils.OvnIdl, '__init__').start()
+        self.sb_idl = ovn_utils.OvnSbIdl('tcp:127.0.0.1:6640')
+
+    @mock.patch.object(Stream, 'ssl_set_ca_cert_file')
+    @mock.patch.object(Stream, 'ssl_set_certificate_file')
+    @mock.patch.object(Stream, 'ssl_set_private_key_file')
+    def test__check_and_set_ssl_files(
+            self, mock_ssl_priv_key, mock_ssl_cert, mock_ssl_ca_cert):
+        CONF.set_override('ovn_sb_private_key', 'fake-priv-key')
+        CONF.set_override('ovn_sb_certificate', 'fake-cert')
+        CONF.set_override('ovn_sb_ca_cert', 'fake-ca-cert')
+
+        self.sb_idl._check_and_set_ssl_files('fake-schema')
+
+        mock_ssl_priv_key.assert_called_once_with('fake-priv-key')
+        mock_ssl_cert.assert_called_once_with('fake-cert')
+        mock_ssl_ca_cert.assert_called_once_with('fake-ca-cert')
+
+    @mock.patch.object(connection, 'Connection')
+    def test_start(self, mock_conn):
+        notify_handler = mock.Mock()
+        self.sb_idl.notify_handler = notify_handler
+        self.sb_idl._events = ['fake-event0', 'fake-event1']
+
+        self.sb_idl.start()
+
+        mock_conn.assert_called_once_with(self.sb_idl, timeout=180)
+        notify_handler.watch_events.assert_called_once_with(
+            ['fake-event0', 'fake-event1'])
