@@ -108,12 +108,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "PortBindingChassisDeletedEvent",
                       "FIPSetEvent",
                       "FIPUnsetEvent",
-                      "SubnetRouterAttachedEvent",
-                      "SubnetRouterDetachedEvent",
                       "OVNLBMemberUpdateEvent",
                       "ChassisCreateEvent"])
         if self._expose_tenant_networks:
-            events.update(["TenantPortCreatedEvent",
+            events.update(["SubnetRouterAttachedEvent",
+                           "SubnetRouterDetachedEvent",
+                           "TenantPortCreatedEvent",
                            "TenantPortDeletedEvent"])
         return events
 
