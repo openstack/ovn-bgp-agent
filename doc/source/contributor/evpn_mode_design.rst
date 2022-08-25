@@ -12,15 +12,15 @@
       '''''''  Heading 4
       (Avoid deeper levels because they do not render well.)
 
-====================================
-Design of OVN Agent with EVPN Driver
-====================================
+========================================
+Design of OVN BGP Agent with EVPN Driver
+========================================
 
 Purpose
 -------
 
 The purpose of this document is to present the design decision behind
-the EVPN Driver for the Networking BGP OVN agent.
+the EVPN Driver for the Networking OVN BGP agent.
 
 The main purpose of adding support for EVPN is to be able to provide
 multitenancy aspects by using BGP in conjunction with EVPN/VXLAN. It allows
@@ -31,7 +31,7 @@ with overlapping subnet CIDRs among tenants.
 Overview
 --------
 
-The networking bgp ovn agent is a Python based daemon that runs on each node
+The OVN BGP Agent is a Python based daemon that runs on each node
 (e.g., OpenStack controllers and/or compute nodes). It connects to the OVN
 Southbound DataBase (OVN SB DB) to detect the specific events it needs to
 react to, and then leverages FRR to expose the routes towards the VMs, and
@@ -55,7 +55,7 @@ react to the information being added by it into the OVN SB DB (using the
 Proposed Solution
 -----------------
 
-To support EVPN the functionality of the ``ovn_bgp_agent`` needs
+To support EVPN the functionality of the OVN BGP Agent needs
 to be extended with a new driver that performs the extra steps
 required for the EVPN configuration and steering the traffic to/from the node
 from/to the OVN overlay. The only configuration needed is to enable the
@@ -64,7 +64,8 @@ specific driver on the ``bgp-agent.conf`` file.
 This new driver will also require a new watcher to react to the EVPN-related
 events. In this case, the EVPN events will be triggered by the addition of
 EVPN/VNI information into the relevant OVN ``logical_switch_ports`` at the
-OVN SB DB.
+OVN NB DB, which gets translated into external-ids at ``port_binding`` table
+at the OVN SB DB.
 
 This information is added into OVN DBs by the ``networking-bgpvpn`` projects.
 The admin and user API to leverage the EVPN functionality is provided by
@@ -138,9 +139,9 @@ As regards to the API actions implemented, the user can:
 - Associate the BGPVPN to a network:
   The OVN service plugin driver annotates the information into the
   ``external_ids`` field of the ``Logical_Switch_Port`` associated to the
-  network router interface port (ovn patch port). Additionally, the router
+  network router interface port (OVN patch port). Additionally, the router
   where the network is connected also gets the ``Logical_Switch_Port``
-  associated to the router gateway port annotated (ovn patch port).
+  associated to the router gateway port annotated (OVN patch port).
 
 - Associate the BGPVPN to a router:
   The OVN service plugin driver performs the same actions as before, but
@@ -301,14 +302,14 @@ To do that it needs to:
 
         router bgp {{ bgp_as }} vrf {{ vrf_name }}
             address-family ipv4 unicast
-            redistribute connected
+              redistribute connected
             exit-address-family
             address-family ipv6 unicast
-            redistribute connected
+              redistribute connected
             exit-address-family
             address-family l2vpn evpn
-            advertise ipv4 unicast
-            advertise ipv6 unicast
+              advertise ipv4 unicast
+              advertise ipv6 unicast
             exit-address-family
 
         '''
@@ -377,7 +378,7 @@ It implements the next functions:
 - ``expose_ip``: Creates all the VRF/VXLAN configuration (devices and its
   connection to the OVN overlay) as well as the VRF configuration at FRR
   (steps 1 to 3). It also checks if there are subnets and VMs connected to
-  the ovn gateway router port that must be exposed through EVPN (steps 4-5).
+  the OVN gateway router port that must be exposed through EVPN (steps 4-5).
 
 - ``withdraw_ip``: removes the above configuration (devices and FRR
   configuration).
@@ -390,13 +391,13 @@ It implements the next functions:
   configuration.
 
 - ``expose_remote_ip``: EVPN expose VM tenant network IPs through the chassis
-  hosting the ovn gateway port for the router where the VM is connected.
+  hosting the OVN gateway port for the router where the VM is connected.
   It ensures traffic destinated to the VM IP arrives to this node (step 5).
   The previous steps ensure the traffic is redirected to the OVN overlay
   once on the node.
 
 - ``withdraw_remote_ip``: EVPN withdraw VM tenant network IPs through the
-  chassis hosting the ovn gateway port for the router where the VM is
+  chassis hosting the OVN gateway port for the router where the VM is
   connected. It ensures traffic destinated to the VM IP stops arriving to
   this node.
 
@@ -420,7 +421,7 @@ associated to the vrf (vrf-101) which was used for defining the BGPVPN
 (vni 101). That together with the other devices created on the VRF (vxlan-101
 and br-101), and with the FRR reconfiguration ensure the IPs get exposed in
 the right EVPN. This allows the traffic to reach the node with the router
-gateway port (cr-lrp on ovn).
+gateway port (cr-lrp on OVN).
 
 However this is not enough as the traffic needs to be redirected to the OVN
 Overlay. To do that the VRF is added to the br-ex OVS provider bridge (br-ex),
@@ -453,7 +454,7 @@ Agent deployment
 The EVPN mode exposes the VMs on tenant networks (on their respective
 EVPN/VXLAN). At OpenStack, with OVN networking, the N/S traffic to the
 tenant VMs (without FIPs) needs to go through the networking nodes, more
-specifically the one hosting the chassisredirect ovn port (cr-lrp), connecting
+specifically the one hosting the chassisredirect OVN port (cr-lrp), connecting
 the provider network to the OVN virtual router. As a result, there is no need
 to deploy the agent in all the nodes. Only the nodes that are able to host
 router gateway ports (cr-lrps), i.e., the ones tagged with the
