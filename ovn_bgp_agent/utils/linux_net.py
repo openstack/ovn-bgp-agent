@@ -79,7 +79,7 @@ def delete_device(device):
     ovn_bgp_agent.privileged.linux_net.delete_device(device)
 
 
-def ensure_arp_ndp_enabed_for_bridge(bridge, offset):
+def ensure_arp_ndp_enabed_for_bridge(bridge, offset, vlan_tag=None):
     ipv4 = "192.168." + str(int(offset / 256)) + "." + str(offset % 256)
     ipv6 = "fd53:d91e:400:7f17::%x" % offset
     try:
@@ -96,6 +96,10 @@ def ensure_arp_ndp_enabed_for_bridge(bridge, offset):
             LOG.error("Unable to add IP on bridge %s to enable arp/ndp. "
                       "Exception: %s", bridge, e)
             raise
+
+    if not vlan_tag:
+        enable_proxy_arp(bridge)
+        enable_proxy_ndp(bridge)
 
 
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):

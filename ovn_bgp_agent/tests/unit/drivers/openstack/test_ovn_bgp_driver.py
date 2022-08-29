@@ -123,7 +123,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ensure_ovn_dev.assert_called_once_with(
             constants.OVN_BGP_NIC, constants.OVN_BGP_VRF)
 
-        expected_calls = [mock.call('bridge0', 1), mock.call('bridge1', 2)]
+        expected_calls = [mock.call('bridge0', 1, 10),
+                          mock.call('bridge1', 2, 11)]
         mock_ensure_arp.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call({'fake-bridge': 'fake-table'}, 'bridge0'),

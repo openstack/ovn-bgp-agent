@@ -145,18 +145,21 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 bridge = bridge_mapping.split(":")[1]
                 self.ovn_bridge_mappings[network] = bridge
 
-                linux_net.ensure_arp_ndp_enabed_for_bridge(bridge,
-                                                           bridge_index)
                 if not extra_routes.get(bridge):
                     extra_routes[bridge] = (
                         linux_net.ensure_routing_table_for_bridge(
                             self.ovn_routing_tables, bridge))
                 vlan_tag = self.sb_idl.get_network_vlan_tag_by_network_name(
                     network)
+
                 if vlan_tag:
                     vlan_tag = vlan_tag[0]
                     linux_net.ensure_vlan_device_for_network(bridge,
                                                              vlan_tag)
+
+                linux_net.ensure_arp_ndp_enabed_for_bridge(bridge,
+                                                           bridge_index,
+                                                           vlan_tag)
 
                 if flows_info.get(bridge):
                     continue
