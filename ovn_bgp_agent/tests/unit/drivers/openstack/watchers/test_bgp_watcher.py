@@ -457,27 +457,35 @@ class TestTenantPortCreatedEvent(test_base.TestCase):
         self.event = bgp_watcher.TenantPortCreatedEvent(self.agent)
 
     def test_match_fn(self):
-        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        row = utils.create_row(chassis=[mock.Mock()],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         old = utils.create_row(chassis=[])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_chassis(self):
+        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_not_single_or_dual_stack(self):
         row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff'])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_old_chassis_set(self):
-        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        row = utils.create_row(chassis=[mock.Mock()],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         old = utils.create_row(chassis=[mock.Mock()])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_empty_ovn_local_lrps(self):
         self.agent.ovn_local_lrps = []
-        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        row = utils.create_row(chassis=[mock.Mock()],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         old = utils.create_row(chassis=[])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_index_error(self):
-        row = utils.create_row(mac=[])
+        row = utils.create_row(chassis=[mock.Mock()], mac=[])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_run(self):
@@ -511,17 +519,30 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         self.event = bgp_watcher.TenantPortDeletedEvent(self.agent)
 
     def test_match_fn(self):
-        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
-        self.assertTrue(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(chassis=[],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[mock.Mock()],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(chassis=[],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_not_single_or_dual_stack(self):
         row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff'])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_empty_ovn_local_lrps(self):
+        row = utils.create_row(chassis=[],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[mock.Mock()],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         self.agent.ovn_local_lrps = []
-        row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
-        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_index_error(self):
         row = utils.create_row(mac=[])
