@@ -186,10 +186,18 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
                     except KeyError:
                         pass  # no ipv6 default rule
                 else:
-                    extra_routes.append(
-                        ndb.routes[{'table': ovn_routing_tables[bridge],
-                                    'dst': dst}]
-                    )
+                    if get_ip_version(dst) == constants.IP_VERSION_6:
+                        extra_routes.append(
+                            ndb.routes[{'table': ovn_routing_tables[bridge],
+                                        'dst': dst,
+                                        'family': AF_INET6}]
+                        )
+                    else:
+                        extra_routes.append(
+                            ndb.routes[{'table': ovn_routing_tables[bridge],
+                                        'dst': dst,
+                                        'family': AF_INET}]
+                        )
 
             if route_missing:
                 r = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
