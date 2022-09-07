@@ -43,9 +43,10 @@ react to, and then leverages FRR to expose the routes towards the VMs, and
 kernel networking capabilities to redirect the traffic arriving on the nodes
 to the OVN overlay.
 
-.. note::
-  Note it is only intended for the N/S traffic, the E/W traffic will work
-  exactly the same as before, i.e., VMs are connected through geneve tunnels.
+ .. note::
+     Note it is only intended for the N/S traffic, the E/W traffic will work
+     exactly the same as before, i.e., VMs are connected through geneve
+     tunnels.
 
 
 The agent provides a multi-driver implementation that allows you to configure
@@ -278,12 +279,13 @@ the route:
         $ ip addr add IPv4/32 dev ovn
         $ ip addr add IPv6/128 dev ovn
 
-.. note::
-   As we also want to be able to expose VM connected to tenant networks
-   (when ``expose_tenant_networks`` configuration option is enabled), there is
-   a need to expose the Neutron router gateway port (CR-LRP on OVN) so that the
-   traffic to VMs on tenant networks is injected into OVN overlay through the
-   node that is hosting that port.
+ .. note::
+
+     As we also want to be able to expose VM connected to tenant networks
+     (when ``expose_tenant_networks`` configuration option is enabled), there
+     is a need to expose the Neutron router gateway port (CR-LRP on OVN) so
+     that the traffic to VMs on tenant networks is injected into OVN overlay
+     through the node that is hosting that port.
 
 
 Traffic Redirection to/from OVN
@@ -440,6 +442,7 @@ As an example of how to start the OVN BGP Agent on the nodes, see the commands
 below:
 
    .. code-block:: ini
+
       $ python setup.py install
       $ cat bgp-agent.conf
       # sample configuration that can be adapted based on needs
