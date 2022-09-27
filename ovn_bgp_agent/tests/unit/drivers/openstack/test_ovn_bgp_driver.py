@@ -246,19 +246,38 @@ class TestOVNBGPDriver(test_base.TestCase):
             'name': 'fake-port-dp0',
             'type': constants.OVN_VM_VIF_PORT_TYPE,
             'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.10 192.168.1.11'],
-            'chassis': 'fake-chassis1'})
+            'chassis': 'fake-chassis1',
+            'external_ids': {}})
         dp_port1 = fakes.create_object({
             'name': 'fake-port-dp1',
             'type': 'fake-type',
             'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.12 192.168.1.13'],
-            'chassis': 'fake-chassis2'})
+            'chassis': 'fake-chassis2',
+            'external_ids': {}})
         dp_port2 = fakes.create_object({
             'name': 'fake-port-dp2',
             'type': constants.OVN_VM_VIF_PORT_TYPE,
             'mac': [],
-            'chassis': 'fake-chassis2'})
+            'chassis': 'fake-chassis2',
+            'external_ids': {}})
+        dp_port3 = fakes.create_object({
+            'name': 'fake-port-dp3',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': '',
+            'up': [False],
+            'external_ids': {}})
+        dp_port4 = fakes.create_object({
+            'name': 'fake-port-dp4',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': '',
+            'up': [False],
+            'external_ids': {
+                constants.OVN_CIDRS_EXT_ID_KEY: "192.168.1.13/24"}})
         self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
-                                                          dp_port2]
+                                                          dp_port2, dp_port3,
+                                                          dp_port4]
 
         self.bgp_driver._ensure_network_exposed(router_port, gateway)
 
@@ -269,7 +288,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             mock.ANY, self.ipv4, 'fake-table', self.bridge,
             vlan=10, mask='32', via=self.fip)
         expected_calls = [mock.call(constants.OVN_BGP_NIC, ['192.168.1.10']),
-                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.11'])]
+                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.11']),
+                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.13'])]
         mock_add_ips_dev.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')

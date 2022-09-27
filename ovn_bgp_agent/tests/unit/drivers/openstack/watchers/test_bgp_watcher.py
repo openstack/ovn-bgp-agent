@@ -569,6 +569,76 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         self.agent.withdraw_remote_ip.assert_not_called()
 
 
+class TestOVNLBTenantPortEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOVNLBTenantPortEvent, self).setUp()
+        self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.ovn_local_lrps = ['172.24.100.111']
+        self.event = bgp_watcher.OVNLBTenantPortEvent(self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(chassis=[], mac=[], up=[False])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_chassis(self):
+        row = utils.create_row(chassis=[mock.Mock()], mac=[], up=[False])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_mac(self):
+        row = utils.create_row(chassis=[],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               up=['False'])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_up(self):
+        row = utils.create_row(chassis=[], mac=[], up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_empty_ovn_local_lrps(self):
+        self.agent.ovn_local_lrps = []
+        row = utils.create_row(chassis=[], mac=[], up=[False])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        event = self.event.ROW_CREATE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE, mac=[], chassis=[],
+            up=[False], external_ids={
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.10.1.16/24"})
+        self.event.run(event, row, mock.Mock())
+        self.agent.expose_remote_ip.assert_called_once_with(
+            ['10.10.1.16'], row)
+
+    def test_run_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE, mac=[], chassis=[],
+            up=[False], external_ids={
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.10.1.16/24"})
+        self.event.run(event, row, mock.Mock())
+        self.agent.withdraw_remote_ip.assert_called_once_with(
+            ['10.10.1.16'], row)
+
+    def test_run_no_external_id(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE, mac=[], chassis=[],
+            up=[False], external_ids={})
+        self.event.run(mock.Mock(), row, mock.Mock())
+        self.agent.expose_remote_ip.assert_not_called()
+        self.agent.withdraw_remote_ip.assert_not_called()
+
+    def test_run_wrong_type(self):
+        row = utils.create_row(
+            type=constants.OVN_VIRTUAL_VIF_PORT_TYPE, mac=[], chassis=[],
+            up=[False], external_ids={
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.10.1.16/24"})
+        self.event.run(mock.Mock(), row, mock.Mock())
+        self.agent.expose_remote_ip.assert_not_called()
+        self.agent.withdraw_remote_ip.assert_not_called()
+
+
 class TestOVNLBMemberUpdateEvent(test_base.TestCase):
 
     def setUp(self):

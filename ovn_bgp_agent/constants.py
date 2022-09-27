@@ -20,6 +20,8 @@ OVN_PATCH_VIF_PORT_TYPE = "patch"
 OVN_CHASSISREDIRECT_VIF_PORT_TYPE = "chassisredirect"
 OVN_LOCALNET_VIF_PORT_TYPE = "localnet"
 
+OVN_CIDRS_EXT_ID_KEY = 'neutron:cidrs'
+
 OVN_BGP_NIC = "ovn"
 OVN_BGP_VRF = "ovn-bgp-vrf"
 OVN_BGP_VRF_TABLE = 10

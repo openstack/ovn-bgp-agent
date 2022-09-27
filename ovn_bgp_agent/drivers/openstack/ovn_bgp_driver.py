@@ -114,7 +114,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",
                            "TenantPortCreatedEvent",
-                           "TenantPortDeletedEvent"])
+                           "TenantPortDeletedEvent",
+                           "OVNLBTenantPortEvent"])
         return events
 
     @lockutils.synchronized('bgp')
@@ -335,7 +336,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             ports = self.sb_idl.get_ports_on_datapath(
                 network_port_datapath)
             for port in ports:
-                if (not port.mac or
+                # specific case for ovn-lb vips on tenant networks
+                if not port.mac and not port.chassis and not port.up[0]:
+                    ext_n_cidr = port.external_ids.get(
+                        constants.OVN_CIDRS_EXT_ID_KEY)
+                    if ext_n_cidr:
+                        ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
+                        linux_net.add_ips_to_dev(
+                            constants.OVN_BGP_NIC, [ovn_lb_ip])
+                        if ovn_lb_ip in exposed_ips:
+                            exposed_ips.remove(ovn_lb_ip)
+                elif (not port.mac or
                         port.type not in (
                             constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
