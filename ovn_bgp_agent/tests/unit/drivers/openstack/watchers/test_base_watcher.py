@@ -31,12 +31,12 @@ class TestPortBindingChassisEvent(test_base.TestCase):
         self.pb_event = FakePortBindingChassisEvent(
             mock.Mock(), [mock.Mock()])
 
-    def test__check_single_dual_stack_format(self):
-        self.assertTrue(self.pb_event._check_single_dual_stack_format(
+    def test__check_ip_associated(self):
+        self.assertTrue(self.pb_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16'))
-        self.assertTrue(self.pb_event._check_single_dual_stack_format(
+        self.assertTrue(self.pb_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17'))
-        self.assertFalse(self.pb_event._check_single_dual_stack_format(
+        self.assertFalse(self.pb_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff'))
-        self.assertFalse(self.pb_event._check_single_dual_stack_format(
+        self.assertTrue(self.pb_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))

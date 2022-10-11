@@ -203,13 +203,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         if not cr_lrp_datapath:
             return
 
-        if (len(cr_lrp_port.mac[0].split(' ')) != 2 and
-                len(cr_lrp_port.mac[0].split(' ')) != 3):
+        if len(cr_lrp_port.mac[0].split(' ')) < 2:
             return
-        ips = [cr_lrp_port.mac[0].split(' ')[1]]
-        # for dual-stack
-        if len(cr_lrp_port.mac[0].split(' ')) == 3:
-            ips.append(cr_lrp_port.mac[0].split(' ')[2])
+        ips = cr_lrp_port.mac[0].split(' ')[1:]
 
         if cr_lrp:
             evpn_info = self.sb_idl.get_evpn_info_from_port_name(
@@ -480,11 +476,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                  not port.chassis)):
                 continue
             try:
-                port_ips = [port.mac[0].split(' ')[1]]
+                port_ips = port.mac[0].split(' ')[1:]
             except IndexError:
                 continue
-            if len(port.mac[0].split(' ')) == 3:
-                port_ips.append(port.mac[0].split(' ')[2])
 
             for port_ip in port_ips:
                 # Only adding the port ips that match the lrp

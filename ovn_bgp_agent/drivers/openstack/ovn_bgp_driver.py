@@ -266,12 +266,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _ensure_port_exposed(self, port, exposed_ips, ovn_ip_rules):
         if port.type not in constants.OVN_VIF_PORT_TYPES or not port.mac:
             return
-        if (len(port.mac[0].split(' ')) != 2 and
-                len(port.mac[0].split(' ')) != 3):
+        if len(port.mac[0].split(' ')) < 2:
             return
-        port_ips = [port.mac[0].split(' ')[1]]
-        if len(port.mac[0].split(' ')) == 3:
-            port_ips.append(port.mac[0].split(' ')[2])
+        port_ips = port.mac[0].split(' ')[1:]
 
         fip = self._expose_ip(port_ips, port)
         if fip:
@@ -354,11 +351,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                          not port.chassis)):
                     continue
                 try:
-                    port_ips = [port.mac[0].split(' ')[1]]
+                    port_ips = port.mac[0].split(' ')[1:]
                 except IndexError:
                     continue
-                if len(port.mac[0].split(' ')) == 3:
-                    port_ips.append(port.mac[0].split(' ')[2])
 
                 for port_ip in port_ips:
                     # Only adding the port ips that match the lrp
@@ -882,11 +877,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         constants.OVN_VIRTUAL_VIF_PORT_TYPE)):
                 continue
             try:
-                port_ips = [port.mac[0].split(' ')[1]]
+                port_ips = port.mac[0].split(' ')[1:]
             except IndexError:
                 continue
-            if len(port.mac[0].split(' ')) == 3:
-                port_ips.append(port.mac[0].split(' ')[2])
 
             for port_ip in port_ips:
                 # Only adding the port ips that match the lrp

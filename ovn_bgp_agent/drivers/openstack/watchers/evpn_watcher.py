@@ -36,7 +36,7 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
             if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
                 return False
             # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
+            if not self._check_ip_associated(row.mac[0]):
                 return False
             return (row.chassis[0].name == self.agent.chassis and
                     not old.chassis)
@@ -61,7 +61,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
             if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
                 return False
             # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
+            if not self._check_ip_associated(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis[0].name == self.agent.chassis and
@@ -157,7 +157,7 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
+            if not self._check_ip_associated(row.mac[0]):
                 return False
             return (not old.chassis and row.chassis and
                     self.agent.ovn_local_lrps != [])
@@ -169,10 +169,7 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = [row.mac[0].split(' ')[1]]
-            # for dual-stack
-            if len(row.mac[0].split(' ')) == 3:
-                ips.append(row.mac[0].split(' ')[2])
+            ips = row.mac[0].split(' ')[1:]
             self.agent.expose_remote_ip(ips, row)
 
 
@@ -185,7 +182,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_single_dual_stack_format(row.mac[0]):
+            if not self._check_ip_associated(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis and not row.chassis and
@@ -200,10 +197,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = [row.mac[0].split(' ')[1]]
-            # for dual-stack
-            if len(row.mac[0].split(' ')) == 3:
-                ips.append(row.mac[0].split(' ')[2])
+            ips = row.mac[0].split(' ')[1:]
             self.agent.withdraw_remote_ip(ips, row)
 
 

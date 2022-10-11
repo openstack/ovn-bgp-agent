@@ -23,8 +23,8 @@ class PortBindingChassisEvent(row_event.RowEvent):
             events, table, None)
         self.event_name = self.__class__.__name__
 
-    def _check_single_dual_stack_format(self, mac):
-        return len(mac.split(' ')) in [2, 3]
+    def _check_ip_associated(self, mac):
+        return len(mac.split(' ')) > 1
 
 
 class OVNLBMemberEvent(row_event.RowEvent):
