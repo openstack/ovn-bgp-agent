@@ -165,13 +165,18 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         rows = self.db_list_rows('Port_Binding').execute(check_error=True)
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
+    def get_cr_lrp_ports(self):
+        return self.db_find_rows(
+            "Port_Binding",
+            ("type", "=", constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE),
+        ).execute(check_error=True)
+
     def get_cr_lrp_ports_on_chassis(self, chassis):
-        rows = self.db_find_rows(
-            'Port_Binding',
-            ('type', '=', constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE)
-            ).execute(check_error=True)
-        return [r.logical_port for r in rows
-                if r.chassis and r.chassis[0].name == chassis]
+        return [
+            r.logical_port
+            for r in self.get_cr_lrp_ports()
+            if r.chassis and r.chassis[0].name == chassis
+        ]
 
     def get_cr_lrp_nat_addresses_info(self, cr_lrp_port_name, chassis, sb_idl):
         # NOTE: Assuming logical_port format is "cr-lrp-XXXX"
@@ -219,6 +224,15 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         try:
             if port_info and port_info[0].chassis[0].name == chassis:
                 return port_info[0].logical_port
+        except IndexError:
+            pass
+
+    def is_router_gateway_on_any_chassis(self, datapath):
+        port_info = self.get_ports_on_datapath(
+            datapath, constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE)
+        try:
+            if port_info and port_info[0].chassis[0].name:
+                return port_info[0]
         except IndexError:
             pass
 

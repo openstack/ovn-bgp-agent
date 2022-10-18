@@ -291,6 +291,28 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_is_router_gateway_on_chassis_not_on_chassis(self):
         self._test_is_router_gateway_on_chassis(match=False)
 
+    def _test_is_router_gateway_on_any_chassis(self, match=True):
+        if match:
+            ch = fakes.create_object({'name': 'chassis-0'})
+        else:
+            ch = fakes.create_object({'name': ''})
+        port = '39c38ce6-f0ea-484e-a57c-aec0d4e961a5'
+        with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as m_dp:
+            row = fakes.create_object({'logical_port': port, 'chassis': [ch]})
+            m_dp.return_value = [row, ]
+            ret = self.sb_idl.is_router_gateway_on_any_chassis('fake-dp')
+
+            if match:
+                self.assertEqual(row, ret)
+            else:
+                self.assertIsNone(ret)
+
+    def test_is_router_gateway_on_any_chassis(self):
+        self._test_is_router_gateway_on_any_chassis()
+
+    def test_is_router_gateway_on_chassis_not_on_any_chassis(self):
+        self._test_is_router_gateway_on_any_chassis(match=False)
+
     def _test_get_lrp_port_for_datapath(self, has_options=True):
         peer = '75c793bd-d865-48f3-8f05-68ba4239d14e'
         with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as m_dp:

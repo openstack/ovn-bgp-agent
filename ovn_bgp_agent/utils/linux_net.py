@@ -282,6 +282,20 @@ def get_exposed_ips_on_network(nic, network):
     return exposed_ips
 
 
+def get_exposed_routes_on_network(table_ids, network):
+    with pyroute2.NDB() as ndb:
+        # NOTE: skip bgp routes (proto 186)
+        return [
+            r
+            for r in ndb.routes.dump()
+            if r.table in table_ids and
+            r.dst != "" and
+            r.gateway is not None and
+            r.proto != 186 and
+            ipaddress.ip_address(r.gateway) in network
+        ]
+
+
 def get_ovn_ip_rules(routing_table):
     # get the rules pointing to ovn bridges
     ovn_ip_rules = {}
