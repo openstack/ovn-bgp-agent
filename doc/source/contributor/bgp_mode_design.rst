@@ -258,9 +258,9 @@ To do that, when the agent starts, it ensures that:
 
 
 - There is a VRF created (the one leaked in the previous step), by default
-  with name ``ovn-bgp-vrf``.
+  with name ``bgp_vrf``.
 
-- There is a dummy interface type (by default named ``ovn``), associated to
+- There is a dummy interface type (by default named ``bgp-nic``), associated to
   the previously created VRF device.
 
 - Ensure ARP/NDP is enabled at OVS provider bridges by adding an IP to it
@@ -269,15 +269,15 @@ To do that, when the agent starts, it ensures that:
 Then, to expose the VMs/LB IPs as they are created (or upon
 initialization or re-sync), since the FRR configuration has the
 ``redistribute connected`` option enabled, the only action needed to expose it
-(or withdraw it) is to add it (or remove it) from the ``ovn`` dummy interface.
+(or withdraw it) is to add it (or remove it) from the ``bgp-nic`` dummy interface.
 Then it relies on Zebra to do the BGP advertisemant, as Zebra detects the
 addition/deletion of the IP on the local interface and advertises/withdraw
 the route:
 
    .. code-block:: ini
 
-        $ ip addr add IPv4/32 dev ovn
-        $ ip addr add IPv6/128 dev ovn
+        $ ip addr add IPv4/32 dev bgp-nic
+        $ ip addr add IPv6/128 dev bgp-nic
 
  .. note::
 
