@@ -297,29 +297,29 @@ def delete_ip_rules(ip_rules):
 def delete_bridge_ip_routes(routing_tables, routing_tables_routes,
                             extra_routes):
     with pyroute2.NDB() as ndb:
-        for bridge, routes_info in routing_tables_routes.items():
-            if not extra_routes.get(bridge):
+        for device, routes_info in routing_tables_routes.items():
+            if not extra_routes.get(device):
                 continue
             for route_info in routes_info:
-                oif = ndb.interfaces[bridge]['index']
+                oif = ndb.interfaces[device]['index']
                 if route_info['vlan']:
-                    vlan_device_name = '{}.{}'.format(bridge,
+                    vlan_device_name = '{}.{}'.format(device,
                                                       route_info['vlan'])
                     oif = ndb.interfaces[vlan_device_name]['index']
                 if 'gateway' in route_info['route'].keys():  # subnet route
                     possible_matchings = [
-                        r for r in extra_routes[bridge]
+                        r for r in extra_routes[device]
                         if (r['dst'] == route_info['route']['dst'] and
                             r['dst_len'] == route_info['route']['dst_len'] and
                             r['gateway'] == route_info['route']['gateway'])]
                 else:  # cr-lrp
                     possible_matchings = [
-                        r for r in extra_routes[bridge]
+                        r for r in extra_routes[device]
                         if (r['dst'] == route_info['route']['dst'] and
                             r['dst_len'] == route_info['route']['dst_len'] and
                             r['oif'] == oif)]
                 for r in possible_matchings:
-                    extra_routes[bridge].remove(r)
+                    extra_routes[device].remove(r)
 
     for bridge, routes in extra_routes.items():
         for route in routes:
