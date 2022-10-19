@@ -333,13 +333,11 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
             if event == self.ROW_DELETE:
                 # loadbalancer deleted. Withdraw the VIP through the cr-lrp
                 return self.agent.withdraw_ovn_lb_on_provider(row.name,
-                                                              provider_dp,
                                                               ovn_lb_cr_lrp)
 
             if len(row.datapaths) == 1 and len(old.datapaths) > 1:
                 # last member deleted. Withdraw the VIP through the cr-lrp
                 return self.agent.withdraw_ovn_lb_on_provider(row.name,
-                                                              provider_dp,
                                                               ovn_lb_cr_lrp)
 
             # NOTE(ltomasbo): It is assumed that the rest of the datapaths in
@@ -352,7 +350,7 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
                     ip = driver_utils.parse_vip_from_lb_table(vip)
                     if ip:
                         return self.agent.expose_ovn_lb_on_provider(
-                            row.name, ip, provider_dp, ovn_lb_cr_lrp)
+                            row.name, ip, ovn_lb_cr_lrp)
 
 
 class ChassisCreateEventBase(row_event.RowEvent):
