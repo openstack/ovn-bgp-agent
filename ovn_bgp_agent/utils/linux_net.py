@@ -142,8 +142,15 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
     extra_routes = []
 
     with pyroute2.NDB() as ndb:
-        table_route_dsts = set([r.dst for r in ndb.routes.summary().filter(
-                                table=ovn_routing_tables[bridge])])
+        table_route_dsts = set(
+            [
+                (r.dst, r.dst_len)
+                for r in ndb.routes.summary().filter(
+                    table=ovn_routing_tables[bridge]
+                )
+            ]
+        )
+
         if not table_route_dsts:
             r1 = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
                   'table': ovn_routing_tables[bridge], 'scope': 253,
@@ -157,7 +164,7 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
         else:
             route_missing = True
             route6_missing = True
-            for dst in table_route_dsts:
+            for (dst, dst_len) in table_route_dsts:
                 if not dst:  # default route
                     try:
                         route = ndb.routes[
@@ -190,12 +197,14 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
                         extra_routes.append(
                             ndb.routes[{'table': ovn_routing_tables[bridge],
                                         'dst': dst,
+                                        'dst_len': dst_len,
                                         'family': AF_INET6}]
                         )
                     else:
                         extra_routes.append(
                             ndb.routes[{'table': ovn_routing_tables[bridge],
                                         'dst': dst,
+                                        'dst_len': dst_len,
                                         'family': AF_INET}]
                         )
 
