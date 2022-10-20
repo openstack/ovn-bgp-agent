@@ -680,7 +680,7 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
-            'ovn-lb1', '172.24.100.66', 'dp1', 'cr-lrp1')
+            'ovn-lb1', '172.24.100.66', 'cr-lrp1')
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_provider_dp(self):
@@ -699,7 +699,7 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
-            'ovn-lb1', 'dp1', 'cr-lrp1')
+            'ovn-lb1', 'cr-lrp1')
 
     def test_run_no_match_subnets_dp(self):
         row = utils.create_row(name='ovn-lb1',
