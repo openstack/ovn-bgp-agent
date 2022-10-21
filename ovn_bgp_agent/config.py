@@ -71,6 +71,19 @@ agent_opts = [
                 default=4789,
                 help='The UDP port used for EVPN VXLAN communication. By '
                      'default 4789 is being used.'),
+    cfg.StrOpt('bgp_nic',
+               default='bgp-nic',
+               help='The name of the interface used within the VRF '
+                    '(bgp_vrf option) to expose the IPs and/or Networks.'),
+    cfg.StrOpt('bgp_vrf',
+               default='bgp-vrf',
+               help='The name of the VRF to be used to expose the IPs '
+                    'and/or Networks through BGP.'),
+    cfg.IntOpt('bgp_vrf_table_id',
+               default=10,
+               help='The Routing Table ID that the VRF (bgp_vrf option) '
+                    'should use. If it does not exist, this table will be '
+                    'created.'),
 ]
 
 root_helper_opts = [

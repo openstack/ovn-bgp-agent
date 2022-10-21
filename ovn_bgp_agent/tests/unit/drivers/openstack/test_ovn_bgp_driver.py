@@ -77,7 +77,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.bgp_driver.start()
 
         mock_vrf.assert_called_once_with(
-            constants.OVN_BGP_VRF, CONF.bgp_AS, CONF.bgp_router_id)
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
         # Assert connections were started
         self.mock_ovs_idl().start.assert_called_once_with(
             CONF.ovsdb_connection)
@@ -121,9 +121,9 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.bgp_driver.sync()
 
         mock_ensure_vrf.assert_called_once_with(
-            constants.OVN_BGP_VRF, constants.OVN_BGP_VRF_TABLE)
+            CONF.bgp_vrf, CONF.bgp_vrf_table_id)
         mock_ensure_ovn_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, constants.OVN_BGP_VRF)
+            CONF.bgp_nic, CONF.bgp_vrf)
 
         expected_calls = [mock.call('bridge0', 1, 10),
                           mock.call('bridge1', 2, 11)]
@@ -161,7 +161,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ensure_cr_port_exposed.assert_has_calls(expected_calls)
 
         mock_del_exposed_ips.assert_called_once_with(
-            ips, constants.OVN_BGP_NIC)
+            ips, CONF.bgp_nic)
         mock_del_ip_riles.assert_called_once_with(fake_ip_rules)
         moock_del_ip_routes.assert_called_once_with(
             {self.bridge: 'fake-table'}, mock.ANY,
@@ -291,9 +291,9 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge,
             vlan=10, mask='32', via=self.fip)
-        expected_calls = [mock.call(constants.OVN_BGP_NIC, ['192.168.1.10']),
-                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.11']),
-                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.13'])]
+        expected_calls = [mock.call(CONF.bgp_nic, ['192.168.1.10']),
+                          mock.call(CONF.bgp_nic, ['192.168.1.11']),
+                          mock.call(CONF.bgp_nic, ['192.168.1.13'])]
         mock_add_ips_dev.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')
@@ -384,7 +384,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, [self.ipv4])
+            CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
             self.ipv4, 'fake-table', self.bridge)
         mock_add_route.assert_called_once_with(
@@ -403,7 +403,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, [self.ipv4])
+            CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
             self.ipv4, 'fake-table', self.bridge)
         mock_add_route.assert_not_called()
@@ -417,8 +417,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.loadbalancer, self.cr_lrp0)
 
         # Assert that the del methods were called
-        expected_calls = [mock.call(constants.OVN_BGP_NIC, [self.ipv4]),
-                          mock.call(constants.OVN_BGP_NIC, [self.ipv6])]
+        expected_calls = [mock.call(CONF.bgp_nic, [self.ipv4]),
+                          mock.call(CONF.bgp_nic, [self.ipv6])]
         mock_del_ip_dev.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
@@ -450,7 +450,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
                           mock.call(self.ipv6, 'fake-table', self.bridge)]
@@ -484,7 +484,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, [self.fip])
+            CONF.bgp_nic, [self.fip])
         mock_add_rule.assert_called_once_with(
             self.fip, 'fake-table', self.bridge)
         mock_add_route.assert_called_once_with(
@@ -538,7 +538,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
                           mock.call(self.ipv6, 'fake-table', self.bridge)]
@@ -609,7 +609,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge,
                           lladdr=self.mac),
@@ -659,7 +659,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the del methods were called
         mock_del_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
                           mock.call(self.ipv6, 'fake-table', self.bridge)]
@@ -693,7 +693,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the del methods were called
         mock_del_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, [self.fip])
+            CONF.bgp_nic, [self.fip])
         mock_del_rule.assert_called_once_with(
             self.fip, 'fake-table', self.bridge)
         mock_del_route.assert_called_once_with(
@@ -741,7 +741,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the del methods were called
         mock_del_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
                           mock.call(self.ipv6, 'fake-table', self.bridge)]
@@ -791,7 +791,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the del methods were called
         mock_del_ip_dev.assert_called_once_with(
-            constants.OVN_BGP_NIC, ips)
+            CONF.bgp_nic, ips)
 
         expected_calls = [mock.call('{}/32'.format(self.ipv4), 'fake-table',
                           self.bridge, lladdr=self.mac),
@@ -825,7 +825,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         ips = [self.ipv4, self.ipv6]
         self.bgp_driver.expose_remote_ip(ips, row)
 
-        mock_add_ip_dev.assert_called_once_with(constants.OVN_BGP_NIC, ips)
+        mock_add_ip_dev.assert_called_once_with(CONF.bgp_nic, ips)
 
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test_expose_remote_ip_is_provider_network(self, mock_add_ip_dev):
@@ -864,7 +864,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         ips = [self.ipv4, self.ipv6]
         self.bgp_driver.withdraw_remote_ip(ips, row)
 
-        mock_del_ip_dev.assert_called_once_with(constants.OVN_BGP_NIC, ips)
+        mock_del_ip_dev.assert_called_once_with(CONF.bgp_nic, ips)
 
     @mock.patch.object(linux_net, 'del_ips_from_dev')
     def test_withdraw_remote_ip_is_provider_network(self, mock_del_ip_dev):
@@ -931,8 +931,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=None,
             mask='32', via=self.fip)
-        expected_calls = [mock.call(constants.OVN_BGP_NIC, ['192.168.1.10']),
-                          mock.call(constants.OVN_BGP_NIC, ['192.168.1.11'])]
+        expected_calls = [mock.call(CONF.bgp_nic, ['192.168.1.10']),
+                          mock.call(CONF.bgp_nic, ['192.168.1.11'])]
         mock_add_ip_dev.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'get_exposed_ips_on_network')
@@ -960,4 +960,4 @@ class TestOVNBGPDriver(test_base.TestCase):
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=None,
             mask='32', via=self.fip)
         mock_del_exposed_ips.assert_called_once_with(
-            [self.ipv4], constants.OVN_BGP_NIC)
+            [self.ipv4], CONF.bgp_nic)
