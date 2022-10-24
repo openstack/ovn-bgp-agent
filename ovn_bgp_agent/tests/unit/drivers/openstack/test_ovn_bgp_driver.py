@@ -626,15 +626,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, 10)
 
         mock_ensure_net_exposed.assert_called_once_with(
-            lrp0,
-            {'router_datapath': 'fake-router-dp',
-             'provider_datapath': 'fake-provider-dp',
-             'ips': ips,
-             'subnets_datapath': {self.lrp0: 'fake-lrp-dp'},
-             # ovn_lbs is already filled in by the sync funcion
-             'ovn_lbs': ['ovn_lb1'],
-             'bridge_vlan': 10,
-             'bridge_device': self.bridge})
+            lrp0, self.cr_lrp0)
 
         mock_parse_vip.assert_called_once_with(ovn_lb_vip_port)
         mock_expose_ovn_lb_on_provider.assert_called_once_with(

@@ -204,7 +204,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 # add missing route/ips for tenant network VMs
                 if self._expose_tenant_networks:
                     self._ensure_network_exposed(
-                        lrp, cr_lrp_info, exposed_ips, ovn_ip_rules)
+                        lrp, cr_lrp_port, exposed_ips, ovn_ip_rules)
 
             # add missing routes/ips related to ovn-octavia loadbalancers
             # on the provider networks
@@ -639,7 +639,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         {lrp.logical_port: subnet_datapath})
                 if self._expose_tenant_networks:
                     self._ensure_network_exposed(
-                        lrp, self.ovn_local_cr_lrps[row.logical_port])
+                        lrp, row.logical_port)
 
             ovn_lbs = self.sb_idl.get_ovn_lb_on_provider_datapath(
                 cr_lrp_datapath)
