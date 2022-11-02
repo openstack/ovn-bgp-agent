@@ -140,3 +140,10 @@ def get_root_helper(conf):
 
 def setup_privsep():
     priv_context.init(root_helper=shlex.split(get_root_helper(cfg.CONF)))
+
+
+def list_opts():
+    return [
+        ("DEFAULT", agent_opts),
+        ("AGENT", root_helper_opts)
+    ]
