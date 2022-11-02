@@ -191,10 +191,28 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.assertEqual({}, ip_rules)
 
     def test__ensure_port_exposed(self):
+        mock_expose_ip = mock.patch.object(
+            self.bgp_driver, '_expose_ip').start()
+        mock_expose_ip.return_value = [self.ipv4, self.ipv6]
+        port = fakes.create_object({
+            'name': 'fake-port',
+            'type': '',
+            'mac': ['{} {} {}'.format(self.mac, self.ipv4, self.ipv6)]})
+
+        exposed_ips = [self.ipv4, self.ipv6]
+        ip_rules = {"{}/128".format(self.ipv6): 'fake-rules'}
+        self.bgp_driver._ensure_port_exposed(port, exposed_ips, ip_rules)
+
+        mock_expose_ip.assert_called_once_with(
+            [self.ipv4, self.ipv6], port)
+        self.assertEqual([], exposed_ips)
+        self.assertEqual({}, ip_rules)
+
+    def test__ensure_port_exposed_fip(self):
         fip = '172.24.4.225'
         mock_expose_ip = mock.patch.object(
             self.bgp_driver, '_expose_ip').start()
-        mock_expose_ip.return_value = fip
+        mock_expose_ip.return_value = [fip]
         port = fakes.create_object({
             'name': 'fake-port',
             'type': '',
@@ -206,8 +224,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_expose_ip.assert_called_once_with(
             [self.ipv4, self.ipv6], port)
-        self.assertEqual([], exposed_ips)
-        self.assertEqual({}, ip_rules)
+        self.assertEqual([self.ipv4], exposed_ips)
+        self.assertEqual({"{}/128".format(self.ipv6): 'fake-rules'}, ip_rules)
 
     def test__ensure_port_exposed_wrong_port_type(self):
         mock_expose_ip = mock.patch.object(

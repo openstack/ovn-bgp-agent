@@ -43,7 +43,6 @@ OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer"]
 class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def __init__(self):
-        self._expose_tenant_networks = CONF.expose_tenant_networks
         self.ovn_routing_tables = {}  # {'br-ex': 200}
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
         self.ovn_local_cr_lrps = {}
@@ -110,7 +109,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "FIPUnsetEvent",
                       "OVNLBMemberUpdateEvent",
                       "ChassisCreateEvent"])
-        if self._expose_tenant_networks:
+        if CONF.expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",
                            "TenantPortCreatedEvent",
@@ -202,7 +201,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_local_cr_lrps[cr_lrp_port]['subnets_datapath'].update(
                     {lrp.logical_port: subnet_datapath})
                 # add missing route/ips for tenant network VMs
-                if self._expose_tenant_networks:
+                if CONF.expose_tenant_networks:
                     self._ensure_network_exposed(
                         lrp, cr_lrp_port, exposed_ips, ovn_ip_rules)
 
@@ -269,14 +268,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
         port_ips = port.mac[0].split(' ')[1:]
 
-        fip = self._expose_ip(port_ips, port)
-        if fip:
-            if fip in exposed_ips:
-                exposed_ips.remove(fip)
-            fip_dst = "{}/32".format(fip)
-            ovn_ip_rules.pop(fip_dst, None)
+        ips_adv = self._expose_ip(port_ips, port)
 
-        for port_ip in port_ips:
+        for port_ip in ips_adv:
             ip_address = port_ip.split("/")[0]
             ip_version = linux_net.get_ip_version(port_ip)
             if ip_version == constants.IP_VERSION_6:
@@ -507,12 +501,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 except agent_exc.InvalidPortIP:
                     LOG.exception("Invalid IP to create a rule for the VM ip"
                                   " on the provider network: %s", ip)
-                    return
+                    return []
                 linux_net.add_ip_route(
                     self.ovn_routing_tables_routes, ip,
                     self.ovn_routing_tables[bridge_device], bridge_device,
                     vlan=bridge_vlan)
             LOG.debug("Added BGP route for logical port with ip %s", ips)
+            return ips
 
         # VM with FIP
         elif (row.type == constants.OVN_VM_VIF_PORT_TYPE or
@@ -534,14 +529,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 except agent_exc.InvalidPortIP:
                     LOG.exception("Invalid IP to create a rule for the VM "
                                   "floating IP: %s", fip_address)
-                    return
+                    return []
 
                 linux_net.add_ip_route(
                     self.ovn_routing_tables_routes, fip_address,
                     self.ovn_routing_tables[bridge_device], bridge_device,
                     vlan=bridge_vlan)
                 LOG.debug("Added BGP route for FIP with ip %s", fip_address)
-                return fip_address
+                return [fip_address]
             else:
                 ovs.ensure_default_ovs_flows(self.ovn_bridge_mappings.values(),
                                              constants.OVS_RULE_COOKIE)
@@ -564,12 +559,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         LOG.exception("Invalid IP to create a rule for the "
                                       "floating IP associated to the VM: %s",
                                       ip)
-                        return
+                        return []
                     linux_net.add_ip_route(
                         self.ovn_routing_tables_routes, ip,
                         self.ovn_routing_tables[bridge_device], bridge_device,
                         vlan=bridge_vlan)
                 LOG.debug("Added BGP route for FIP with ip %s", ips)
+                return ips
 
         # CR-LRP Port
         elif (row.type == constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE and
@@ -577,7 +573,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             cr_lrp_datapath = self.sb_idl.get_provider_datapath_from_cr_lrp(
                 row.logical_port)
             if not cr_lrp_datapath:
-                return
+                return []
 
             LOG.debug("Adding BGP route for CR-LRP Port %s", ips)
             # Keeping information about the associated network for
@@ -612,7 +608,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 except agent_exc.InvalidPortIP:
                     LOG.exception("Invalid IP to create a rule for the "
                                   "router gateway port: %s", ip_without_mask)
-                    return
+                    return []
                 linux_net.add_ip_route(
                     self.ovn_routing_tables_routes, ip_without_mask,
                     self.ovn_routing_tables[bridge_device], bridge_device,
@@ -637,7 +633,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_local_cr_lrps[row.logical_port][
                     'subnets_datapath'].update(
                         {lrp.logical_port: subnet_datapath})
-                if self._expose_tenant_networks:
+                if CONF.expose_tenant_networks:
                     self._ensure_network_exposed(
                         lrp, row.logical_port)
 
@@ -653,6 +649,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                             ovn_lb.name, ip, row.logical_port)
                     self.ovn_local_cr_lrps[row.logical_port][
                         'ovn_lbs'].append(ovn_lb.name)
+            return ips
+        return []
 
     @lockutils.synchronized('bgp')
     def withdraw_ip(self, ips, row, associated_port=None):
@@ -804,7 +802,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     @lockutils.synchronized('bgp')
     def expose_remote_ip(self, ips, row):
         if (self.sb_idl.is_provider_network(row.datapath) or
-                not self._expose_tenant_networks):
+                not CONF.expose_tenant_networks):
             return
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
@@ -817,7 +815,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     @lockutils.synchronized('bgp')
     def withdraw_remote_ip(self, ips, row):
         if (self.sb_idl.is_provider_network(row.datapath) or
-                not self._expose_tenant_networks):
+                not CONF.expose_tenant_networks):
             return
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
@@ -845,7 +843,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps[cr_lrp]['subnets_datapath'].update(
             {row.logical_port: network_port_datapath})
 
-        if not self._expose_tenant_networks:
+        if not CONF.expose_tenant_networks:
             return
 
         LOG.debug("Adding IP Rules for network %s on chassis %s", ip,
@@ -919,7 +917,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps[cr_lrp]['subnets_datapath'].pop(
             row.logical_port, None)
 
-        if not self._expose_tenant_networks:
+        if not CONF.expose_tenant_networks:
             return
 
         LOG.debug("Deleting IP Rules for network %s on chassis %s", ip,
