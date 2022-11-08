@@ -570,7 +570,7 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     ovn_bgp_agent.privileged.linux_net.route_delete(route)
     LOG.debug("Route deleted at table %s: %s", route_table, route)
     route_info = {'vlan': vlan, 'route': route}
-    if route_info in ovn_routing_tables_routes[dev]:
+    if route_info in ovn_routing_tables_routes.get(dev, []):
         ovn_routing_tables_routes[dev].remove(route_info)
 
 
