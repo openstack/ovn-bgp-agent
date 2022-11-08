@@ -62,8 +62,9 @@ def get_ovs_flows_info(bridge, flows_info, cookie):
             'ovs-ofctl', ['del-flows', bridge, flow])
         return
     for ovs_port in ovs_ports.split("\n"):
-        ovs_ofport = get_device_port_at_ovs(ovs_port)
-        flows_info[bridge]['in_port'].add(ovs_ofport)
+        if ovs_port.startswith('patch-provnet-'):
+            ovs_ofport = get_device_port_at_ovs(ovs_port)
+            flows_info[bridge]['in_port'].add(ovs_ofport)
 
 
 def remove_extra_ovs_flows(flows_info, cookie):
@@ -163,11 +164,17 @@ def remove_evpn_network_ovs_flow(bridge, cookie, mac, net):
 def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
     cookie_id = "cookie={}/-1".format(cookie)
     for bridge in ovn_bridge_mappings:
-        ovs_port = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
             'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
-        if not ovs_port:
+        if not ovs_ports:
             continue
-        ovs_ofport = get_device_port_at_ovs(ovs_port)
+        ovs_ofport = None
+        for ovs_port in ovs_ports.split("\n"):
+            if ovs_port.startswith('patch-provnet-'):
+                ovs_ofport = get_device_port_at_ovs(ovs_port)
+                break
+        if not ovs_ofport:
+            continue
         flow_filter = '{},in_port={}'.format(cookie_id, ovs_ofport)
         current_flows = get_bridge_flows(bridge, flow_filter)
         if len(current_flows) == 1:

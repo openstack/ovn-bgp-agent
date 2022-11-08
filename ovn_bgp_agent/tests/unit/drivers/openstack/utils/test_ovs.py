@@ -77,7 +77,7 @@ class TestOVS(test_base.TestCase):
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     def test_get_ovs_flows_info(self, mock_ofport):
-        port = 'fake-port-0'
+        port = 'patch-provnet-fake-port'
         port_iface = '1'
         self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
         mock_ofport.return_value = port_iface
@@ -297,7 +297,7 @@ class TestOVS(test_base.TestCase):
     @mock.patch.object(ovs_utils, 'get_bridge_flows')
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     def test_ensure_default_ovs_flows(self, mock_ofport, mock_flows):
-        port = 'fake-port'
+        port = 'patch-provnet-fake-port'
         port_iface = '1'
         uneeded_port_iface = '10'
         fake_flow_0 = '{},ip,in_port={}'.format(self.cookie_id, port_iface)
