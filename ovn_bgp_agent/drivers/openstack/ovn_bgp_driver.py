@@ -73,7 +73,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def start(self):
         self.ovs_idl = ovs.OvsIdl()
         self.ovs_idl.start(CONF.ovsdb_connection)
-        self.chassis = self.ovs_idl.get_own_chassis_name()
+        self.chassis = self.ovs_idl.get_own_chassis_id()
         self.ovn_remote = self.ovs_idl.get_ovn_remote()
         LOG.info("Loaded chassis %s.", self.chassis)
 
@@ -509,7 +509,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         It relies on Zebra, which creates and advertises a route when an IP
         is added to a local interface.
 
-        This method assumes a device named self.ovn_decice exists (inside a
+        This method assumes a device named self.ovn_device exists (inside a
         VRF), and adds the IP of either:
         - VM IP on the provider network,
         - VM FIP, or
@@ -639,7 +639,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         It relies on Zebra, which withdraws the advertisement as soon as the
         IP is deleted from the local interface.
 
-        This method assumes a device named self.ovn_decice exists (inside a
+        This method assumes a device named self.ovn_device exists (inside a
         VRF), and removes the IP of either:
         - VM IP on the provider network,
         - VM FIP, or

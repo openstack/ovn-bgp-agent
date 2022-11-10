@@ -34,3 +34,15 @@ class OVNLBMemberEvent(row_event.RowEvent):
         super(OVNLBMemberEvent, self).__init__(
             events, table, None)
         self.event_name = self.__class__.__name__
+
+
+class LSPChassisEvent(row_event.RowEvent):
+    def __init__(self, bgp_agent, events):
+        self.agent = bgp_agent
+        table = 'Logical_Switch_Port'
+        super(LSPChassisEvent, self).__init__(
+            events, table, None)
+        self.event_name = self.__class__.__name__
+
+    def _check_ip_associated(self, mac):
+        return len(mac.strip().split(' ')) > 1

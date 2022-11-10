@@ -88,7 +88,7 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         if CONF.clear_vrf_routes_on_startup:
             linux_net.delete_routes_from_table(CONF.bgp_vrf_table_id)
 
-        self.chassis = self.ovs_idl.get_own_chassis_name()
+        self.chassis = self.ovs_idl.get_own_chassis_id()
         self.ovn_remote = self.ovs_idl.get_ovn_remote()
         LOG.debug("Loaded chassis %s.", self.chassis)
         if self.allowed_address_scopes:

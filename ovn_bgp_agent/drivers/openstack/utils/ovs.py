@@ -231,13 +231,21 @@ class OvsIdl(object):
         return self.idl_ovs.db_get(
             'Open_vSwitch', '.', 'external_ids').execute()[key]
 
-    def get_own_chassis_name(self):
+    def get_own_chassis_id(self):
         """Return the external_ids:system-id value of the Open_vSwitch table.
 
         As long as ovn-controller is running on this node, the key is
         guaranteed to exist and will include the chassis name.
         """
         return self._get_from_ext_ids('system-id')
+
+    def get_own_chassis_name(self):
+        """Return the external_ids:hostname value of the Open_vSwitch table.
+
+        As long as ovn-controller is running on this node, the key is
+        guaranteed to exist and will include the chassis name.
+        """
+        return self._get_from_ext_ids('hostname')
 
     def get_ovn_remote(self):
         """Return the external_ids:ovn-remote value of the Open_vSwitch table.
