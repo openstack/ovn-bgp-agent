@@ -346,8 +346,7 @@ def delete_routes_from_table(table):
         # FIXME: problem in pyroute2 removing routes with local (254) scope
         table_routes = [r for r in ndb.routes.dump().filter(table=table)
                         if r.scope != 254 and r.proto != 186]
-    for route in table_routes:
-        ovn_bgp_agent.privileged.linux_net.route_delete(route)
+    delete_ip_routes(table_routes)
 
 
 def get_routes_on_tables(table_ids):

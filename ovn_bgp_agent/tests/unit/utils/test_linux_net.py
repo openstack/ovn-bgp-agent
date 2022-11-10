@@ -309,8 +309,8 @@ class TestLinuxNet(test_base.TestCase):
     def test_delete_bridge_ip_routes_gateway(self, mock_route_delete):
         self._test_delete_bridge_ip_routes(mock_route_delete, has_gateway=True)
 
-    @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
-    def test_delete_routes_from_table(self, mock_route_delete):
+    @mock.patch('ovn_bgp_agent.utils.linux_net.delete_ip_routes')
+    def test_delete_routes_from_table(self, mock_delete_ip_routes):
         route0 = mock.MagicMock(scope=1, proto=11)
         route1 = mock.MagicMock(scope=2, proto=22)
         route2 = mock.MagicMock(scope=254, proto=186)
@@ -322,9 +322,7 @@ class TestLinuxNet(test_base.TestCase):
 
         linux_net.delete_routes_from_table('fake-table')
 
-        calls = [mock.call(route0),
-                 mock.call(route1)]
-        mock_route_delete.assert_has_calls(calls)
+        mock_delete_ip_routes.assert_called_once_with([route0, route1])
 
     def test_get_routes_on_tables(self):
         route0 = mock.MagicMock(table=10, dst='10.10.10.10', proto=10)
