@@ -304,11 +304,49 @@ class TestOVS(test_base.TestCase):
         fake_flow_1 = '{},ipv6,in_port={}'.format(self.cookie_id, port_iface)
         uneeded_flow = '{},in_port={}'.format(self.cookie_id,
                                               uneeded_port_iface)
+
         ovn_bridge_mappings = [self.bridge]
         address = '172.24.200.7'
         self.fake_ndb.interfaces[self.bridge] = {'address': address}
         self.mock_ovs_vsctl.ovs_cmd.side_effect = ([port], None, None, None)
+        mock_flows.return_value = [fake_flow_0, fake_flow_1]
         mock_flows.side_effect = ([fake_flow_0, fake_flow_1],
+                                  [fake_flow_0, fake_flow_1, uneeded_flow])
+        mock_ofport.return_value = port_iface
+
+        # Invoke the method
+        ovs_utils.ensure_default_ovs_flows(ovn_bridge_mappings, self.cookie)
+
+        expected_flow_filter = '{},in_port={}'.format(self.cookie_id,
+                                                      port_iface)
+        expected_calls = [
+            mock.call('ovs-vsctl', ['list-ports', self.bridge]),
+            mock.call('ovs-ofctl', ['del-flows', self.bridge, uneeded_flow])]
+        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
+        self.assertEqual(len(expected_calls),
+                         self.mock_ovs_vsctl.ovs_cmd.call_count)
+        mock_ofport.assert_called_once_with(port)
+        expected_calls_flows = [
+            mock.call(self.bridge, expected_flow_filter),
+            mock.call(self.bridge, self.cookie_id)]
+        mock_flows.assert_has_calls(expected_calls_flows)
+        self.assertEqual(len(expected_calls_flows), mock_flows.call_count)
+
+    @mock.patch.object(ovs_utils, 'get_bridge_flows')
+    @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
+    def test_ensure_default_ovs_flows_no_match(self, mock_ofport, mock_flows):
+        port = 'patch-provnet-fake-port'
+        port_iface = '1'
+        uneeded_port_iface = '10'
+        fake_flow_0 = '{},ip,in_port={}'.format(self.cookie_id, port_iface)
+        fake_flow_1 = '{},ipv6,in_port={}'.format(self.cookie_id, port_iface)
+        uneeded_flow = '{},in_port={}'.format(self.cookie_id,
+                                              uneeded_port_iface)
+        ovn_bridge_mappings = [self.bridge]
+        address = '172.24.200.7'
+        self.fake_ndb.interfaces[self.bridge] = {'address': address}
+        self.mock_ovs_vsctl.ovs_cmd.side_effect = ([port], None, None, None)
+        mock_flows.side_effect = ([fake_flow_0],
                                   [fake_flow_0, fake_flow_1, uneeded_flow])
         mock_ofport.return_value = port_iface
 
