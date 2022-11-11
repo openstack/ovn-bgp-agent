@@ -177,24 +177,23 @@ def ensure_default_ovs_flows(ovn_bridge_mappings, cookie):
             continue
         flow_filter = '{},in_port={}'.format(cookie_id, ovs_ofport)
         current_flows = get_bridge_flows(bridge, flow_filter)
-        if len(current_flows) == 1:
-            # assume the rule is the right one as it has the right cookie
-            # and in_port
-            continue
 
-        with pyroute2.NDB() as ndb:
-            flow = ("cookie={},priority=900,ip,in_port={},"
-                    "actions=mod_dl_dst:{},NORMAL".format(
-                        cookie, ovs_ofport,
-                        ndb.interfaces[bridge]['address']))
-            flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
-                       "actions=mod_dl_dst:{},NORMAL".format(
-                           cookie, ovs_ofport,
-                           ndb.interfaces[bridge]['address']))
-        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-            'ovs-ofctl', ['add-flow', bridge, flow])
-        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-            'ovs-ofctl', ['add-flow', bridge, flow_v6])
+        # assume if the are 2 rules they are right ones as they have
+        # the right cookie and in_port
+        if len(current_flows) != 2:
+            with pyroute2.NDB() as ndb:
+                flow = ("cookie={},priority=900,ip,in_port={},"
+                        "actions=mod_dl_dst:{},NORMAL".format(
+                            cookie, ovs_ofport,
+                            ndb.interfaces[bridge]['address']))
+                flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
+                           "actions=mod_dl_dst:{},NORMAL".format(
+                               cookie, ovs_ofport,
+                               ndb.interfaces[bridge]['address']))
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['add-flow', bridge, flow])
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['add-flow', bridge, flow_v6])
 
         # Remove unneeded flows
         current_flows = get_bridge_flows(bridge, cookie_id)
