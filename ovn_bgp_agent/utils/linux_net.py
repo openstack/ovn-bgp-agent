@@ -498,7 +498,15 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     with pyroute2.NDB() as ndb:
         if vlan:
             oif_name = '{}.{}'.format(dev, vlan)
-            oif = ndb.interfaces[oif_name]['index']
+            try:
+                oif = ndb.interfaces[oif_name]['index']
+            except KeyError:
+                # Most provider network was recently created an
+                # there has not been a sync since then, therefore
+                # the vlan device has not yet been created
+                # Trying to create the device and retrying
+                ensure_vlan_device_for_network(dev, vlan)
+                oif = ndb.interfaces[oif_name]['index']
         else:
             oif = ndb.interfaces[dev]['index']
 

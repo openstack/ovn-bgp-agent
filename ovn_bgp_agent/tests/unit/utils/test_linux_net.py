@@ -540,6 +540,27 @@ class TestLinuxNet(test_base.TestCase):
         self.assertEqual(expected_routes, routes)
         mock_route_create.assert_not_called()
 
+    @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
+    @mock.patch('ovn_bgp_agent.privileged.linux_net.route_create')
+    def test_add_ip_route_vlan_keyerror(self, mock_route_create,
+                                        mock_ensure_vlan_device):
+        routes = {}
+        oif = '5'
+        self.fake_ndb.interfaces.__getitem__.side_effect = (
+            KeyError('No index'), {'index': oif})
+        linux_net.add_ip_route(routes, self.ip, 7, self.dev, vlan=10)
+        expected_routes = {
+            self.dev: [{'route': {'dst': self.ip,
+                                  'dst_len': 32,
+                                  'oif': oif,
+                                  'proto': 3,
+                                  'scope': 253,
+                                  'table': 7},
+                        'vlan': 10}]}
+        self.assertEqual(expected_routes, routes)
+        mock_ensure_vlan_device.assert_called_once_with(self.dev, 10)
+        mock_route_create.assert_not_called()
+
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_create')
     def test_add_ip_route_mask(self, mock_route_create):
         routes = {}
