@@ -730,6 +730,15 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
+    def test_run_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(name='ovn-lb1',
+                               datapaths=['dp1', 's_dp1'])
+        self.event.run(event, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
+            'ovn-lb1', 'cr-lrp1')
+
 
 class TestChassisCreateEvent(test_base.TestCase):
     _event = bgp_watcher.ChassisCreateEvent

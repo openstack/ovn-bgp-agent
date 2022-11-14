@@ -318,10 +318,18 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
             if cr_lrp_info.get('provider_datapath') not in row.datapaths:
                 continue
-            match_subnets_datapaths = [
-                subnet_dp for subnet_dp in cr_lrp_info[
-                    'subnets_datapath'].values()
-                if subnet_dp in row.datapaths or subnet_dp in old.datapaths]
+            if event == self.ROW_DELETE:
+                match_subnets_datapaths = [
+                    subnet_dp for subnet_dp in cr_lrp_info[
+                        'subnets_datapath'].values()
+                    if subnet_dp in row.datapaths]
+            else:
+                # old.datapath needed for members deletion on different subnet
+                match_subnets_datapaths = [
+                    subnet_dp for subnet_dp in cr_lrp_info[
+                        'subnets_datapath'].values()
+                    if (subnet_dp in row.datapaths or
+                        subnet_dp in old.datapaths)]
             if match_subnets_datapaths:
                 provider_dp = cr_lrp_info.get('provider_datapath')
                 ovn_lb_cr_lrp = cr_lrp_port
