@@ -367,41 +367,34 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
                         ovn_ip_rules.pop(ip_dst, None)
 
-    def _remove_network_exposed(self, router_port, gateway):
+    def _remove_network_exposed(self, subnet_cidr, gateway):
         gateway_ips = [ip.split('/')[0] for ip in gateway['ips']]
-        try:
-            router_port_ip = router_port.mac[0].split(' ')[1]
-        except IndexError:
-            return
-        router_ip = router_port_ip.split('/')[0]
-        if router_ip in gateway_ips:
-            return
+        subnet_ip = subnet_cidr.split('/')[0]
 
-        if router_port.logical_port in self.ovn_local_lrps.keys():
-            self.ovn_local_lrps.pop(router_port.logical_port)
-        bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-            gateway['provider_datapath'])
+        for subnet_logical_port in gateway['subnets_datapath'].keys():
+            if subnet_logical_port in self.ovn_local_lrps.keys():
+                self.ovn_local_lrps.pop(subnet_logical_port)
 
-        linux_net.del_ip_rule(router_port_ip,
-                              self.ovn_routing_tables[bridge_device],
-                              bridge_device)
+        linux_net.del_ip_rule(
+            subnet_cidr, self.ovn_routing_tables[gateway['bridge_device']],
+            gateway['bridge_device'])
 
-        router_port_ip_version = linux_net.get_ip_version(router_port_ip)
+        subnet_ip_version = linux_net.get_ip_version(subnet_cidr)
         for gateway_ip in gateway_ips:
-            if linux_net.get_ip_version(gateway_ip) == router_port_ip_version:
+            if linux_net.get_ip_version(gateway_ip) == subnet_ip_version:
                 linux_net.del_ip_route(
                     self.ovn_routing_tables_routes,
-                    router_ip,
-                    self.ovn_routing_tables[bridge_device],
-                    bridge_device,
-                    vlan=bridge_vlan,
-                    mask=router_port_ip.split("/")[1],
+                    subnet_ip,
+                    self.ovn_routing_tables[gateway['bridge_device']],
+                    gateway['bridge_device'],
+                    vlan=gateway['bridge_vlan'],
+                    mask=subnet_cidr.split("/")[1],
                     via=gateway_ip)
                 if (linux_net.get_ip_version(gateway_ip) ==
                         constants.IP_VERSION_6):
-                    net = ipaddress.IPv6Network(router_port_ip, strict=False)
+                    net = ipaddress.IPv6Network(subnet_ip, strict=False)
                 else:
-                    net = ipaddress.IPv4Network(router_port_ip, strict=False)
+                    net = ipaddress.IPv4Network(subnet_ip, strict=False)
                 break
         # Check if there are VMs on the network
         # and if so withdraw the routes
@@ -583,6 +576,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 'provider_datapath': cr_lrp_datapath,
                 'ips': ips,
                 'subnets_datapath': {},
+                'subnets_cidr': [],
                 'ovn_lbs': [],
                 'bridge_vlan': None,
                 'bridge_device': None
@@ -633,6 +627,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_local_cr_lrps[row.logical_port][
                     'subnets_datapath'].update(
                         {lrp.logical_port: subnet_datapath})
+                try:
+                    subnet_cidr = lrp.mac[0].split(" ")[1]
+                except IndexError:
+                    # This should not happen: subnet without CIDR
+                    subnet_cidr = None
+                if subnet_cidr:
+                    self.ovn_local_cr_lrps[row.logical_port][
+                        'subnets_cidr'].append(subnet_cidr)
                 if CONF.expose_tenant_networks:
                     self._ensure_network_exposed(
                         lrp, row.logical_port)
@@ -775,17 +777,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Deleted BGP route for CR-LRP Port %s", ips)
 
             # Check if there are networks attached to the router,
-            # and if so, delete the needed routes/rules
-            lrp_ports = self.sb_idl.get_lrp_ports_for_router(row.datapath)
-            for lrp in lrp_ports:
-                if (lrp.chassis or
-                        not lrp.logical_port.startswith('lrp-') or
-                        "chassis-redirect-port" in lrp.options.keys()):
-                    continue
-                local_cr_lrp_info = self.ovn_local_cr_lrps.get(
-                    row.logical_port)
-                if local_cr_lrp_info:
-                    self._remove_network_exposed(lrp, local_cr_lrp_info)
+            # and if so delete the needed routes/rules
+            local_cr_lrp_info = self.ovn_local_cr_lrps.get(row.logical_port)
+            for subnet_cidr in local_cr_lrp_info['subnets_cidr']:
+                self._remove_network_exposed(subnet_cidr, local_cr_lrp_info)
+
+            # check if there are loadbalancers associated to the router,
+            # and if so delete the needed routes/rules
             ovn_lbs = self.ovn_local_cr_lrps[row.logical_port][
                 'ovn_lbs'].copy()
             for ovn_lb in ovn_lbs:
@@ -904,8 +902,31 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized('bgp')
     def withdraw_subnet(self, ip, row):
-        cr_lrp = self.sb_idl.is_router_gateway_on_chassis(row.datapath,
-                                                          self.chassis)
+        try:
+            cr_lrp = self.sb_idl.is_router_gateway_on_chassis(row.datapath,
+                                                              self.chassis)
+        except ValueError:
+            # NOTE(ltomasbo): This happens when the router (datapath) gets
+            # deleted at the same time as subnets are detached from it.
+            # Usually this will be hit when router is deleted without
+            # removing its gateway. In that case we don't need to withdraw
+            # the subnet as it is not exposed, just the cr-lrp which is
+            # handle in a different event/method (withdraw_ip)
+            LOG.debug("Router is being deleted, so it's datapath does not "
+                      "exists any more. Checking if port %s belongs to "
+                      "chassis redirect and skip in that case.",
+                      row.logical_port)
+            cr_lrp = [cr_lrp_name
+                      for cr_lrp_name in self.ovn_local_cr_lrps.keys()
+                      if row.logical_port in cr_lrp_name]
+            # if cr_lrp exists, this means the lrp port is for the router
+            # gateway, so there is no need to proceed
+            if cr_lrp:
+                LOG.debug("Port %s is related to chassis redirect, so there "
+                          "is no need to do further actions for subnet "
+                          "withdrawal, as this port was not triggering a "
+                          "subnet exposure.", row.logical_port)
+                return
         if not cr_lrp:
             return
 
