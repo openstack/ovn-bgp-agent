@@ -17,6 +17,7 @@ from unittest import mock
 
 from oslo_config import cfg
 
+from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import ovn_evpn_driver
 from ovn_bgp_agent.drivers.openstack.utils import frr
@@ -33,6 +34,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
 
     def setUp(self):
         super(TestOVNEVPNDriver, self).setUp()
+        config.register_opts()
         self.evpn_driver = ovn_evpn_driver.OVNEVPNDriver()
         self.mock_sbdb = mock.patch.object(ovn, 'OvnSbIdl').start()
         self.mock_ovs_idl = mock.patch.object(ovs, 'OvsIdl').start()

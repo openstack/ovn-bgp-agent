@@ -124,6 +124,11 @@ CONF.register_opts(root_helper_opts, "AGENT")
 logging.register_options(CONF)
 
 
+def register_opts():
+    cfg.CONF.register_opts(agent_opts)
+    cfg.CONF.register_opts(root_helper_opts, "AGENT")
+
+
 def init(args, **kwargs):
     CONF(args=args, project='bgp-agent', **kwargs)
 
