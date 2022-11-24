@@ -44,6 +44,7 @@ kernel networking capabilities to redirect the traffic arriving on the nodes
 to the OVN overlay.
 
  .. note::
+
      Note it is only intended for the N/S traffic, the E/W traffic will work
      exactly the same as before, i.e., VMs are connected through geneve
      tunnels.
@@ -123,7 +124,14 @@ The folloging events are watched and handled by the BGP watcher:
 - FIPs association/disassociation to VMs or LBs
 
 - VMs or LBs created/deleted on tenant networks (if the
-  ``expose_tenant_networks`` configuration option is enabled)
+  ``expose_tenant_networks`` configuration option is enabled, or if the
+  ``expose_ipv6_gua_tenant_networks`` for only exposing IPv6 GUA ranges)
+
+  .. note::
+
+     If ``expose_tenant_networks`` flag is enabled, it does not matter the
+     status of ``expose_ipv6_gua_tenant_networks``, as all the tenant IPs
+     will be advertized.
 
 
 The BGP watcher detects OVN Southbound Database events at the ``Port_Binding``
@@ -166,7 +174,8 @@ The specific defined events to react to are:
   the port is getting created, then the event is processed by the agent and the
   needed actions (ip rules and routes, and ovs rules) for exposing the IPs on
   that network are performed. This event calls the driver_api
-  ``expose_subnet``.
+  ``expose_subnet``. The same happens if ``expose_ipv6_gua_tenant_networks``
+  is used, but then, the IPs are only exposed if they are IPv6 global.
 
 - ``SubnetRouterDetachedEvent``: Same as previous one, but for the deletion
   of the port. It calls ``withdraw_subnet``.
@@ -207,6 +216,8 @@ VMs and LBs on provider networks or with FIPs can be reached through BGP
 (N/S traffic). In addition, if ``expose_tenant_networks`` flag is enabled,
 VMs in tenant networks should be reachable too -- although instead of directly
 in the node they are created, through one of the network gateway chassis nodes.
+The same happens with ``expose_ipv6_gua_tenant_networks`` but only for IPv6
+GUA ranges.
 
 To accomplish this, it needs to ensure that:
 
@@ -279,13 +290,15 @@ the route:
         $ ip addr add IPv4/32 dev bgp-nic
         $ ip addr add IPv6/128 dev bgp-nic
 
+
  .. note::
 
      As we also want to be able to expose VM connected to tenant networks
-     (when ``expose_tenant_networks`` configuration option is enabled), there
-     is a need to expose the Neutron router gateway port (CR-LRP on OVN) so
-     that the traffic to VMs on tenant networks is injected into OVN overlay
-     through the node that is hosting that port.
+     (when ``expose_tenant_networks`` or ``expose_ipv6_gua_tenant_networks``
+     configuration options are enabled), there is a need to expose the Neutron
+     router gateway port (CR-LRP on OVN) so that the traffic to VMs on tenant
+     networks is injected into OVN overlay through the node that is hosting
+     that port.
 
 
 Traffic Redirection to/from OVN
@@ -411,8 +424,8 @@ Agent deployment
 ~~~~~~~~~~~~~~~~
 
 The BGP mode exposes the VMs and LBs in provider networks or with
-FIPs, as well as VMs on tenant networks if ``expose_tenant_networks``
-configuration option is enabled.
+FIPs, as well as VMs on tenant networks if ``expose_tenant_networks`` or
+``expose_ipv6_gua_tenant_networks`` configuration options are enabled.
 
 There is a need to deploy the agent in all the nodes where VMs can be created
 as well as in the networker nodes (i.e., where OVN router gateway ports can be
@@ -422,18 +435,19 @@ allocated):
   the IP is exposed on the node where the VM (or amphora) is deployed.
   Therefore the agent needs to be running on the compute nodes.
 
-- For VMs on tenant networks (with ``expose_tenant_networks`` configuration
-  option enabled), the agent need to be running on the networker nodes.
-  At OpenStack, with OVN networking, the N/S traffic to the tenant VMs
-  (without FIPs) needs to go through the networking nodes, more specifically
-  the one hosting the chassisredirect ovn port (cr-lrp), connecting the
-  provider network to the OVN virtual router. Hence, the VM IPs is advertised
-  through BGP in that node, and from there it follows the normal path to the
-  OpenStack compute node where the VM is allocated — the Geneve tunnel.
+- For VMs on tenant networks (with ``expose_tenant_networks`` or
+  ``expose_ipv6_gua_tenant_networks``configuration options enabled), the agent
+  needs to be running on the networker nodes. In OpenStack, with OVN
+  networking, the N/S traffic to the tenant VMs (without FIPs) needs to go
+  through the networking nodes, more specifically the one hosting the
+  chassisredirect ovn port (cr-lrp), connecting the provider network to the
+  OVN virtual router. Hence, the VM IPs is advertised through BGP in that
+  node, and from there it follows the normal path to the OpenStack compute
+  node where the VM is located — the Geneve tunnel.
 
 - Similarly, for OVN load balancer the IPs are exposed on the networker node.
   In this case the ARP request for the VIP is replied by the OVN router
-  gateway port,, therefore the traffic needs to be injected into OVN overlay
+  gateway port, therefore the traffic needs to be injected into OVN overlay
   at that point too.
   Therefore the agent needs to be running on the networker nodes for OVN
   load balancers.
@@ -450,6 +464,7 @@ below:
       debug=True
       reconcile_interval=120
       expose_tenant_networks=True
+      # expose_ipv6_gua_tenant_networks=True
       driver=osp_bgp_driver
 
       $ sudo bgp-agent --config-dir bgp-agent.conf
@@ -464,6 +479,13 @@ below:
       Add BGP route for FIP with ip 172.24.4.199
       Add BGP route for CR-LRP Port 172.24.4.221
       ....
+
+
+   .. note::
+
+    If you only want to expose the IPv6 GUA tenant IPs, then remove the option
+    ``expose_tenant_networks`` and add ``expose_ipv6_gua_tenant_networks=True``
+    instead.
 
 
 Note that the OVN BGP Agent operates under the next assumptions:

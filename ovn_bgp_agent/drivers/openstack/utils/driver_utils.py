@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ipaddress
 from oslo_log import log as logging
+
+from ovn_bgp_agent import constants
+from ovn_bgp_agent.utils import linux_net
 
 LOG = logging.getLogger(__name__)
 
@@ -28,3 +32,13 @@ def parse_vip_from_lb_table(vip):
         return vip_split[0].split("[")[1]
 
     LOG.error("Malformated VIP at Load Balancer SB table: %s", vip)
+
+
+def is_ipv6_gua(ip):
+    if linux_net.get_ip_version(ip) != constants.IP_VERSION_6:
+        return False
+
+    ipv6 = ipaddress.IPv6Address(ip.split('/')[0])
+    if ipv6.is_global:
+        return True
+    return False

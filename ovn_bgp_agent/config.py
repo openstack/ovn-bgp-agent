@@ -25,7 +25,17 @@ agent_opts = [
                help='Time between re-sync actions.',
                default=120),
     cfg.BoolOpt('expose_tenant_networks',
-                help='Expose VM IPs on tenant networks',
+                help='Expose VM IPs on tenant networks. '
+                     'If this flag is enabled, it takes precedence over '
+                     'expose_ipv6_gua_tenant_networks flag and all tenant '
+                     'network IPs will be exposed.',
+                default=False),
+    cfg.BoolOpt('expose_ipv6_gua_tenant_networks',
+                help='Expose only VM IPv6 IPs on tenant networks if they are '
+                     'GUA. The expose_tenant_networks parameter takes '
+                     'precedence over this one. So if it is set, all the '
+                     'tenant network IPs will be exposed and not only the '
+                     'IPv6 GUA IPs.',
                 default=False),
     cfg.StrOpt('driver',
                help='Driver to be used',

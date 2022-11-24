@@ -43,6 +43,8 @@ OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer"]
 class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def __init__(self):
+        self._expose_tenant_networks = (CONF.expose_tenant_networks or
+                                        CONF.expose_ipv6_gua_tenant_networks)
         self.ovn_routing_tables = {}  # {'br-ex': 200}
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
         self.ovn_local_cr_lrps = {}
@@ -109,7 +111,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "FIPUnsetEvent",
                       "OVNLBMemberUpdateEvent",
                       "ChassisCreateEvent"])
-        if CONF.expose_tenant_networks:
+        if self._expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",
                            "TenantPortCreatedEvent",
@@ -119,6 +121,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized('bgp')
     def sync(self):
+        self._expose_tenant_networks = (CONF.expose_tenant_networks or
+                                        CONF.expose_ipv6_gua_tenant_networks)
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
         self.ovn_routing_tables_routes = collections.defaultdict()
@@ -201,7 +205,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_local_cr_lrps[cr_lrp_port]['subnets_datapath'].update(
                     {lrp.logical_port: subnet_datapath})
                 # add missing route/ips for tenant network VMs
-                if CONF.expose_tenant_networks:
+                if self._expose_tenant_networks:
                     self._ensure_network_exposed(
                         lrp, cr_lrp_port, exposed_ips, ovn_ip_rules)
 
@@ -290,6 +294,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             router_port_ip = router_port.mac[0].split(' ')[1]
         except IndexError:
             return
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            if not driver_utils.is_ipv6_gua(router_port_ip):
+                return
         router_ip = router_port_ip.split('/')[0]
         if router_ip in gateway_ips:
             return
@@ -635,7 +643,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 if subnet_cidr:
                     self.ovn_local_cr_lrps[row.logical_port][
                         'subnets_cidr'].append(subnet_cidr)
-                if CONF.expose_tenant_networks:
+                if self._expose_tenant_networks:
                     self._ensure_network_exposed(
                         lrp, row.logical_port)
 
@@ -800,8 +808,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     @lockutils.synchronized('bgp')
     def expose_remote_ip(self, ips, row):
         if (self.sb_idl.is_provider_network(row.datapath) or
-                not CONF.expose_tenant_networks):
+                not self._expose_tenant_networks):
             return
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            ips_to_expose = []
+            for ip in ips:
+                if driver_utils.is_ipv6_gua(ip):
+                    ips_to_expose.append(ip)
+            if not ips_to_expose:
+                return
+            ips = ips_to_expose
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
             LOG.debug("Adding BGP route for tenant IP %s on chassis %s",
@@ -813,8 +830,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     @lockutils.synchronized('bgp')
     def withdraw_remote_ip(self, ips, row):
         if (self.sb_idl.is_provider_network(row.datapath) or
-                not CONF.expose_tenant_networks):
+                not self._expose_tenant_networks):
             return
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            ips_to_withdraw = []
+            for ip in ips:
+                if driver_utils.is_ipv6_gua(ip):
+                    ips_to_withdraw.append(ip)
+            if not ips_to_withdraw:
+                return
+            ips = ips_to_withdraw
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
             LOG.debug("Deleting BGP route for tenant IP %s on chassis %s",
@@ -841,8 +867,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps[cr_lrp]['subnets_datapath'].update(
             {row.logical_port: network_port_datapath})
 
-        if not CONF.expose_tenant_networks:
+        if not self._expose_tenant_networks:
             return
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            if not driver_utils.is_ipv6_gua(ip):
+                return
 
         LOG.debug("Adding IP Rules for network %s on chassis %s", ip,
                   self.chassis)
@@ -938,8 +968,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps[cr_lrp]['subnets_datapath'].pop(
             row.logical_port, None)
 
-        if not CONF.expose_tenant_networks:
+        if not self._expose_tenant_networks:
             return
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            if not driver_utils.is_ipv6_gua(ip):
+                return
 
         LOG.debug("Deleting IP Rules for network %s on chassis %s", ip,
                   self.chassis)
