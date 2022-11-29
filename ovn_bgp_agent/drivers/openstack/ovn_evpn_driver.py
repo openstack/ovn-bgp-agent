@@ -121,7 +121,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             bridge = bridge_mapping.split(":")[1]
             self.ovn_bridge_mappings[network] = bridge
 
-            linux_net.ensure_arp_ndp_enabed_for_bridge(bridge, bridge_index)
+            linux_net.ensure_arp_ndp_enabled_for_bridge(bridge, bridge_index)
 
         # TO DO
         # add missing routes/ips for fips/provider VMs

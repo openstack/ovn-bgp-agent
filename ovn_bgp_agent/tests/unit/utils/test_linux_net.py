@@ -120,9 +120,9 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch.object(linux_net, 'enable_proxy_arp')
     @mock.patch.object(linux_net, 'enable_proxy_ndp')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ip_to_dev')
-    def test_ensure_arp_ndp_enabed_for_bridge(self, mock_add_ip_to_dev,
-                                              mock_ndp, mock_arp):
-        linux_net.ensure_arp_ndp_enabed_for_bridge('fake-bridge', 511)
+    def test_ensure_arp_ndp_enabled_for_bridge(self, mock_add_ip_to_dev,
+                                               mock_ndp, mock_arp):
+        linux_net.ensure_arp_ndp_enabled_for_bridge('fake-bridge', 511)
         # NOTE(ltomasbo): hardoced starting ipv4 is 192.168.0.0, and ipv6 is
         # fd53:d91e:400:7f17::0
         ipv4 = '192.168.1.255'  # base + 511 offset
@@ -136,9 +136,9 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch.object(linux_net, 'enable_proxy_arp')
     @mock.patch.object(linux_net, 'enable_proxy_ndp')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ip_to_dev')
-    def test_ensure_arp_ndp_enabed_for_bridge_vlan(self, mock_add_ip_to_dev,
-                                                   mock_ndp, mock_arp):
-        linux_net.ensure_arp_ndp_enabed_for_bridge('fake-bridge', 511, 11)
+    def test_ensure_arp_ndp_enabled_for_bridge_vlan(self, mock_add_ip_to_dev,
+                                                    mock_ndp, mock_arp):
+        linux_net.ensure_arp_ndp_enabled_for_bridge('fake-bridge', 511, 11)
         # NOTE(ltomasbo): hardoced starting ipv4 is 192.168.0.0, and ipv6 is
         # fd53:d91e:400:7f17::0
         ipv4 = '192.168.1.255'  # base + 511 offset

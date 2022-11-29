@@ -110,7 +110,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
             CONF.ovsdb_connection)
         self.mock_sbdb().start.assert_called_once_with()
 
-    @mock.patch.object(linux_net, 'ensure_arp_ndp_enabed_for_bridge')
+    @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
     def test_sync(self, mock_ensure_ndp):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']

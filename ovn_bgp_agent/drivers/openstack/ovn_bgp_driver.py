@@ -161,9 +161,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     linux_net.ensure_vlan_device_for_network(bridge,
                                                              vlan_tag)
 
-                linux_net.ensure_arp_ndp_enabed_for_bridge(bridge,
-                                                           bridge_index,
-                                                           vlan_tag)
+                linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
+                                                            bridge_index,
+                                                            vlan_tag)
 
                 if flows_info.get(bridge):
                     continue
@@ -286,6 +286,33 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 exposed_ips.remove(ip_address)
             ovn_ip_rules.pop(ip_dst, None)
 
+    def _expose_provider_port(self, port_ips, provider_datapath,
+                              bridge_device=None, bridge_vlan=None,
+                              lladdr=None):
+        linux_net.add_ips_to_dev(CONF.bgp_nic, port_ips)
+
+        if not bridge_device and not bridge_vlan:
+            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
+                provider_datapath)
+        for ip in port_ips:
+            try:
+                if lladdr:
+                    linux_net.add_ip_rule(
+                        ip, self.ovn_routing_tables[bridge_device],
+                        bridge_device, lladdr=lladdr)
+                else:
+                    linux_net.add_ip_rule(
+                        ip, self.ovn_routing_tables[bridge_device],
+                        bridge_device)
+            except agent_exc.InvalidPortIP:
+                LOG.exception("Invalid IP to create a rule for port"
+                              " on the provider network: %s", ip)
+                return []
+            linux_net.add_ip_route(
+                self.ovn_routing_tables_routes, ip,
+                self.ovn_routing_tables[bridge_device], bridge_device,
+                vlan=bridge_vlan)
+
     def _expose_tenant_port(self, port, ip_version, exposed_ips=[],
                             ovn_ip_rules={}):
         # specific case for ovn-lb vips on tenant networks
@@ -382,6 +409,32 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     port, ip_version=router_port_ip_version,
                     exposed_ips=exposed_ips, ovn_ip_rules=ovn_ip_rules)
 
+    def _withdraw_provider_port(self, port_ips, provider_datapath,
+                                bridge_device=None, bridge_vlan=None,
+                                lladdr=None):
+        linux_net.del_ips_from_dev(CONF.bgp_nic, port_ips)
+
+        # assuming either you pass both or none
+        if not bridge_device and not bridge_vlan:
+            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
+                provider_datapath)
+        for ip in port_ips:
+            if lladdr:
+                if linux_net.get_ip_version(ip) == constants.IP_VERSION_6:
+                    cr_lrp_ip = '{}/128'.format(ip)
+                else:
+                    cr_lrp_ip = '{}/32'.format(ip)
+                linux_net.del_ip_rule(
+                    cr_lrp_ip, self.ovn_routing_tables[bridge_device],
+                    bridge_device, lladdr=lladdr)
+            else:
+                linux_net.del_ip_rule(
+                    ip, self.ovn_routing_tables[bridge_device], bridge_device)
+            linux_net.del_ip_route(
+                self.ovn_routing_tables_routes, ip,
+                self.ovn_routing_tables[bridge_device], bridge_device,
+                vlan=bridge_vlan)
+
     def _remove_network_exposed(self, subnet_cidr, gateway):
         gateway_ips = [ip.split('/')[0] for ip in gateway['ips']]
         subnet_ip = subnet_cidr.split('/')[0]
@@ -434,39 +487,24 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_ovn_lb_on_provider(self, ovn_lb, ip, cr_lrp):
         self.ovn_local_cr_lrps[cr_lrp]['ovn_lbs'].append(ovn_lb)
         self.ovn_lb_vips.setdefault(ovn_lb, []).append(ip)
-
-        LOG.debug("Adding BGP route for loadbalancer VIP %s", ip)
-        linux_net.add_ips_to_dev(CONF.bgp_nic, [ip])
-
         bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
         bridge_vlan = self.ovn_local_cr_lrps[cr_lrp]['bridge_vlan']
-        try:
-            linux_net.add_ip_rule(
-                ip, self.ovn_routing_tables[bridge_device], bridge_device)
-        except agent_exc.InvalidPortIP:
-            LOG.exception("Invalid IP to create a rule for the VM ip"
-                          " on the provider network: %s", ip)
-            return
-        linux_net.add_ip_route(
-            self.ovn_routing_tables_routes, ip,
-            self.ovn_routing_tables[bridge_device], bridge_device,
-            vlan=bridge_vlan)
+
+        LOG.debug("Adding BGP route for loadbalancer VIP %s", ip)
+        self._expose_provider_port([ip], None, bridge_device=bridge_device,
+                                   bridge_vlan=bridge_vlan)
         LOG.debug("Added BGP route for loadbalancer VIP %s", ip)
 
     @lockutils.synchronized('bgp')
     def withdraw_ovn_lb_on_provider(self, ovn_lb, cr_lrp):
+        bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
+        bridge_vlan = self.ovn_local_cr_lrps[cr_lrp]['bridge_vlan']
+
         for ip in self.ovn_lb_vips[ovn_lb].copy():
             LOG.debug("Deleting BGP route for loadbalancer VIP %s", ip)
-            linux_net.del_ips_from_dev(CONF.bgp_nic, [ip])
-
-            bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
-            bridge_vlan = self.ovn_local_cr_lrps[cr_lrp]['bridge_vlan']
-
-            linux_net.del_ip_rule(ip, self.ovn_routing_tables[bridge_device],
-                                  bridge_device)
-            linux_net.del_ip_route(self.ovn_routing_tables_routes, ip,
-                                   self.ovn_routing_tables[bridge_device],
-                                   bridge_device, vlan=bridge_vlan)
+            self._withdraw_provider_port([ip], None,
+                                         bridge_device=bridge_device,
+                                         bridge_vlan=bridge_vlan)
             if ip in self.ovn_lb_vips[ovn_lb]:
                 self.ovn_lb_vips[ovn_lb].remove(ip)
             LOG.debug("Deleted BGP route for loadbalancer VIP %s", ip)
@@ -497,23 +535,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.debug("Adding BGP route for logical port with ip %s", ips)
-            linux_net.add_ips_to_dev(CONF.bgp_nic, ips)
-
-            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                row.datapath)
-            for ip in ips:
-                try:
-                    linux_net.add_ip_rule(
-                        ip, self.ovn_routing_tables[bridge_device],
-                        bridge_device)
-                except agent_exc.InvalidPortIP:
-                    LOG.exception("Invalid IP to create a rule for the VM ip"
-                                  " on the provider network: %s", ip)
-                    return []
-                linux_net.add_ip_route(
-                    self.ovn_routing_tables_routes, ip,
-                    self.ovn_routing_tables[bridge_device], bridge_device,
-                    vlan=bridge_vlan)
+            self._expose_provider_port(ips, row.datapath)
             LOG.debug("Added BGP route for logical port with ip %s", ips)
             return ips
 
@@ -525,24 +547,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 row.logical_port)
             if fip_address:
                 LOG.debug("Adding BGP route for FIP with ip %s", fip_address)
-                linux_net.add_ips_to_dev(CONF.bgp_nic,
-                                         [fip_address])
-
-                bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                    fip_datapath)
-                try:
-                    linux_net.add_ip_rule(
-                        fip_address, self.ovn_routing_tables[bridge_device],
-                        bridge_device)
-                except agent_exc.InvalidPortIP:
-                    LOG.exception("Invalid IP to create a rule for the VM "
-                                  "floating IP: %s", fip_address)
-                    return []
-
-                linux_net.add_ip_route(
-                    self.ovn_routing_tables_routes, fip_address,
-                    self.ovn_routing_tables[bridge_device], bridge_device,
-                    vlan=bridge_vlan)
+                self._expose_provider_port([fip_address], fip_datapath)
                 LOG.debug("Added BGP route for FIP with ip %s", fip_address)
                 return [fip_address]
             else:
@@ -554,24 +559,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if (associated_port and self.sb_idl.is_port_on_chassis(
                     associated_port, self.chassis)):
                 LOG.debug("Adding BGP route for FIP with ip %s", ips)
-                linux_net.add_ips_to_dev(CONF.bgp_nic, ips)
-
-                bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                    row.datapath)
-                for ip in ips:
-                    try:
-                        linux_net.add_ip_rule(
-                            ip, self.ovn_routing_tables[bridge_device],
-                            bridge_device)
-                    except agent_exc.InvalidPortIP:
-                        LOG.exception("Invalid IP to create a rule for the "
-                                      "floating IP associated to the VM: %s",
-                                      ip)
-                        return []
-                    linux_net.add_ip_route(
-                        self.ovn_routing_tables_routes, ip,
-                        self.ovn_routing_tables[bridge_device], bridge_device,
-                        vlan=bridge_vlan)
+                self._expose_provider_port(ips, row.datapath)
                 LOG.debug("Added BGP route for FIP with ip %s", ips)
                 return ips
 
@@ -586,6 +574,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Adding BGP route for CR-LRP Port %s", ips)
             # Keeping information about the associated network for
             # tenant network advertisement
+            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
+                cr_lrp_datapath)
             self.ovn_local_cr_lrps[row.logical_port] = {
                 'router_datapath': row.datapath,
                 'provider_datapath': cr_lrp_datapath,
@@ -593,40 +583,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 'subnets_datapath': {},
                 'subnets_cidr': [],
                 'ovn_lbs': [],
-                'bridge_vlan': None,
-                'bridge_device': None
+                'bridge_vlan': bridge_vlan,
+                'bridge_device': bridge_device
             }
             ips_without_mask = [ip.split("/")[0] for ip in ips]
-            linux_net.add_ips_to_dev(CONF.bgp_nic, ips_without_mask)
-
-            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                cr_lrp_datapath)
-
-            self.ovn_local_cr_lrps[row.logical_port]['bridge_vlan'] = (
-                bridge_vlan)
-            self.ovn_local_cr_lrps[row.logical_port]['bridge_device'] = (
-                bridge_device)
-
+            self._expose_provider_port(ips_without_mask, cr_lrp_datapath,
+                                       bridge_device, bridge_vlan,
+                                       lladdr=row.mac[0].split(' ')[0])
+            # add proxy ndp config for ipv6
             for ip in ips:
-                ip_without_mask = ip.split("/")[0]
-                try:
-                    linux_net.add_ip_rule(
-                        ip_without_mask,
-                        self.ovn_routing_tables[bridge_device], bridge_device,
-                        lladdr=row.mac[0].split(' ')[0])
-                except agent_exc.InvalidPortIP:
-                    LOG.exception("Invalid IP to create a rule for the "
-                                  "router gateway port: %s", ip_without_mask)
-                    return []
-                linux_net.add_ip_route(
-                    self.ovn_routing_tables_routes, ip_without_mask,
-                    self.ovn_routing_tables[bridge_device], bridge_device,
-                    vlan=bridge_vlan)
-                # add proxy ndp config for ipv6
-                if (linux_net.get_ip_version(ip_without_mask) ==
-                        constants.IP_VERSION_6):
+                if linux_net.get_ip_version(ip) == constants.IP_VERSION_6:
                     linux_net.add_ndp_proxy(ip, bridge_device, bridge_vlan)
-
             LOG.debug("Added BGP route for CR-LRP Port %s", ips)
 
             # Check if there are networks attached to the router,
@@ -691,18 +658,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.debug("Deleting BGP route for logical port with ip %s", ips)
-            linux_net.del_ips_from_dev(CONF.bgp_nic, ips)
-
-            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                row.datapath)
-            for ip in ips:
-                linux_net.del_ip_rule(ip,
-                                      self.ovn_routing_tables[bridge_device],
-                                      bridge_device)
-                linux_net.del_ip_route(
-                    self.ovn_routing_tables_routes, ip,
-                    self.ovn_routing_tables[bridge_device], bridge_device,
-                    vlan=bridge_vlan)
+            self._withdraw_provider_port(ips, row.datapath)
             LOG.debug("Deleted BGP route for logical port with ip %s", ips)
 
         # VM with FIP
@@ -714,19 +670,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if not fip_address:
                 return
 
-            LOG.debug("Delete BGP route for FIP with ip %s", fip_address)
-            linux_net.del_ips_from_dev(CONF.bgp_nic,
-                                       [fip_address])
-
-            bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                fip_datapath)
-            linux_net.del_ip_rule(fip_address,
-                                  self.ovn_routing_tables[bridge_device],
-                                  bridge_device)
-            linux_net.del_ip_route(
-                self.ovn_routing_tables_routes, fip_address,
-                self.ovn_routing_tables[bridge_device], bridge_device,
-                vlan=bridge_vlan)
+            LOG.debug("Deleting BGP route for FIP with ip %s", fip_address)
+            self._withdraw_provider_port([fip_address], fip_datapath)
             LOG.debug("Deleted BGP route for FIP with ip %s", fip_address)
 
         # FIP association to VM
@@ -736,18 +681,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                         associated_port, self.chassis) or
                     self.sb_idl.is_port_deleted(associated_port))):
                 LOG.debug("Deleting BGP route for FIP with ip %s", ips)
-                linux_net.del_ips_from_dev(CONF.bgp_nic, ips)
-
-                bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                    row.datapath)
-                for ip in ips:
-                    linux_net.del_ip_rule(
-                        ip, self.ovn_routing_tables[bridge_device],
-                        bridge_device)
-                    linux_net.del_ip_route(
-                        self.ovn_routing_tables_routes, ip,
-                        self.ovn_routing_tables[bridge_device], bridge_device,
-                        vlan=bridge_vlan)
+                self._withdraw_provider_port(ips, row.datapath)
                 LOG.debug("Deleted BGP route for FIP with ip %s", ips)
 
         # CR-LRP Port
@@ -762,27 +696,16 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             # Removing information about the associated network for
             # tenant network advertisement
             ips_without_mask = [ip.split("/")[0] for ip in ips]
-            linux_net.del_ips_from_dev(CONF.bgp_nic,
-                                       ips_without_mask)
-
             bridge_vlan = self.ovn_local_cr_lrps[row.logical_port].get(
                 'bridge_vlan')
             bridge_device = self.ovn_local_cr_lrps[row.logical_port].get(
                 'bridge_device')
-
+            self._withdraw_provider_port(ips_without_mask, cr_lrp_datapath,
+                                         bridge_device=bridge_device,
+                                         bridge_vlan=bridge_vlan,
+                                         lladdr=row.mac[0].split(' ')[0])
+            # del proxy ndp config for ipv6
             for ip in ips_without_mask:
-                if linux_net.get_ip_version(ip) == constants.IP_VERSION_6:
-                    cr_lrp_ip = '{}/128'.format(ip)
-                else:
-                    cr_lrp_ip = '{}/32'.format(ip)
-                linux_net.del_ip_rule(
-                    cr_lrp_ip, self.ovn_routing_tables[bridge_device],
-                    bridge_device, lladdr=row.mac[0].split(' ')[0])
-                linux_net.del_ip_route(
-                    self.ovn_routing_tables_routes, ip,
-                    self.ovn_routing_tables[bridge_device], bridge_device,
-                    vlan=bridge_vlan)
-                # del proxy ndp config for ipv6
                 if linux_net.get_ip_version(ip) == constants.IP_VERSION_6:
                     cr_lrps_on_same_provider = [
                         p for p in self.ovn_local_cr_lrps.values()
