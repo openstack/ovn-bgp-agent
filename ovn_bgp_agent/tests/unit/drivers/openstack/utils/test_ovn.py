@@ -40,21 +40,21 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self.sb_idl.db_find_rows = mock.Mock()
         self.sb_idl.db_list_rows = mock.Mock()
 
-    def test__get_port_by_name(self):
+    def test_get_port_by_name(self):
         fake_p_info = 'fake-port-info'
         port = 'fake-port'
         self.sb_idl.db_find_rows.return_value.execute.return_value = [
             fake_p_info]
-        ret = self.sb_idl._get_port_by_name(port)
+        ret = self.sb_idl.get_port_by_name(port)
 
         self.assertEqual(fake_p_info, ret)
         self.sb_idl.db_find_rows.assert_called_once_with(
             'Port_Binding', ('logical_port', '=', port))
 
-    def test__get_port_by_name_empty(self):
+    def test_get_port_by_name_empty(self):
         port = 'fake-port'
         self.sb_idl.db_find_rows.return_value.execute.return_value = []
-        ret = self.sb_idl._get_port_by_name(port)
+        ret = self.sb_idl.get_port_by_name(port)
 
         self.assertEqual([], ret)
         self.sb_idl.db_find_rows.assert_called_once_with(
@@ -80,6 +80,17 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self.assertEqual(['fake-port'], ret)
         self.sb_idl.db_find_rows.assert_called_once_with(
             'Port_Binding', ('datapath', '=', dp), ('type', '=', p_type))
+
+    def test_get_ports_by_type(self):
+        fake_p_info = 'fake-port-info'
+        port_type = 'fake-type'
+        self.sb_idl.db_find_rows.return_value.execute.return_value = [
+            fake_p_info]
+        ret = self.sb_idl.get_ports_by_type(port_type)
+
+        self.assertEqual([fake_p_info], ret)
+        self.sb_idl.db_find_rows.assert_called_once_with(
+            'Port_Binding', ('type', '=', port_type))
 
     def test_is_provider_network(self):
         dp = 'fake-datapath'
@@ -124,7 +135,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def _test_is_port_on_chassis(self, should_match=True):
         chassis_name = 'fake-chassis'
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             ch = fakes.create_object({'name': chassis_name})
             mock_p.return_value = fakes.create_object(
                 {'type': constants.OVN_VM_VIF_PORT_TYPE,
@@ -143,14 +154,14 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self._test_is_port_on_chassis(should_match=False)
 
     def test_is_port_on_chassis_port_not_found(self):
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             mock_p.return_value = []
             self.assertFalse(self.sb_idl.is_port_on_chassis(
                 'fake-port', 'fake-chassis'))
 
     def _test_is_port_deleted(self, port_exist=True):
         ret_value = mock.Mock() if port_exist else []
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             mock_p.return_value = ret_value
             if port_exist:
                 # Should return False as the port is not deleted
@@ -182,7 +193,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def _test_get_provider_datapath_from_cr_lrp(self, port, found_port=True):
         ret_value = (fakes.create_object({'datapath': 'dp1'})
                      if found_port else None)
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             mock_p.return_value = ret_value
             if found_port:
                 self.assertEqual(
@@ -207,6 +218,13 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_get_provider_datapath_from_cr_lrp_no_port(self):
         port = 'cr-lrp-port'
         self._test_get_provider_datapath_from_cr_lrp(port, found_port=False)
+
+    def test_get_datapath_from_port_peer(self):
+        with mock.patch.object(self.sb_idl, 'get_port_datapath') as m_dp:
+            port0 = fakes.create_object({'name': 'port-0',
+                                         'options': {'peer': 'port-peer'}})
+            self.sb_idl.get_datapath_from_port_peer(port0)
+            m_dp.assert_called_once_with('port-peer')
 
     def _test_get_network_name_and_tag(self, network_in_bridge_map=True):
         tag = 1001
@@ -293,9 +311,41 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_get_lrp_port_for_datapath_no_options(self):
         self._test_get_lrp_port_for_datapath(has_options=False)
 
+    def test_get_lrp_ports_for_router(self):
+        with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as m_dp:
+            datapath = 'router-dp'
+            self.sb_idl.get_lrp_ports_for_router(datapath)
+            m_dp.assert_called_once_with(datapath,
+                                         constants.OVN_PATCH_VIF_PORT_TYPE)
+
+    def test_get_lrp_ports_on_provider(self):
+        port = '39c38ce6-f0ea-484e-a57c-aec0d4e961a5'
+        with mock.patch.object(self.sb_idl, 'get_ports_by_type') as m_pt:
+            ch = fakes.create_object({'name': 'chassis-0'})
+            row = fakes.create_object({'logical_port': port, 'chassis': [ch],
+                                       'datapath': 'fake-dp'})
+            m_pt.return_value = [row, ]
+
+            with mock.patch.object(self.sb_idl, 'is_provider_network') as m_pn:
+                self.sb_idl.get_lrp_ports_on_provider()
+                m_pt.assert_called_once_with(constants.OVN_PATCH_VIF_PORT_TYPE)
+                m_pn.assert_called_once_with(row.datapath)
+
+    def test_get_lrp_ports_on_provider_starts_with_lrp(self):
+        port = 'lrp-39c38ce6-f0ea-484e-a57c-aec0d4e961a5'
+        with mock.patch.object(self.sb_idl, 'get_ports_by_type') as m_pt:
+            ch = fakes.create_object({'name': 'chassis-0'})
+            row = fakes.create_object({'logical_port': port, 'chassis': [ch]})
+            m_pt.return_value = [row, ]
+
+            with mock.patch.object(self.sb_idl, 'is_provider_network') as m_pn:
+                self.sb_idl.get_lrp_ports_on_provider()
+                m_pt.assert_called_once_with(constants.OVN_PATCH_VIF_PORT_TYPE)
+                m_pn.assert_not_called()
+
     def _test_get_port_datapath(self, port_found=True):
         dp = '3fce2c5f-7801-469b-894e-05561e3bda15'
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             port_info = None
             if port_found:
                 port_info = fakes.create_object({'datapath': dp})
@@ -316,7 +366,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_get_ip_from_port_peer(self):
         ip = '172.24.200.7'
         port = fakes.create_object({'options': {'peer': 'fake-peer'}})
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             port_peer = fakes.create_object({
                 'mac': ['aa:bb:cc:dd:ee:ff 172.24.200.7']})
             mock_p.return_value = port_peer
@@ -326,7 +376,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def test_get_ip_from_port_peer_port_not_found(self):
         port = fakes.create_object({'options': {'peer': 'fake-peer'}})
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             mock_p.return_value = []
 
             self.assertRaises(exceptions.PortNotFound,
@@ -342,7 +392,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
             port_name = port
 
         expected_return = 'spongebob'
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             with mock.patch.object(self.sb_idl, 'get_evpn_info') as mock_evpn:
                 mock_evpn.return_value = expected_return
                 ret = self.sb_idl.get_evpn_info_from_port_name(port_name)
@@ -387,7 +437,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def _test_get_port_if_local_chassis(self, wrong_chassis=False):
         chassis = 'wrong-chassis' if wrong_chassis else 'chassis-0'
-        with mock.patch.object(self.sb_idl, '_get_port_by_name') as mock_p:
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
             ch = fakes.create_object({'name': 'chassis-0'})
             port = fakes.create_object({'chassis': [ch]})
             mock_p.return_value = port

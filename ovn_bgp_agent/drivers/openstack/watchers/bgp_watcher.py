@@ -250,7 +250,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
             return
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.mac[0].split(' ')[1:]
-            self.agent.withdraw_remote_ip(ips, row)
+            self.agent.withdraw_remote_ip(ips, row, old.chassis)
 
 
 class OVNLBTenantPortEvent(base_watcher.PortBindingChassisEvent):

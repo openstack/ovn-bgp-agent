@@ -553,7 +553,7 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
-            ['10.10.1.16'], row)
+            ['10.10.1.16'], row, mock.ANY)
 
     def test_run_dual_stack(self):
         row = utils.create_row(
@@ -561,7 +561,7 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
             mac=['aa:bb:cc:dd:ee:ff 10.10.1.16 2002::1234:abcd:ffff:c0a8:101'])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
-            ['10.10.1.16', '2002::1234:abcd:ffff:c0a8:101'], row)
+            ['10.10.1.16', '2002::1234:abcd:ffff:c0a8:101'], row, mock.ANY)
 
     def test_run_wrong_type(self):
         row = utils.create_row(type='brigadeiro')
@@ -599,6 +599,10 @@ class TestOVNLBTenantPortEvent(test_base.TestCase):
     def test_match_fn_empty_ovn_local_lrps(self):
         self.agent.ovn_local_lrps = []
         row = utils.create_row(chassis=[], mac=[], up=[False])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_index_error(self):
+        row = utils.create_row(mac=[])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_run(self):
@@ -670,6 +674,15 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         row = utils.create_row(datapaths=['dp1'])
         old = utils.create_row(datapaths=['dp1', 'dp2'])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_attribute_error(self):
+        row = utils.create_row(mac=[])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(mac=[])
+        self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
     def test_run(self):
         row = utils.create_row(name='ovn-lb1',

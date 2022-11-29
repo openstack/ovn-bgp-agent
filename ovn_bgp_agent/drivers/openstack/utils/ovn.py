@@ -114,7 +114,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         super(OvsdbSbOvnIdl, self).__init__(connection)
         self.idl._session.reconnect.set_probe_interval(60000)
 
-    def _get_port_by_name(self, port):
+    def get_port_by_name(self, port):
         cmd = self.db_find_rows('Port_Binding', ('logical_port', '=', port))
         port_info = cmd.execute(check_error=True)
         return port_info[0] if port_info else []
@@ -127,6 +127,11 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         else:
             cmd = self.db_find_rows('Port_Binding',
                                     ('datapath', '=', datapath))
+        return cmd.execute(check_error=True)
+
+    def get_ports_by_type(self, port_type):
+        cmd = self.db_find_rows('Port_Binding',
+                                ('type', '=', port_type))
         return cmd.execute(check_error=True)
 
     def is_provider_network(self, datapath):
@@ -145,7 +150,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return None, None
 
     def is_port_on_chassis(self, port_name, chassis):
-        port_info = self._get_port_by_name(port_name)
+        port_info = self.get_port_by_name(port_name)
         try:
             return (port_info and
                     port_info.chassis[0].name == chassis)
@@ -154,7 +159,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return False
 
     def is_port_deleted(self, port_name):
-        return False if self._get_port_by_name(port_name) else True
+        return False if self.get_port_by_name(port_name) else True
 
     def get_ports_on_chassis(self, chassis):
         rows = self.db_list_rows('Port_Binding').execute(check_error=True)
@@ -171,7 +176,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def get_cr_lrp_nat_addresses_info(self, cr_lrp_port_name, chassis, sb_idl):
         # NOTE: Assuming logical_port format is "cr-lrp-XXXX"
         patch_port_name = cr_lrp_port_name.split("cr-lrp-")[1]
-        patch_port_row = self._get_port_by_name(patch_port_name)
+        patch_port_row = self.get_port_by_name(patch_port_name)
         if not patch_port_row:
             return [], None
         ips = []
@@ -185,10 +190,12 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def get_provider_datapath_from_cr_lrp(self, cr_lrp):
         if cr_lrp.startswith('cr-lrp'):
             provider_port = cr_lrp.split("cr-lrp-")[1]
-            port_info = self._get_port_by_name(provider_port)
-            if port_info:
-                return port_info.datapath
+            return self.get_port_datapath(provider_port)
         return None
+
+    def get_datapath_from_port_peer(self, port):
+        peer_name = port.options['peer']
+        return self.get_port_datapath(peer_name)
 
     def get_network_name_and_tag(self, datapath, bridge_mappings):
         for row in self.get_ports_on_datapath(
@@ -225,14 +232,24 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return self.get_ports_on_datapath(
             datapath, constants.OVN_PATCH_VIF_PORT_TYPE)
 
+    def get_lrp_ports_on_provider(self):
+        provider_lrp_ports = []
+        lrp_ports = self.get_ports_by_type(constants.OVN_PATCH_VIF_PORT_TYPE)
+        for lrp_port in lrp_ports:
+            if lrp_port.logical_port.startswith(
+                    constants.OVN_LRP_PORT_NAME_PREFIX):
+                continue
+            if self.is_provider_network(lrp_port.datapath):
+                provider_lrp_ports.append(lrp_port)
+
     def get_port_datapath(self, port_name):
-        port_info = self._get_port_by_name(port_name)
+        port_info = self.get_port_by_name(port_name)
         if port_info:
             return port_info.datapath
 
     def get_ip_from_port_peer(self, port):
         peer_name = port.options['peer']
-        peer_port = self._get_port_by_name(peer_name)
+        peer_port = self.get_port_by_name(peer_name)
         try:
             return peer_port.mac[0].split(' ')[1]
         except AttributeError:
@@ -245,7 +262,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         elif port_name.startswith(constants.OVN_LRP_PORT_NAME_PREFIX):
             port_name = port_name.split(constants.OVN_LRP_PORT_NAME_PREFIX)[1]
 
-        port = self._get_port_by_name(port_name)
+        port = self.get_port_by_name(port_name)
         return self.get_evpn_info(port)
 
     def get_evpn_info(self, port):
@@ -263,7 +280,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             return {}
 
     def get_port_if_local_chassis(self, port_name, chassis):
-        port = self._get_port_by_name(port_name)
+        port = self.get_port_by_name(port_name)
         if port.chassis[0].name == chassis:
             return port
 
