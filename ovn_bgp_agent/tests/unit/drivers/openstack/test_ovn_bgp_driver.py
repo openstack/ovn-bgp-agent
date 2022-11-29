@@ -245,6 +245,121 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_expose_ip.assert_not_called()
 
     @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port(self, mock_ip_version, mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.10 192.168.1.11'],
+            'chassis': 'fake-chassis1',
+            'external_ids': {}})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        expected_calls = [mock.call(CONF.bgp_nic, ['192.168.1.10']),
+                          mock.call(CONF.bgp_nic, ['192.168.1.11'])]
+        mock_add_ips_dev.assert_has_calls(expected_calls)
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_ovn_lb(self, mock_ip_version,
+                                        mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': '',
+            'external_ids': {'neutron:cidrs': '192.168.1.10/24'},
+            'up': [False]})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_add_ips_dev.assert_called_once_with(CONF.bgp_nic,
+                                                 ['192.168.1.10'])
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_no_ip(self, mock_ip_version,
+                                       mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': ['aa:bb:cc:dd:ee:ee'],
+            'chassis': 'fake-chassis1',
+            'external_ids': {}})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_ip_version.assert_not_called()
+        mock_add_ips_dev.assert_not_called()
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_no_mac(self, mock_ip_version,
+                                        mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': [],
+            'chassis': 'fake-chassis1',
+            'external_ids': {}})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_ip_version.assert_not_called()
+        mock_add_ips_dev.assert_not_called()
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_wrong_type(self, mock_ip_version,
+                                            mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE,
+            'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.10 192.168.1.11'],
+            'chassis': 'fake-chassis1',
+            'external_ids': {}})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_ip_version.assert_not_called()
+        mock_add_ips_dev.assert_not_called()
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_no_chassis(self, mock_ip_version,
+                                            mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': ['aa:bb:cc:dd:ee:ee 192.168.1.10 192.168.1.11'],
+            'chassis': '',
+            'external_ids': {}})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_ip_version.assert_not_called()
+        mock_add_ips_dev.assert_not_called()
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
     @mock.patch.object(linux_net, 'get_ip_version')
@@ -1099,11 +1214,9 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
-    @mock.patch.object(linux_net, 'add_ips_to_dev')
     @mock.patch.object(linux_net, 'get_ip_version')
     def test_expose_subnet(
-            self, mock_ip_version, mock_add_ip_dev, mock_add_rule,
-            mock_add_route):
+            self, mock_ip_version, mock_add_rule, mock_add_route):
         mock_ip_version.return_value = constants.IP_VERSION_4
         self.sb_idl.is_router_gateway_on_chassis.return_value = self.cr_lrp0
         self.sb_idl.get_port_datapath.return_value = 'fake-port-dp'
@@ -1129,6 +1242,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             'chassis': 'fake-chassis2'})
         self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
                                                           dp_port2]
+        mock_expose_tenant_port = mock.patch.object(
+            self.bgp_driver, '_expose_tenant_port').start()
 
         self.bgp_driver.expose_subnet('{}/32'.format(self.ipv4), row)
 
@@ -1137,18 +1252,19 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=None,
             mask='32', via=self.fip)
-        expected_calls = [mock.call(CONF.bgp_nic, ['192.168.1.10']),
-                          mock.call(CONF.bgp_nic, ['192.168.1.11'])]
-        mock_add_ip_dev.assert_has_calls(expected_calls)
+        expected_calls = [
+            mock.call(dp_port0, ip_version=constants.IP_VERSION_4),
+            mock.call(dp_port1, ip_version=constants.IP_VERSION_4),
+            mock.call(dp_port2, ip_version=constants.IP_VERSION_4)]
+        mock_expose_tenant_port.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
-    @mock.patch.object(linux_net, 'add_ips_to_dev')
     @mock.patch.object(linux_net, 'get_ip_version')
     @mock.patch.object(driver_utils, 'is_ipv6_gua')
     def test_expose_subnet_gua(
-            self, mock_ipv6_gua, mock_ip_version, mock_add_ip_dev,
-            mock_add_rule, mock_add_route):
+            self, mock_ipv6_gua, mock_ip_version, mock_add_rule,
+            mock_add_route):
         CONF.set_override('expose_tenant_networks', False)
         self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
         CONF.set_override('expose_ipv6_gua_tenant_networks', True)
@@ -1179,6 +1295,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             'chassis': 'fake-chassis2'})
         self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
                                                           dp_port2]
+        mock_expose_tenant_port = mock.patch.object(
+            self.bgp_driver, '_expose_tenant_port').start()
 
         self.bgp_driver.expose_subnet('{}/128'.format(self.ipv6), row)
 
@@ -1187,17 +1305,17 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv6, 'fake-table', self.bridge, vlan=None,
             mask='128', via=self.fip)
-        expected_calls = [mock.call(CONF.bgp_nic,
-                                    ['2002::1234:abcd:ffff:c0a8:111'])]
-        mock_add_ip_dev.assert_has_calls(expected_calls)
+        expected_calls = [
+            mock.call(dp_port0, ip_version=constants.IP_VERSION_6),
+            mock.call(dp_port1, ip_version=constants.IP_VERSION_6),
+            mock.call(dp_port2, ip_version=constants.IP_VERSION_6)]
+        mock_expose_tenant_port.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
-    @mock.patch.object(linux_net, 'add_ips_to_dev')
     @mock.patch.object(driver_utils, 'is_ipv6_gua')
     def test_expose_subnet_no_gua(
-            self, mock_ipv6_gua, mock_add_ip_dev, mock_add_rule,
-            mock_add_route):
+            self, mock_ipv6_gua, mock_add_rule, mock_add_route):
         CONF.set_override('expose_tenant_networks', False)
         self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
         CONF.set_override('expose_ipv6_gua_tenant_networks', True)
@@ -1227,13 +1345,15 @@ class TestOVNBGPDriver(test_base.TestCase):
             'chassis': 'fake-chassis2'})
         self.sb_idl.get_ports_on_datapath.return_value = [dp_port0, dp_port1,
                                                           dp_port2]
+        mock_expose_tenant_port = mock.patch.object(
+            self.bgp_driver, '_expose_tenant_port').start()
 
         self.bgp_driver.expose_subnet(
             'fdab:4ad8:e8fb:0:f816:3eff:fec6:469c/128', row)
 
         mock_add_rule.assert_not_called()
         mock_add_route.assert_not_called()
-        mock_add_ip_dev.assert_not_called()
+        mock_expose_tenant_port.assert_not_called()
 
     @mock.patch.object(linux_net, 'get_exposed_ips_on_network')
     @mock.patch.object(linux_net, 'delete_exposed_ips')
