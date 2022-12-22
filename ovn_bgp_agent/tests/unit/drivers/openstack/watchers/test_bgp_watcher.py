@@ -651,7 +651,8 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         self.agent = mock.Mock(chassis=self.chassis)
         self.agent.ovn_local_cr_lrps = {
             'cr-lrp1': {'provider_datapath': 'dp1',
-                        'subnets_datapath': {'lrp1': 's_dp1'}}}
+                        'subnets_datapath': {'lrp1': 's_dp1'},
+                        'ovn_lbs': 'ovn-lb1'}}
         self.event = bgp_watcher.OVNLBMemberUpdateEvent(self.agent)
 
     def test_match_fn(self):
@@ -684,12 +685,45 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         row = utils.create_row(mac=[])
         self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
+    def test_match_fn_dp_group(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 'dp2'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
+        row = utils.create_row(datapath_group=[dpg1])
+        old = utils.create_row(datapath_group=[dpg2])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_dp_group_attribute_error(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group')
+        row = utils.create_row(datapath_group=[dpg1])
+        old = utils.create_row(datapath_group=[dpg1])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_dp_group_no_dp_change(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 'dp2'])
+        row = utils.create_row(datapath_group=[dpg1])
+        old = utils.create_row(datapath_group=[dpg1])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_dp_group_no_old_dp(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 'dp2'])
+        row = utils.create_row(datapath_group=[dpg1])
+        old = utils.create_row(datapath_group=[])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
     def test_run(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp1'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp1'],
+                               datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         old = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1'],
+                               datapath_group=[dpg2],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
@@ -697,17 +731,24 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_provider_dp(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp2'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['s_dp2'])
-        self.event.run(mock.Mock(), row, mock.Mock())
+                               datapath_group=[dpg1])
+        self.event.run(mock.Mock(), row, row)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_removed_dp(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1'])
+                               datapath_group=[dpg1],
+                               vips={})
         old = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp1'],
+                               datapath_group=[dpg2],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
@@ -715,39 +756,56 @@ class TestOVNLBMemberUpdateEvent(test_base.TestCase):
             'ovn-lb1', 'cr-lrp1')
 
     def test_run_no_match_subnets_dp(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp2'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp2'],
+                               datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         old = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1'],
+                               datapath_group=[dpg2],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_member(self):
-        row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1'])
-        old = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1'])
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
+        row = utils.create_row(name='ovn-lb2',
+                               datapath_group=[dpg1],
+                               vips={})
+        old = utils.create_row(name='ovn-lb2',
+                               datapath_group=[dpg1])
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_member_removal(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp1'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp1', 's_dp2'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp1'])
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
         old = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp1', 's_dp2'])
+                               datapath_group=[dpg2],
+                               vips={'172.24.100.66:80':
+                                     '10.0.0.5:8080,10.0.0.6:8080'})
         self.event.run(mock.Mock(), row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_delete(self):
         event = self.event.ROW_DELETE
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', 's_dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapaths=['dp1', 's_dp1'])
-        self.event.run(event, row, mock.Mock())
+                               datapath_group=[dpg1])
+        old = utils.create_row()
+        self.event.run(event, row, old)
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
             'ovn-lb1', 'cr-lrp1')

@@ -298,11 +298,24 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         if event == self.ROW_DELETE:
             return bool(self.agent.ovn_local_cr_lrps)
 
-        try:
-            if row.datapaths == old.datapaths:
+        if hasattr(row, 'datapath_group'):
+            try:
+                # NOTE(ltomasbo): We need to account for datapaths on
+                # datapath_group being updated instead of changing the group
+                if row.datapath_group and old.datapath_group:
+                    if (row.datapath_group[0].datapaths ==
+                            old.datapath_group[0].datapaths):
+                        return False
+            except (IndexError, AttributeError):
                 return False
-        except AttributeError:
-            return False
+        else:
+            # TODO(ltomasbo): Once usage of datapath_group is common, we
+            # should remove the checks for datapaths
+            try:
+                if row.datapaths == old.datapaths:
+                    return False
+            except AttributeError:
+                return False
 
         # Only process event if the local node has a cr-lrp ports associated
         return bool(self.agent.ovn_local_cr_lrps)
@@ -313,28 +326,43 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
         # loadbalancer has the VIP on a provider network
         # Also, the cr-lrp port needs to have subnet datapaths (LS) associated
         # to it that include the load balancer
-        provider_dp = ""
+        try:
+            row_dp = row.datapaths
+        except AttributeError:
+            row_dp = []
+        try:
+            old_dp = old.datapaths
+        except AttributeError:
+            old_dp = []
+        if hasattr(row, 'datapath_group'):
+            if row.datapath_group:
+                dp_datapaths = row.datapath_group[0].datapaths
+                if dp_datapaths:
+                    row_dp = dp_datapaths
+        if hasattr(old, 'datapath_group'):
+            if old.datapath_group:
+                dp_datapaths = old.datapath_group[0].datapaths
+                if dp_datapaths:
+                    old_dp = dp_datapaths
+
         ovn_lb_cr_lrp = ""
         for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
-            if cr_lrp_info.get('provider_datapath') not in row.datapaths:
+            if cr_lrp_info.get('provider_datapath') not in row_dp:
                 continue
-            if event == self.ROW_DELETE:
-                match_subnets_datapaths = [
-                    subnet_dp for subnet_dp in cr_lrp_info[
-                        'subnets_datapath'].values()
-                    if subnet_dp in row.datapaths]
+            if event == self.ROW_DELETE or not row.vips:
+                if row.name in cr_lrp_info['ovn_lbs']:
+                    ovn_lb_cr_lrp = cr_lrp_port
+                    break
             else:
                 # old.datapath needed for members deletion on different subnet
                 match_subnets_datapaths = [
                     subnet_dp for subnet_dp in cr_lrp_info[
                         'subnets_datapath'].values()
-                    if (subnet_dp in row.datapaths or
-                        subnet_dp in old.datapaths)]
-            if match_subnets_datapaths:
-                provider_dp = cr_lrp_info.get('provider_datapath')
-                ovn_lb_cr_lrp = cr_lrp_port
-                break
-        if not provider_dp:
+                    if (subnet_dp in row_dp)]
+                if match_subnets_datapaths:
+                    ovn_lb_cr_lrp = cr_lrp_port
+                    break
+        if not ovn_lb_cr_lrp:
             return
 
         with _SYNC_STATE_LOCK.read_lock():
@@ -343,7 +371,7 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
                 return self.agent.withdraw_ovn_lb_on_provider(row.name,
                                                               ovn_lb_cr_lrp)
 
-            if len(row.datapaths) == 1 and len(old.datapaths) > 1:
+            if not row.vips:
                 # last member deleted. Withdraw the VIP through the cr-lrp
                 return self.agent.withdraw_ovn_lb_on_provider(row.name,
                                                               ovn_lb_cr_lrp)
@@ -352,7 +380,7 @@ class OVNLBMemberUpdateEvent(base_watcher.OVNLBMemberEvent):
             # the datapaths fields belongs to networks (Logical_Switch)
             # connected to the provider network datapath through a single
             # router (cr-lrp)
-            if len(old.datapaths) == 1 and len(row.datapaths) > 1:
+            if len(old_dp) <= 1 and len(row_dp) > 1:
                 # first member added, time to expose the VIP through the cr-lrp
                 for vip in row.vips.keys():
                     ip = driver_utils.parse_vip_from_lb_table(vip)
