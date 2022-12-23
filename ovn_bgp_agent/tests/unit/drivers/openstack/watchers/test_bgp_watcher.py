@@ -550,7 +550,8 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
 
     def test_run(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
-                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               chassis=[mock.Mock()])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
             ['10.10.1.16'], row, mock.ANY)
@@ -558,7 +559,8 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
     def test_run_dual_stack(self):
         row = utils.create_row(
             type=constants.OVN_VM_VIF_PORT_TYPE,
-            mac=['aa:bb:cc:dd:ee:ff 10.10.1.16 2002::1234:abcd:ffff:c0a8:101'])
+            mac=['aa:bb:cc:dd:ee:ff 10.10.1.16 2002::1234:abcd:ffff:c0a8:101'],
+            chassis=[mock.Mock()])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
             ['10.10.1.16', '2002::1234:abcd:ffff:c0a8:101'], row, mock.ANY)
@@ -567,6 +569,15 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         row = utils.create_row(type='brigadeiro')
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_not_called()
+
+    def test_run_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               chassis=[mock.Mock()])
+        self.event.run(event, row, [])
+        self.agent.withdraw_remote_ip.assert_called_once_with(
+            ['10.10.1.16'], row, mock.ANY)
 
 
 class TestOVNLBTenantPortEvent(test_base.TestCase):
