@@ -248,9 +248,13 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
         if row.type not in (constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
+        if event == self.ROW_UPDATE:
+            chassis = old.chassis
+        else:
+            chassis = row.chassis
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.mac[0].split(' ')[1:]
-            self.agent.withdraw_remote_ip(ips, row, old.chassis)
+            self.agent.withdraw_remote_ip(ips, row, chassis)
 
 
 class OVNLBTenantPortEvent(base_watcher.PortBindingChassisEvent):
