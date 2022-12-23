@@ -26,6 +26,7 @@ from ovn_bgp_agent.drivers.openstack.utils import ovn as ovn_utils
 from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests.unit import fakes
+from ovn_bgp_agent.tests import utils
 
 CONF = cfg.CONF
 
@@ -455,6 +456,30 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self._test_get_port_if_local_chassis(wrong_chassis=True)
 
     def test_get_ovn_lb_on_provider_datapath(self):
+        dp = 'fake-datapath'
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1'])
+        dpg2 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['dp1', dp])
+        dpg3 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=[dp])
+
+        ovn_lb1 = fakes.create_object(
+            {'name': 'ovn-lb1', 'datapath_group': [dpg1]})
+        ovn_lb2 = fakes.create_object(
+            {'name': 'ovn-lb2', 'datapath_group': [dpg2]})
+        ovn_lb3 = fakes.create_object(
+            {'name': 'ovn-lb3', 'datapath_group': [dpg3]})
+
+        self.sb_idl.db_list_rows.return_value.execute.return_value = [
+            ovn_lb1, ovn_lb2, ovn_lb3]
+
+        ret = self.sb_idl.get_ovn_lb_on_provider_datapath(dp)
+        self.assertIn(ovn_lb2, ret)
+        self.assertNotIn(ovn_lb1, ret)
+        self.assertNotIn(ovn_lb3, ret)
+
+    def test_get_ovn_lb_on_provider_datapath_no_dadtapath_group(self):
         dp = 'fake-datapath'
         ovn_lb1 = fakes.create_object(
             {'name': 'ovn-lb1', 'datapaths': ['dp1']})

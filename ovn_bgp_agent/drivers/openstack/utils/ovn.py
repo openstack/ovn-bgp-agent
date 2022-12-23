@@ -293,6 +293,18 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         # return [ovn_lb for ovn_lb in ovn_lbs if len(ovn_lb.datapaths) > 1]
         ovn_lbs = self.db_list_rows('Load_Balancer').execute(
             check_error=True)
-        return [ovn_lb for ovn_lb in ovn_lbs
-                if (len(ovn_lb.datapaths) > 1 and
-                    datapath in ovn_lb.datapaths)]
+
+        lbs = []
+        for ovn_lb in ovn_lbs:
+            if hasattr(ovn_lb, 'datapath_group'):
+                if ovn_lb.datapath_group:
+                    dp_group_datapaths = ovn_lb.datapath_group[0].datapaths
+                    if (len(dp_group_datapaths) > 1 and
+                            datapath in dp_group_datapaths):
+                        lbs.append(ovn_lb)
+            else:
+                # TODO(ltomasbo): Once usage of datapath_group is common, we
+                # should remove the checks for datapaths
+                if len(ovn_lb.datapaths) > 1 and datapath in ovn_lb.datapaths:
+                    lbs.append(ovn_lb)
+        return lbs

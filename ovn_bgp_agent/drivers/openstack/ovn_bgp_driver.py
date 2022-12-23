@@ -89,11 +89,19 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # and does not support Chassis_Private. Once the package is updated
         # we can remove this fallback mode.
         try:
-            self.sb_idl = ovn.OvnSbIdl(
-                self.ovn_remote,
-                chassis=self.chassis,
-                tables=OVN_TABLES + ["Chassis_Private"],
-                events=events).start()
+            try:
+                self.sb_idl = ovn.OvnSbIdl(
+                    self.ovn_remote,
+                    chassis=self.chassis,
+                    tables=OVN_TABLES + ["Chassis_Private",
+                                         "Logical_DP_Group"],
+                    events=events).start()
+            except AssertionError:
+                self.sb_idl = ovn.OvnSbIdl(
+                    self.ovn_remote,
+                    chassis=self.chassis,
+                    tables=OVN_TABLES + ["Chassis_Private"],
+                    events=events).start()
         except AssertionError:
             self.sb_idl = ovn.OvnSbIdl(
                 self.ovn_remote,
@@ -637,21 +645,21 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def _process_ovn_lb(self, ovn_lb, cr_lrp_port, exposed_ips=[],
                         ovn_ip_rules={}):
-        if any([True for ovn_dp in ovn_lb.datapaths
-                if ovn_dp in self.ovn_local_cr_lrps[
-                    cr_lrp_port]['subnets_datapath'].values()]):
-            for vip in ovn_lb.vips.keys():
-                ip = driver_utils.parse_vip_from_lb_table(vip)
-                self._expose_ovn_lb_on_provider(ovn_lb.name, ip, cr_lrp_port)
-                if exposed_ips and ip in exposed_ips:
-                    exposed_ips.remove(ip)
-                if ovn_ip_rules:
-                    ip_version = linux_net.get_ip_version(ip)
-                    if ip_version == constants.IP_VERSION_6:
-                        ip_dst = "{}/128".format(ip)
-                    else:
-                        ip_dst = "{}/32".format(ip)
-                    ovn_ip_rules.pop(ip_dst, None)
+        # assumes the cr_lrp_port is in this node, so no need for extra
+        # checking as get_ovn_lb_on_provider_datapath already checks the
+        # are at least 2 datapaths associated to the loadbalancer
+        for vip in ovn_lb.vips.keys():
+            ip = driver_utils.parse_vip_from_lb_table(vip)
+            self._expose_ovn_lb_on_provider(ovn_lb.name, ip, cr_lrp_port)
+            if exposed_ips and ip in exposed_ips:
+                exposed_ips.remove(ip)
+            if ovn_ip_rules:
+                ip_version = linux_net.get_ip_version(ip)
+                if ip_version == constants.IP_VERSION_6:
+                    ip_dst = "{}/128".format(ip)
+                else:
+                    ip_dst = "{}/32".format(ip)
+                ovn_ip_rules.pop(ip_dst, None)
 
     def _expose_cr_lrp_port(self, ips, mac, bridge_device, bridge_vlan,
                             router_datapath, provider_datapath, cr_lrp_port):
