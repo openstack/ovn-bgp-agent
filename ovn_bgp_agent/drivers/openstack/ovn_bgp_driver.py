@@ -428,6 +428,18 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.debug("Adding BGP route for logical port with ip %s", ips)
             self._expose_provider_port(ips, row.datapath)
+            # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
+            # network, we need a NDP Proxy so that the traffic from the
+            # amphora can properly be redirected back
+            if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                bridge_device, bridge_vlan = self._get_bridge_for_datapath(
+                    row.datapath)
+                # NOTE: This is neutron specific as we need the provider
+                # prefix to add the ndp proxy
+                n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                if n_cidr and (linux_net.get_ip_version(n_cidr) ==
+                               constants.IP_VERSION_6):
+                    linux_net.add_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
             LOG.debug("Added BGP route for logical port with ip %s", ips)
             return ips
 
@@ -511,6 +523,25 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.sb_idl.is_provider_network(row.datapath)):
             LOG.debug("Deleting BGP route for logical port with ip %s", ips)
             self._withdraw_provider_port(ips, row.datapath)
+            if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                virtual_provider_ports = (
+                    self.sb_idl.get_virtual_ports_on_datapath_by_chassis(
+                        row.datapath, self.chassis))
+                if not virtual_provider_ports:
+                    cr_lrps_on_same_provider = [
+                        p for p in self.ovn_local_cr_lrps.values()
+                        if p['provider_datapath'] == row.datapath]
+                    if not cr_lrps_on_same_provider:
+                        bridge_device, bridge_vlan = (
+                            self._get_bridge_for_datapath(row.datapath))
+                        # NOTE: This is neutron specific as we need the
+                        # provider prefix to add the ndp proxy
+                        n_cidr = row.external_ids.get(
+                            constants.OVN_CIDRS_EXT_ID_KEY)
+                        if n_cidr and (linux_net.get_ip_version(n_cidr) ==
+                                       constants.IP_VERSION_6):
+                            linux_net.del_ndp_proxy(n_cidr, bridge_device,
+                                                    bridge_vlan)
             LOG.debug("Deleted BGP route for logical port with ip %s", ips)
 
         # VM with FIP

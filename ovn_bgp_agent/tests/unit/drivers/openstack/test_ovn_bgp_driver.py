@@ -808,6 +808,44 @@ class TestOVNBGPDriver(test_base.TestCase):
                                     self.bridge, vlan=10)]
         mock_add_route.assert_has_calls(expected_calls)
 
+    @mock.patch.object(linux_net, 'add_ndp_proxy')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'add_ip_route')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    def test_expose_ip_virtual_port_on_provider_network(
+            self, mock_add_ip_dev, mock_add_rule, mock_add_route,
+            mock_ip_version, mock_add_ndp_proxy):
+        self.sb_idl.is_provider_network.return_value = True
+        mock_get_bridge = mock.patch.object(
+            self.bgp_driver, '_get_bridge_for_datapath').start()
+        mock_get_bridge.return_value = (self.bridge, 10)
+        mock_ip_version.return_value = constants.IP_VERSION_6
+        row = fakes.create_object({
+            'name': 'fake-row',
+            'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+            'datapath': 'fake-dp',
+            'external_ids': {'neutron:cidrs': '{}/128'.format(self.ipv6)}})
+
+        ips = [self.ipv4, self.ipv6]
+        self.bgp_driver.expose_ip(ips, row)
+
+        # Assert that the add methods were called
+        mock_add_ip_dev.assert_called_once_with(
+            CONF.bgp_nic, ips)
+
+        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
+                          mock.call(self.ipv6, 'fake-table', self.bridge)]
+        mock_add_rule.assert_has_calls(expected_calls)
+
+        expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
+                                    self.bridge, vlan=10),
+                          mock.call(mock.ANY, self.ipv6, 'fake-table',
+                                    self.bridge, vlan=10)]
+        mock_add_route.assert_has_calls(expected_calls)
+        mock_add_ndp_proxy.assert_called_once_with(
+            '{}/128'.format(self.ipv6), self.bridge, 10)
+
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
     @mock.patch.object(linux_net, 'add_ips_to_dev')
@@ -1010,6 +1048,46 @@ class TestOVNBGPDriver(test_base.TestCase):
                           mock.call(mock.ANY, self.ipv6, 'fake-table',
                                     self.bridge, vlan=10)]
         mock_del_route.assert_has_calls(expected_calls)
+
+    @mock.patch.object(linux_net, 'del_ndp_proxy')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'del_ip_route')
+    @mock.patch.object(linux_net, 'del_ip_rule')
+    @mock.patch.object(linux_net, 'del_ips_from_dev')
+    def test_withdraw_ip_virtual_port_on_provider_network(
+            self, mock_del_ip_dev, mock_del_rule, mock_del_route,
+            mock_ip_version, mock_del_ndp_proxy):
+        self.sb_idl.is_provider_network.return_value = True
+        mock_get_bridge = mock.patch.object(
+            self.bgp_driver, '_get_bridge_for_datapath').start()
+        mock_get_bridge.return_value = (self.bridge, 10)
+        row = fakes.create_object({
+            'name': 'fake-row',
+            'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+            'datapath': 'fake-dp',
+            'external_ids': {'neutron:cidrs': '{}/128'.format(self.ipv6)}})
+
+        ips = [self.ipv4, self.ipv6]
+        self.sb_idl.get_virtual_ports_on_datapath_by_chassis.return_value = []
+        mock_ip_version.return_value = constants.IP_VERSION_6
+
+        self.bgp_driver.withdraw_ip(ips, row)
+
+        # Assert that the del methods were called
+        mock_del_ip_dev.assert_called_once_with(
+            CONF.bgp_nic, ips)
+
+        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
+                          mock.call(self.ipv6, 'fake-table', self.bridge)]
+        mock_del_rule.assert_has_calls(expected_calls)
+
+        expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
+                                    self.bridge, vlan=10),
+                          mock.call(mock.ANY, self.ipv6, 'fake-table',
+                                    self.bridge, vlan=10)]
+        mock_del_route.assert_has_calls(expected_calls)
+        mock_del_ndp_proxy.assert_called_once_with(
+            '{}/128'.format(self.ipv6), self.bridge, 10)
 
     @mock.patch.object(linux_net, 'del_ip_route')
     @mock.patch.object(linux_net, 'del_ip_rule')

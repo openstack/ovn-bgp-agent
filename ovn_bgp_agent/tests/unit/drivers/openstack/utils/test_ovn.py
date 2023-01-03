@@ -455,6 +455,18 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_get_port_if_local_chassis_wrong_chassis(self):
         self._test_get_port_if_local_chassis(wrong_chassis=True)
 
+    def test_get_virtual_ports_on_datapath_by_chassis(self):
+        with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as mock_p:
+            ch1 = fakes.create_object({'name': 'chassis-1'})
+            ch2 = fakes.create_object({'name': 'chassis-2'})
+            port1 = fakes.create_object({'chassis': [ch1]})
+            port2 = fakes.create_object({'chassis': [ch2]})
+            mock_p.return_value = [port1, port2]
+            ret = self.sb_idl.get_virtual_ports_on_datapath_by_chassis(
+                'fake-datapath', 'chassis-1')
+
+            self.assertEqual([port1], ret)
+
     def test_get_ovn_lb_on_provider_datapath(self):
         dp = 'fake-datapath'
         dpg1 = utils.create_row(_uuid='fake_dp_group',

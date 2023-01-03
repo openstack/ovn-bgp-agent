@@ -284,6 +284,11 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         if port.chassis[0].name == chassis:
             return port
 
+    def get_virtual_ports_on_datapath_by_chassis(self, datapath, chassis):
+        rows = self.get_ports_on_datapath(
+            datapath, port_type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
+        return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
+
     def get_ovn_lb_on_provider_datapath(self, datapath):
         # TODO(ltomasbo): Once ovsdbapp supports {>=} operator we can query
         # it directly with:
