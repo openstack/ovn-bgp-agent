@@ -39,6 +39,9 @@ class TestLinuxNet(test_base.TestCase):
         self.dev = 'ethfake'
         self.mac = 'aa:bb:cc:dd:ee:ff'
         self.bridge = 'br-fake'
+        self.table_id = 100
+        self.network = ipaddress.IPv4Network("10.10.1.0/24")
+        self.network_v6 = ipaddress.IPv6Network("2002:0:0:1234:0:0:0:0/64")
 
     def test_get_ip_version_v4(self):
         self.assertEqual(4, linux_net.get_ip_version('%s/32' % self.ip))
@@ -237,6 +240,66 @@ class TestLinuxNet(test_base.TestCase):
         ret = linux_net.get_exposed_ips_on_network(self.dev, network_ips)
 
         self.assertEqual([self.ip, self.ipv6], ret)
+
+    def test_get_exposed_routes_on_network_v4(self):
+        route0 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=self.ip,
+        )
+        route1 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=self.ipv6,
+        )
+        route2 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=None,
+        )
+
+        self.fake_ndb.routes.dump.return_value = [route0, route1, route2]
+        ret = linux_net.get_exposed_routes_on_network(
+            [self.table_id], self.network
+        )
+
+        self.assertEqual([route0], ret)
+
+    def test_get_exposed_routes_on_network_v6(self):
+        route0 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=self.ip,
+        )
+        route1 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=self.ipv6,
+        )
+        route2 = mock.MagicMock(
+            dst=mock.Mock(),
+            table=self.table_id,
+            scope=1,
+            proto=11,
+            gateway=None,
+        )
+
+        self.fake_ndb.routes.dump.return_value = [route0, route1, route2]
+        ret = linux_net.get_exposed_routes_on_network(
+            [self.table_id], self.network_v6
+        )
+
+        self.assertEqual([route1], ret)
 
     def test_get_ovn_ip_rules(self):
         rule0 = mock.Mock(table=7, dst=10, dst_len=128, family='fake')

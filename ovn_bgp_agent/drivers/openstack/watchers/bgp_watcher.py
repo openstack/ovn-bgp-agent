@@ -175,6 +175,40 @@ class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
             self.agent.expose_subnet(ip_address, row)
 
 
+class SubnetRouterUpdateEvent(base_watcher.PortBindingChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(SubnetRouterUpdateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # This will match if the mac field has changed between old and row.
+        # This can happen when you have multiple subnets in the same network,
+        # those will be added/removed to/from the same lrp-port in the mac
+        # field.
+        # Format:
+        # mac = [ff:ff:ff:ff:ff:ff subnet1/cidr subnet2/cidr [...]]
+        try:
+            # single and dual-stack format
+            if (not self._check_ip_associated(row.mac[0]) and
+                    not self._check_ip_associated(old.mac[0])):
+                return False
+            return (
+                not row.chassis and
+                row.logical_port.startswith("lrp-") and
+                "chassis-redirect-port" not in row.options.keys() and
+                old.mac != row.mac
+            )
+        except (IndexError, AttributeError):
+            return False
+
+    def run(self, event, row, old):
+        if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
+            return
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.update_subnet(old, row)
+
+
 class SubnetRouterDetachedEvent(base_watcher.PortBindingChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_DELETE,)

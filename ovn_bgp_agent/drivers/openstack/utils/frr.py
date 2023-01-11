@@ -70,6 +70,28 @@ router bgp {{ bgp_as }} vrf {{ vrf_name }}
 
 '''
 
+LEAK_VRF_KERNEL_TEMPLATE = '''
+router bgp {{ bgp_as }}
+  address-family ipv4 unicast
+    import vrf {{ vrf_name }}
+  exit-address-family
+
+  address-family ipv6 unicast
+    import vrf {{ vrf_name }}
+  exit-address-family
+
+router bgp {{ bgp_as }} vrf {{ vrf_name }}
+  bgp router-id {{ bgp_router_id }}
+  address-family ipv4 unicast
+    redistribute kernel
+  exit-address-family
+
+  address-family ipv6 unicast
+    redistribute kernel
+  exit-address-family
+
+'''
+
 
 def _get_router_id():
     output = ovn_bgp_agent.privileged.vtysh.run_vtysh_command(
@@ -96,7 +118,7 @@ def _run_vtysh_config_with_tempfile(vrf_config):
             f.close()
 
 
-def vrf_leak(vrf, bgp_as, bgp_router_id=None):
+def vrf_leak(vrf, bgp_as, bgp_router_id=None, template=LEAK_VRF_TEMPLATE):
     LOG.info("Add VRF leak for VRF %s on router bgp %s", vrf, bgp_as)
     if not bgp_router_id:
         bgp_router_id = _get_router_id()
@@ -104,7 +126,7 @@ def vrf_leak(vrf, bgp_as, bgp_router_id=None):
             LOG.error("Unknown router-id, needed for route leaking")
             return
 
-    vrf_template = Template(LEAK_VRF_TEMPLATE)
+    vrf_template = Template(template)
     vrf_config = vrf_template.render(vrf_name=vrf, bgp_as=bgp_as,
                                      bgp_router_id=bgp_router_id)
     _run_vtysh_config_with_tempfile(vrf_config)

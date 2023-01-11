@@ -391,6 +391,87 @@ class TestSubnetRouterAttachedEvent(test_base.TestCase):
         self.agent.expose_subnet.assert_not_called()
 
 
+class TestSubnetRouterUpdateEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestSubnetRouterUpdateEvent, self).setUp()
+        self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.event = bgp_watcher.SubnetRouterUpdateEvent(self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_not_single_or_dual_stack(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff'],
+                               options={})
+        old = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff'],
+                               options={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_not_lrp(self):
+        row = utils.create_row(chassis=[], logical_port='fake-lp',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_chassis_redirect(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={'chassis-redirect-port': True})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_chassis_set(self):
+        row = utils.create_row(chassis=[mock.Mock()], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_mac_not_changed(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        old = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_mac_changed(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               options={})
+        old = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17'],
+                               options={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_index_error(self):
+        row = utils.create_row(chassis=[], logical_port='lrp-fake',
+                               mac=[], options={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        row = utils.create_row(type=constants.OVN_PATCH_VIF_PORT_TYPE,
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(type=constants.OVN_PATCH_VIF_PORT_TYPE,
+                               mac=['aa:bb:cc:dd:ee:ff'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.update_subnet.assert_called_once_with(old, row)
+
+    def test_run_wrong_type(self):
+        row = utils.create_row(type='coxinha',
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(type='coxinha',
+                               mac=['aa:bb:cc:dd:ee:ff'])
+        self.event.run(mock.Mock(), row, old)
+        self.agent.update_subnet.assert_not_called()
+
+
 class TestSubnetRouterDetachedEvent(test_base.TestCase):
 
     def setUp(self):

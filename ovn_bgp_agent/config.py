@@ -81,6 +81,10 @@ agent_opts = [
                 default=4789,
                 help='The UDP port used for EVPN VXLAN communication. By '
                      'default 4789 is being used.'),
+    cfg.BoolOpt('clear_vrf_routes_on_startup',
+                help='If enabled, all routes are removed from the VRF table'
+                     '(specified by bgp_vrf_table_id option) at startup.',
+                default=False),
     cfg.StrOpt('bgp_nic',
                default='bgp-nic',
                help='The name of the interface used within the VRF '
@@ -94,6 +98,11 @@ agent_opts = [
                help='The Routing Table ID that the VRF (bgp_vrf option) '
                     'should use. If it does not exist, this table will be '
                     'created.'),
+    cfg.ListOpt('address_scopes',
+                default=None,
+                help='Allows to filter on the address scope. Only networks'
+                     ' with the same address scope on the provider and'
+                     ' internal interface are announced.'),
 ]
 
 root_helper_opts = [
