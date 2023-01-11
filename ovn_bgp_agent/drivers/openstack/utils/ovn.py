@@ -225,7 +225,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             if port_info and port_info[0].chassis[0].name == chassis:
                 return port_info[0].logical_port
         except IndexError:
-            pass
+            return False
 
     def is_router_gateway_on_any_chassis(self, datapath):
         port_info = self.get_ports_on_datapath(
@@ -234,7 +234,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             if port_info and port_info[0].chassis[0].name:
                 return port_info[0]
         except IndexError:
-            pass
+            return False
 
     def get_lrp_port_for_datapath(self, datapath):
         for row in self.get_ports_on_datapath(
