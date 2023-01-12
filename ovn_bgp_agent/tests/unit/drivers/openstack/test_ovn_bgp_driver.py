@@ -768,6 +768,37 @@ class TestOVNBGPDriver(test_base.TestCase):
         # Assert that add_ip_route() was not called
         mock_add_route.assert_not_called()
 
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'add_ip_route')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    def test__process_lrp_port_address_scopes(
+            self, mock_add_rule, mock_add_route, mock_add_ips_dev):
+        gateway = {}
+        gateway['ips'] = ['{}/32'.format(self.fip),
+                          '2003::1234:abcd:ffff:c0a8:102/128']
+        gateway['provider_datapath'] = 'bc6780f4-9510-4270-b4d2-b8d5c6802713'
+        gateway['subnets_datapath'] = {}
+        gateway['subnets_cidr'] = []
+        gateway['bridge_device'] = self.bridge
+        gateway['bridge_vlan'] = 10
+        self.bgp_driver.ovn_local_cr_lrps = {'gateway_port': gateway}
+        mock_address_scope_allowed = mock.patch.object(
+            self.bgp_driver, '_address_scope_allowed').start()
+        mock_address_scope_allowed.return_value = False
+
+        router_port = fakes.create_object({
+            'chassis': [],
+            'mac': ['{} {}/32'.format(self.mac, self.ipv4)],
+            'logical_port': 'lrp-fake-logical-port',
+            'options': {'peer': 'fake-peer'}})
+
+        self.bgp_driver._process_lrp_port(router_port, 'gateway_port')
+
+        # Assert that the add methods were called
+        mock_add_rule.assert_not_called()
+        mock_add_route.assert_not_called()
+        mock_add_ips_dev.assert_not_called()
+
     def test__get_bridge_for_datapath(self):
         self.sb_idl.get_network_name_and_tag.return_value = (
             'fake-network', [10])
@@ -1337,6 +1368,24 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_add_ip_dev.assert_not_called()
 
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    def test_expose_remote_ip_address_scope(self, mock_add_ip_dev):
+        self.sb_idl.is_provider_network.return_value = False
+        lrp = 'fake-lrp'
+        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
+        row = fakes.create_object({
+            'name': 'fake-row', 'datapath': 'fake-dp'})
+
+        mock_address_scope_allowed = mock.patch.object(
+            self.bgp_driver, '_address_scope_allowed').start()
+        mock_address_scope_allowed.side_effect = [False, True]
+
+        ips = [self.ipv4, self.ipv6]
+        self.bgp_driver.expose_remote_ip(ips, row)
+
+        mock_add_ip_dev.assert_called_once_with(CONF.bgp_nic, [self.ipv6])
+
     @mock.patch.object(linux_net, 'del_ips_from_dev')
     def test_withdraw_remote_ip(self, mock_del_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
@@ -1415,6 +1464,24 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.bgp_driver.withdraw_remote_ip(ips, row)
 
         mock_del_ip_dev.assert_not_called()
+
+    @mock.patch.object(linux_net, 'del_ips_from_dev')
+    def test_withdraw_remote_ip_address_scope(self, mock_del_ip_dev):
+        self.sb_idl.is_provider_network.return_value = False
+        lrp = 'fake-lrp'
+        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
+        row = fakes.create_object({
+            'name': 'fake-row', 'datapath': 'fake-dp'})
+
+        mock_address_scope_allowed = mock.patch.object(
+            self.bgp_driver, '_address_scope_allowed').start()
+        mock_address_scope_allowed.side_effect = [False, True]
+
+        ips = [self.ipv4, self.ipv6]
+        self.bgp_driver.withdraw_remote_ip(ips, row)
+
+        mock_del_ip_dev.assert_called_once_with(CONF.bgp_nic, [self.ipv6])
 
     @mock.patch.object(linux_net, 'add_ndp_proxy')
     @mock.patch.object(linux_net, 'get_ip_version')
@@ -1684,6 +1751,26 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_expose_lrp_port.assert_not_called()
 
+    def test_expose_subnet_address_scope(self):
+        self.sb_idl.is_router_gateway_on_chassis.return_value = self.cr_lrp0
+        self.sb_idl.get_port_datapath.return_value = 'fake-port-dp'
+        row = fakes.create_object({
+            'name': 'fake-row',
+            'logical_port': 'subnet_port',
+            'datapath': 'fake-dp',
+            'options': {'peer': 'fake-peer'}})
+
+        mock_expose_lrp_port = mock.patch.object(
+            self.bgp_driver, '_expose_lrp_port').start()
+
+        mock_address_scope_allowed = mock.patch.object(
+            self.bgp_driver, '_address_scope_allowed').start()
+        mock_address_scope_allowed.return_value = False
+
+        self.bgp_driver.expose_subnet('fake-ip', row)
+
+        mock_expose_lrp_port.assert_not_called()
+
     def test_withdraw_subnet(self):
         row = fakes.create_object({
             'name': 'fake-row',
@@ -1799,3 +1886,77 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_rule.assert_not_called()
         mock_del_route.assert_not_called()
         mock_del_exposed_ips.assert_not_called()
+
+    @mock.patch.object(driver_utils, 'get_addr_scopes')
+    def test__address_scope_allowed(self, m_addr_scopes):
+        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        port_ip = self.ipv4
+        port_name = "fake-port"
+        sb_port = "fake-sb-port"
+        self.sb_idl.get_port_by_name.return_value = sb_port
+        address_scopes = {
+            constants.IP_VERSION_4: "fake_address_scope",
+            constants.IP_VERSION_6: "fake_ipv6_address_scope"}
+        m_addr_scopes.return_value = address_scopes
+
+        ret = self.bgp_driver._address_scope_allowed(port_ip, port_name)
+
+        self.assertEqual(True, ret)
+        m_addr_scopes.assert_called_once_with(sb_port)
+
+    def test__address_scope_allowed_not_configured(self):
+        self.bgp_driver.allowed_address_scopes = set([])
+        port_ip = self.ipv4
+        port_name = "fake-port"
+        sb_port = "fake-sb-port"
+
+        ret = self.bgp_driver._address_scope_allowed(
+            port_ip, port_name, sb_port)
+
+        self.assertEqual(True, ret)
+
+    @mock.patch.object(driver_utils, 'get_addr_scopes')
+    def test__address_scope_allowed_no_match(self, m_addr_scopes):
+        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        port_ip = self.ipv4
+        port_name = "fake-port"
+        sb_port = "fake-sb-port"
+        self.sb_idl.get_port_by_name.return_value = sb_port
+        address_scopes = {
+            constants.IP_VERSION_4: "different_fake_address_scope",
+            constants.IP_VERSION_6: "fake_ipv6_address_scope"}
+        m_addr_scopes.return_value = address_scopes
+
+        ret = self.bgp_driver._address_scope_allowed(port_ip, port_name)
+
+        self.assertEqual(False, ret)
+        m_addr_scopes.assert_called_once_with(sb_port)
+
+    @mock.patch.object(driver_utils, 'get_addr_scopes')
+    def test__address_scope_allowed_no_port(self, m_addr_scopes):
+        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        port_ip = self.ipv4
+        port_name = "fake-port"
+        self.sb_idl.get_port_by_name.return_value = []
+
+        ret = self.bgp_driver._address_scope_allowed(port_ip, port_name)
+
+        self.assertEqual(False, ret)
+        m_addr_scopes.assert_not_called()
+
+    @mock.patch.object(driver_utils, 'get_addr_scopes')
+    def test__address_scope_allowed_no_address_scope(self, m_addr_scopes):
+        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        port_ip = self.ipv4
+        port_name = "fake-port"
+        sb_port = "fake-sb-port"
+        self.sb_idl.get_port_by_name.return_value = sb_port
+        address_scopes = {
+            constants.IP_VERSION_4: "",
+            constants.IP_VERSION_6: ""}
+        m_addr_scopes.return_value = address_scopes
+
+        ret = self.bgp_driver._address_scope_allowed(port_ip, port_name)
+
+        self.assertEqual(False, ret)
+        m_addr_scopes.assert_called_once_with(sb_port)
