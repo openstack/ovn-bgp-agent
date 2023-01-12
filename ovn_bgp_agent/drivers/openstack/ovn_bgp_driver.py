@@ -68,16 +68,29 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._sb_idl = val
 
     def start(self):
+        self.ovs_idl = ovs.OvsIdl()
+        self.ovs_idl.start(CONF.ovsdb_connection)
+        self.chassis = self.ovs_idl.get_own_chassis_name()
+        self.ovn_remote = self.ovs_idl.get_ovn_remote()
+        LOG.info("Loaded chassis %s.", self.chassis)
+
+        LOG.info("Starting VRF configuration for advertising routes")
+        # Create VRF
+        linux_net.ensure_vrf(CONF.bgp_vrf, CONF.bgp_vrf_table_id)
+
         # Ensure FRR is configure to leak the routes
         # NOTE: If we want to recheck this every X time, we should move it
         # inside the sync function instead
         frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
 
-        self.ovs_idl = ovs.OvsIdl()
-        self.ovs_idl.start(CONF.ovsdb_connection)
-        self.chassis = self.ovs_idl.get_own_chassis_name()
-        self.ovn_remote = self.ovs_idl.get_ovn_remote()
-        LOG.debug("Loaded chassis %s.", self.chassis)
+        # Create OVN dummy device
+        linux_net.ensure_ovn_device(CONF.bgp_nic, CONF.bgp_vrf)
+
+        # Clear vrf routing table
+        if CONF.clear_vrf_routes_on_startup:
+            linux_net.delete_routes_from_table(CONF.bgp_vrf_table_id)
+
+        LOG.info("VRF configuration for advertising routes completed")
 
         events = ()
         for event in self._get_events():
