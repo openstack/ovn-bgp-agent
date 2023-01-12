@@ -250,9 +250,20 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _ensure_port_exposed(self, port, exposed_ips, ovn_ip_rules):
         if port.type not in constants.OVN_VIF_PORT_TYPES or not port.mac:
             return
-        if len(port.mac[0].split(' ')) < 2:
-            return
-        port_ips = port.mac[0].split(' ')[1:]
+
+        port_ips = []
+        if port.mac == ['unknown']:
+            # For FIPs associated to VM ports we don't need the port IP, so
+            # we can check if it is a VM on the provider and trigger the
+            # expose_ip without passing any port_ips
+            if ((port.type != constants.OVN_VM_VIF_PORT_TYPE and
+                    port.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
+                    self.sb_idl.is_provider_network(port.datapath)):
+                return
+        else:
+            if len(port.mac[0].split(' ')) < 2:
+                return
+            port_ips = port.mac[0].split(' ')[1:]
 
         ips_adv = self._expose_ip(port_ips, port)
 
