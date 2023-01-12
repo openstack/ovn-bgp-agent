@@ -242,8 +242,14 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
 
     def match_fn(self, event, row, old):
         try:
+            # Handling the case for unknown MACs when configdrive is used
+            # instead of dhcp
+            if row.mac == ['unknown']:
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                if not n_cidrs:
+                    return False
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            elif not self._check_ip_associated(row.mac[0]):
                 return False
             return (not old.chassis and row.chassis and
                     self.agent.ovn_local_lrps != [])
@@ -255,7 +261,13 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.mac[0].split(' ')[1:]
+            if row.mac == ['unknown']:
+                # Handling the case for unknown MACs when configdrive is used
+                # instead of dhcp
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
+            else:
+                ips = row.mac[0].split(' ')[1:]
             self.agent.expose_remote_ip(ips, row)
 
 
@@ -267,8 +279,14 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
 
     def match_fn(self, event, row, old):
         try:
+            if row.mac == ['unknown']:
+                # Handling the case for unknown MACs when configdrive is used
+                # instead of dhcp
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                if not n_cidrs:
+                    return False
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            elif not self._check_ip_associated(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis and not row.chassis and
@@ -287,7 +305,13 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
         else:
             chassis = row.chassis
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.mac[0].split(' ')[1:]
+            if row.mac == ['unknown']:
+                # Handling the case for unknown MACs when configdrive is used
+                # instead of dhcp
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
+            else:
+                ips = row.mac[0].split(' ')[1:]
             self.agent.withdraw_remote_ip(ips, row, chassis)
 
 
