@@ -37,7 +37,7 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
             if not self._check_ip_associated(row.mac[0]):
                 return False
             return (row.chassis[0].name == self.agent.chassis and
-                    not old.chassis)
+                    (not old.chassis or row.chassis != old.chassis))
         except (IndexError, AttributeError):
             return False
 
@@ -62,7 +62,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis[0].name == self.agent.chassis and
-                        not row.chassis)
+                        (not row.chassis or row.chassis != old.chassis))
             else:
                 return row.chassis[0].name == self.agent.chassis
         except (IndexError, AttributeError):

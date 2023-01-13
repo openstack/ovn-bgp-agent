@@ -47,8 +47,23 @@ class TestPortBindingChassisCreatedEvent(test_base.TestCase):
         ch = utils.create_row(name=self.chassis)
         row = utils.create_row(chassis=[ch],
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
-        old = utils.create_row(chassis=self.chassis)
+        old = utils.create_row(chassis=[ch])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_old_chassis(self):
+        ch = utils.create_row(name=self.chassis)
+        row = utils.create_row(chassis=[ch],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_different_old_chassis(self):
+        ch = utils.create_row(name=self.chassis)
+        ch_old = utils.create_row(name='old-chassis')
+        row = utils.create_row(chassis=[ch],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[ch_old])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_index_error(self):
         row = utils.create_row(chassis=[],
@@ -112,8 +127,25 @@ class TestPortBindingChassisDeletedEvent(test_base.TestCase):
         ch = utils.create_row(name=self.chassis)
         row = utils.create_row(chassis=[ch],
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
-        old = utils.create_row(chassis=self.chassis)
+        old = utils.create_row(chassis=[ch])
         self.assertFalse(self.event.match_fn(event, row, old))
+
+    def test_match_fn_update_no_chassis(self):
+        event = self.event.ROW_UPDATE
+        ch = utils.create_row(name=self.chassis)
+        row = utils.create_row(chassis=[],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[ch])
+        self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_update_different_chassis(self):
+        event = self.event.ROW_UPDATE
+        ch = utils.create_row(name=self.chassis)
+        ch_new = utils.create_row(name='new-chassis')
+        row = utils.create_row(chassis=[ch_new],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        old = utils.create_row(chassis=[ch])
+        self.assertTrue(self.event.match_fn(event, row, old))
 
     def test_match_fn_index_error(self):
         row = utils.create_row(chassis=[],
