@@ -342,7 +342,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
 
         try:
-            port_ips = port.mac[0].split(' ')[1:]
+            if port.mac == ['unknown']:
+                # Handling the case for unknown MACs when configdrive is used
+                # instead of dhcp
+                n_cidrs = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                port_ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
+            else:
+                port_ips = port.mac[0].split(' ')[1:]
         except IndexError:
             return
 

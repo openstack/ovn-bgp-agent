@@ -402,6 +402,26 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     @mock.patch.object(linux_net, 'get_ip_version')
+    def test__expose_tenant_port_unknown_mac(self, mock_ip_version,
+                                             mock_add_ips_dev):
+        tenant_port = fakes.create_object({
+            'name': 'fake-port',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'mac': ['unknown'],
+            'chassis': 'fake-chassis1',
+            'external_ids': {'neutron:cidrs': '192.168.1.10/24'},
+            'up': [False]})
+        ip_version = constants.IP_VERSION_4
+
+        mock_ip_version.return_value = constants.IP_VERSION_4
+
+        self.bgp_driver._expose_tenant_port(tenant_port, ip_version)
+
+        mock_add_ips_dev.assert_called_once_with(CONF.bgp_nic,
+                                                 ['192.168.1.10'])
+
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    @mock.patch.object(linux_net, 'get_ip_version')
     def test__expose_tenant_port_wrong_type(self, mock_ip_version,
                                             mock_add_ips_dev):
         tenant_port = fakes.create_object({

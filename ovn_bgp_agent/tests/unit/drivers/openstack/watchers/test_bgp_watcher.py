@@ -575,6 +575,18 @@ class TestTenantPortCreatedEvent(test_base.TestCase):
         old = utils.create_row(chassis=[])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
+    def test_match_fn_unknown_mac(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(chassis=[mock.Mock()],
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '10.10.1.16/24'})
+        old = utils.create_row(chassis=[],
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '10.10.1.16/24'})
+        self.assertTrue(self.event.match_fn(event, row, old))
+
     def test_match_fn_no_chassis(self):
         row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         old = utils.create_row(chassis=[])
@@ -604,6 +616,15 @@ class TestTenantPortCreatedEvent(test_base.TestCase):
     def test_run(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
+        self.event.run(mock.Mock(), row, mock.Mock())
+        self.agent.expose_remote_ip.assert_called_once_with(
+            ['10.10.1.16'], row)
+
+    def test_run_unknown_mac(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '10.10.1.16/24'})
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.expose_remote_ip.assert_called_once_with(
             ['10.10.1.16'], row)
@@ -639,6 +660,18 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         self.assertTrue(self.event.match_fn(event, row, old))
 
+    def test_match_fn_unknown_mac(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(chassis=[],
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '192.168.1.10/24'})
+        old = utils.create_row(chassis=[mock.Mock()],
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '192.168.1.10/24'})
+        self.assertTrue(self.event.match_fn(event, row, old))
+
     def test_match_fn_delete(self):
         event = self.event.ROW_DELETE
         row = utils.create_row(chassis=[],
@@ -665,6 +698,16 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
                                chassis=[mock.Mock()])
+        self.event.run(mock.Mock(), row, mock.Mock())
+        self.agent.withdraw_remote_ip.assert_called_once_with(
+            ['10.10.1.16'], row, mock.ANY)
+
+    def test_run_unknown_mac(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               chassis=[mock.Mock()],
+                               mac=['unknown'],
+                               external_ids={
+                                   'neutron:cidrs': '10.10.1.16/24'})
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
             ['10.10.1.16'], row, mock.ANY)
