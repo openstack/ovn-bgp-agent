@@ -700,9 +700,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def _process_ovn_lb(self, ovn_lb, cr_lrp_port, exposed_ips=[],
                         ovn_ip_rules={}):
-        # assumes the cr_lrp_port is in this node, so no need for extra
-        # checking as get_ovn_lb_on_provider_datapath already checks the
-        # are at least 2 datapaths associated to the loadbalancer
+        if hasattr(ovn_lb, 'datapath_group'):
+            ovn_lb_datapaths = ovn_lb.datapath_group[0].datapaths
+        else:
+            ovn_lb_datapaths = ovn_lb.datapaths
+        for ovn_dp in ovn_lb_datapaths:
+            if ovn_dp in self.ovn_local_cr_lrps[
+                    cr_lrp_port]['subnets_datapath'].values():
+                break
+        else:
+            return
+
         for vip in ovn_lb.vips.keys():
             ip = driver_utils.parse_vip_from_lb_table(vip)
             self._expose_ovn_lb_on_provider(ovn_lb.name, ip, cr_lrp_port)
