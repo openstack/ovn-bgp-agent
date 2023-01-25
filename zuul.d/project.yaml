@@ -2,3 +2,4 @@
     templates:
       - openstack-python3-zed-jobs
       - openstack-cover-jobs
+      - release-notes-jobs-python3
