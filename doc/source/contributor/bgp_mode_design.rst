@@ -436,7 +436,7 @@ allocated):
   Therefore the agent needs to be running on the compute nodes.
 
 - For VMs on tenant networks (with ``expose_tenant_networks`` or
-  ``expose_ipv6_gua_tenant_networks``configuration options enabled), the agent
+  ``expose_ipv6_gua_tenant_networks`` configuration options enabled), the agent
   needs to be running on the networker nodes. In OpenStack, with OVN
   networking, the N/S traffic to the tenant VMs (without FIPs) needs to go
   through the networking nodes, more specifically the one hosting the
