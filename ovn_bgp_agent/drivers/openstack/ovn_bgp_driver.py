@@ -45,6 +45,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def __init__(self):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
+        self.allowed_address_scopes = set(CONF.address_scopes or [])
         self.ovn_routing_tables = {}  # {'br-ex': 200}
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
         self.ovn_local_cr_lrps = {}
@@ -91,6 +92,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             linux_net.delete_routes_from_table(CONF.bgp_vrf_table_id)
 
         LOG.info("VRF configuration for advertising routes completed")
+        if self._expose_tenant_networks and self.allowed_address_scopes:
+            LOG.info("Configured allowed address scopes: %s",
+                     ", ".join(self.allowed_address_scopes))
 
         events = ()
         for event in self._get_events():
@@ -621,20 +625,28 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
-            ips_to_expose = []
+            gua_ips = []
             for ip in ips:
                 if driver_utils.is_ipv6_gua(ip):
-                    ips_to_expose.append(ip)
-            if not ips_to_expose:
+                    gua_ips.append(ip)
+            if not gua_ips:
                 return
-            ips = ips_to_expose
+            ips = gua_ips
+
+        ips_to_expose = []
+        for ip in ips:
+            if self._address_scope_allowed(ip, None, row):
+                ips_to_expose.append(ip)
+        if not ips_to_expose:
+            return
+
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
             LOG.debug("Adding BGP route for tenant IP %s on chassis %s",
-                      ips, self.chassis)
-            linux_net.add_ips_to_dev(CONF.bgp_nic, ips)
+                      ips_to_expose, self.chassis)
+            linux_net.add_ips_to_dev(CONF.bgp_nic, ips_to_expose)
             LOG.debug("Added BGP route for tenant IP %s on chassis %s",
-                      ips, self.chassis)
+                      ips_to_expose, self.chassis)
 
     @lockutils.synchronized('bgp')
     def withdraw_remote_ip(self, ips, row, chassis=None):
@@ -643,20 +655,27 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
-            ips_to_withdraw = []
+            gua_ips = []
             for ip in ips:
                 if driver_utils.is_ipv6_gua(ip):
-                    ips_to_withdraw.append(ip)
-            if not ips_to_withdraw:
+                    gua_ips.append(ip)
+            if not gua_ips:
                 return
-            ips = ips_to_withdraw
+            ips = gua_ips
+
+        ips_to_withdraw = []
+        for ip in ips:
+            if self._address_scope_allowed(ip, None, row):
+                ips_to_withdraw.append(ip)
+        if not ips_to_withdraw:
+            return
         port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
         if port_lrp in self.ovn_local_lrps.keys():
             LOG.debug("Deleting BGP route for tenant IP %s on chassis %s",
-                      ips, self.chassis)
-            linux_net.del_ips_from_dev(CONF.bgp_nic, ips)
+                      ips_to_withdraw, self.chassis)
+            linux_net.del_ips_from_dev(CONF.bgp_nic, ips_to_withdraw)
             LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
-                      ips, self.chassis)
+                      ips_to_withdraw, self.chassis)
 
     def _process_cr_lrp_port(self, cr_lrp_port_name, provider_datapath,
                              router_port):
@@ -697,6 +716,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 # This should not happen: subnet without CIDR
                 return
 
+            if not self._address_scope_allowed(lrp_ip, lrp.options['peer']):
+                return
             subnet_datapath = self.sb_idl.get_port_datapath(
                 lrp.options['peer'])
             self._expose_lrp_port(lrp_ip, lrp.logical_port,
@@ -875,16 +896,21 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
         LOG.debug("Deleting IP Rules for network %s on chassis %s", ip,
                   self.chassis)
+        exposed_lrp = False
         if lrp:
             if lrp in self.ovn_local_lrps.keys():
+                exposed_lrp = True
                 self.ovn_local_lrps.pop(lrp)
         else:
             for subnet_lp in cr_lrp_info['subnets_datapath'].keys():
                 if subnet_lp in self.ovn_local_lrps.keys():
+                    exposed_lrp = True
                     self.ovn_local_lrps.pop(subnet_lp)
                     break
         self.ovn_local_cr_lrps[associated_cr_lrp]['subnets_datapath'].pop(
             lrp, None)
+        if not exposed_lrp:
+            return
 
         cr_lrp_ips = [ip_address.split('/')[0]
                       for ip_address in cr_lrp_info.get('ips', [])]
@@ -937,6 +963,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         if not cr_lrp:
             return
 
+        if not self._address_scope_allowed(ip, row.options['peer']):
+            return
+
         self._expose_lrp_port(ip, row.logical_port, cr_lrp, subnet_datapath)
 
     @lockutils.synchronized('bgp')
@@ -971,3 +1000,24 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
 
         self._withdraw_lrp_port(ip, row.logical_port, cr_lrp)
+
+    def _address_scope_allowed(self, ip, port_name, sb_port=None):
+        if not self.allowed_address_scopes:
+            # No address scopes to filter on => announce everything
+            return True
+
+        if not sb_port:
+            sb_port = self.sb_idl.get_port_by_name(port_name)
+        if not sb_port:
+            LOG.error("Port %s missing, skipping.", port_name)
+            return False
+        address_scopes = driver_utils.get_addr_scopes(sb_port)
+
+        # if we should filter on address scopes and this port has no
+        # address scopes set we do not need to expose it
+        if not any(address_scopes.values()):
+            return False
+        # if address scope does not match, no need to expose it
+        ip_version = linux_net.get_ip_version(ip)
+
+        return address_scopes[ip_version] in self.allowed_address_scopes

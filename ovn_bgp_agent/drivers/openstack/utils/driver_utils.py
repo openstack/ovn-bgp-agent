@@ -42,3 +42,12 @@ def is_ipv6_gua(ip):
     if ipv6.is_global:
         return True
     return False
+
+
+def get_addr_scopes(port):
+    return {
+        constants.IP_VERSION_4: port.external_ids.get(
+            constants.SUBNET_POOL_ADDR_SCOPE4),
+        constants.IP_VERSION_6: port.external_ids.get(
+            constants.SUBNET_POOL_ADDR_SCOPE6),
+        }

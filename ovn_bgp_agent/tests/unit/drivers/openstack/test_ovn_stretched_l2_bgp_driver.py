@@ -20,6 +20,7 @@ from oslo_config import cfg
 from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import ovn_stretched_l2_bgp_driver
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -225,10 +226,6 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
             )
 
             self.assertTrue(test_route not in self.bgp_driver.vrf_routes)
-
-    def test__get_addr_scopes(self):
-        addr_scopes = self.bgp_driver._get_addr_scopes(self.lp0)
-        self.assertEqual(self.addr_scope, addr_scopes)
 
     def test__address_scope_allowed(self):
         test_scope2 = {
@@ -773,14 +770,11 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
             {}
         )
 
+    @mock.patch.object(driver_utils, "get_addr_scopes")
     @mock.patch.object(linux_net, "add_ip_route")
-    def test__ensure_network_exposed_port_not_existing(
-        self,
-        mock_add_ip_route
-    ):
-        mock__get_addr_scopes = mock.patch.object(
-            self.bgp_driver, "_get_addr_scopes"
-        ).start()
+    def test__ensure_network_exposed_port_not_existing(self,
+                                                       mock_add_ip_route,
+                                                       mock_addr_scopes):
         gateway = {}
         gateway["ips"] = [
             ipaddress.ip_interface(ip)
@@ -793,7 +787,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         self.bgp_driver._ensure_network_exposed(
             self.router_port, "gateway_port"
         )
-        mock__get_addr_scopes.assert_not_called()
+        mock_addr_scopes.assert_not_called()
         mock_add_ip_route.assert_not_called()
         self.assertDictEqual(
             self.bgp_driver.propagated_lrp_ports,
@@ -1208,17 +1202,15 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         mock__ensure_network_exposed.assert_not_called()
         self.sb_idl.get_port_by_name.assert_called_once_with("fake-port")
 
-    def test__expose_cr_lrp_no_addr_scope(self):
+    @mock.patch.object(driver_utils, "get_addr_scopes")
+    def test__expose_cr_lrp_no_addr_scope(self, mock_addr_scopes):
         mock__ensure_network_exposed = mock.patch.object(
             self.bgp_driver, "_ensure_network_exposed"
-        ).start()
-        mock__get_addr_scopes = mock.patch.object(
-            self.bgp_driver, "_get_addr_scopes"
         ).start()
 
         self.sb_idl.get_port_by_name.return_value = self.fake_patch_port
 
-        mock__get_addr_scopes.return_value = {
+        mock_addr_scopes.return_value = {
             constants.IP_VERSION_4: "address_scope_v4",
             constants.IP_VERSION_6: "address_scope_v6",
         }
@@ -1226,7 +1218,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         self.bgp_driver._expose_cr_lrp([], self.cr_lrp0)
 
         self.sb_idl.get_port_by_name.assert_called_once_with("fake-port")
-        mock__get_addr_scopes.assert_called_once_with(self.fake_patch_port)
+        mock_addr_scopes.assert_called_once_with(self.fake_patch_port)
         self.sb_idl.get_lrp_ports_for_router.assert_not_called()
         mock__ensure_network_exposed.assert_not_called()
 

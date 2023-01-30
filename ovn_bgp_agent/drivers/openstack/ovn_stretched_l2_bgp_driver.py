@@ -23,6 +23,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -220,16 +221,6 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
 
         return True
 
-    def _get_addr_scopes(self, port):
-        return {
-            constants.IP_VERSION_4: port.external_ids.get(
-                constants.SUBNET_POOL_ADDR_SCOPE4
-            ),
-            constants.IP_VERSION_6: port.external_ids.get(
-                constants.SUBNET_POOL_ADDR_SCOPE6
-            ),
-        }
-
     @lockutils.synchronized("bgp")
     def expose_subnet(self, ip, row):
         cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
@@ -358,7 +349,7 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
                 LOG.error("Patchport %s for CR-LRP %s missing, skipping.",
                           patch_port, row.logical_port)
                 return
-            address_scopes = self._get_addr_scopes(port)
+            address_scopes = driver_utils.get_addr_scopes(port)
             self.ovn_local_cr_lrps[row.logical_port][
                 "address_scopes"] = address_scopes
             if not any([
@@ -407,7 +398,7 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
                 LOG.error("Patchport %s for CR-LRP %s missing, skipping.",
                           patch_port, gateway_port)
                 return
-            address_scopes = self._get_addr_scopes(port)
+            address_scopes = driver_utils.get_addr_scopes(port)
             # if we should filter on address scopes and this port has no
             # address scopes set we do not need to go further
             if not any(address_scopes.values()):
@@ -502,7 +493,7 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
                 LOG.error("Patchport %s for CR-LRP %s missing, skipping.",
                           patch_port, gateway_port)
                 return
-            address_scopes = self._get_addr_scopes(port)
+            address_scopes = driver_utils.get_addr_scopes(port)
             # if we have address scopes configured and none of them matches
             # for this port, we can skip further processing
             if not any(address_scopes.values()):

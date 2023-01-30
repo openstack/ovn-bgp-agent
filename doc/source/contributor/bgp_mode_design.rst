@@ -64,6 +64,10 @@ A driver implements the support for BGP capabilities. It ensures both VMs and
 LBs on providers networks or with Floating IPs associated can be
 exposed throug BGP. In addition, VMs on tenant networks can be also exposed
 if the ``expose_tenant_network`` configuration option is enabled.
+To control what tenant networks are exposed another flag can be used:
+``address_scopes``. If not set, all the tenant networks will be exposed, while
+if it is configured with a (set of) address_scopes, only the tenant networks
+whose address_scope matches will be exposed.
 
 A common driver API is defined exposing the next methods:
 
@@ -217,7 +221,8 @@ VMs and LBs on provider networks or with FIPs can be reached through BGP
 VMs in tenant networks should be reachable too -- although instead of directly
 in the node they are created, through one of the network gateway chassis nodes.
 The same happens with ``expose_ipv6_gua_tenant_networks`` but only for IPv6
-GUA ranges.
+GUA ranges. In addition, if the config option ``address_scopes`` is set only
+the tenant networks with matching corresponding address_scope will be exposed.
 
 To accomplish this, it needs to ensure that:
 
@@ -466,6 +471,7 @@ below:
       expose_tenant_networks=True
       # expose_ipv6_gua_tenant_networks=True
       driver=osp_bgp_driver
+      address_scopes=2237917c7b12489a84de4ef384a2bcae
 
       $ sudo bgp-agent --config-dir bgp-agent.conf
       Starting BGP Agent...
@@ -486,6 +492,13 @@ below:
     If you only want to expose the IPv6 GUA tenant IPs, then remove the option
     ``expose_tenant_networks`` and add ``expose_ipv6_gua_tenant_networks=True``
     instead.
+
+
+   .. note::
+
+    If you what to filter the tenant networks to be exposed by some specific
+    address scopes, add the list of address scopes to ``addresss_scope=XXX``
+    section. If no filtering should be applied, just remove the line.
 
 
 Note that the OVN BGP Agent operates under the next assumptions:
@@ -566,8 +579,9 @@ Limitations
 The following limitations apply:
 
 - There is no API to decide what to expose, all VMs/LBs on providers or with
-  Floating IPs associated to them will get exposed. And all the VMs in tenant
-  networks if the expose_tenant_network flag is enabled.
+  Floating IPs associated to them will get exposed. For the VMs in the tenant
+  networks, the flag ``address_scopes`` should be used for filtering what
+  subnets to expose -- which should be also used to ensure no overlapping IPs.
 
 - There is no support for overlapping CIDRs, so this must be avoided, e.g., by
   using address scopes and subnet pools.
