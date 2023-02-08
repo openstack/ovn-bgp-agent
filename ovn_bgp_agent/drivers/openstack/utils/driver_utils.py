@@ -21,19 +21,6 @@ from ovn_bgp_agent.utils import linux_net
 LOG = logging.getLogger(__name__)
 
 
-def parse_vip_from_lb_table(vip):
-    # The VIP format comes from the Load_Balancer table as is like:
-    # (ipv4): 172.24.100.66:80
-    # (ipv6): [2001:db8::f816:3eff:fe55:ef1e]:80
-    vip_split = vip.split("]:")
-    if len(vip_split) == 1:  # ipv4
-        return vip.split(":")[0]
-    if len(vip_split) == 2:  # ipv6
-        return vip_split[0].split("[")[1]
-
-    LOG.error("Malformated VIP at Load Balancer SB table: %s", vip)
-
-
 def is_ipv6_gua(ip):
     if linux_net.get_ip_version(ip) != constants.IP_VERSION_6:
         return False

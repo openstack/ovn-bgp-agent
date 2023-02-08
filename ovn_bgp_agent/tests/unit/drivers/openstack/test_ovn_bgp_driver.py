@@ -53,9 +53,9 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.ipv6 = '2002::1234:abcd:ffff:c0a8:101'
         self.fip = '172.24.4.33'
         self.mac = 'aa:bb:cc:dd:ee:ff'
-        self.loadbalancer = 'fake-lb'
+        self.loadbalancer_vip_port = 'fake-lb-vip-port'
         self.bgp_driver.ovn_lb_vips = {
-            self.loadbalancer: [self.ipv4, self.ipv6]}
+            self.loadbalancer_vip_port: [self.ipv4, self.ipv6]}
         self.bgp_driver.ovs_idl = self.mock_ovs_idl
 
         self.cr_lrp0 = 'cr-fake-logical-port'
@@ -67,7 +67,7 @@ class TestOVNBGPDriver(test_base.TestCase):
                            'ips': [self.fip],
                            'subnets_datapath': {self.lrp0: 'fake-lrp-dp'},
                            'subnets_cidr': ['192.168.1.1/24'],
-                           'ovn_lbs': [],
+                           'ovn_lb_vips': [],
                            'bridge_device': self.bridge,
                            'bridge_vlan': None},
             self.cr_lrp1: {'provider_datapath': 'fake-provider-dp2'}}
@@ -816,11 +816,82 @@ class TestOVNBGPDriver(test_base.TestCase):
         ret = self.bgp_driver._get_bridge_for_datapath('fake-dp')
         self.assertEqual((None, None), ret)
 
-    def test_expose_ovn_lb_on_provider(self):
+    def test_expose_ovn_lb(self):
+        mock_process_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_process_ovn_lb').start()
+        self.bgp_driver.expose_ovn_lb('fake-ip', 'fake-row')
+        mock_process_ovn_lb.assert_called_once_with(
+            'fake-ip', 'fake-row', constants.EXPOSE)
+
+    def test_withdraw_ovn_lb(self):
+        mock_process_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_process_ovn_lb').start()
+        self.bgp_driver.withdraw_ovn_lb('fake-ip', 'fake-row')
+        mock_process_ovn_lb.assert_called_once_with(
+            'fake-ip', 'fake-row', constants.WITHDRAW)
+
+    def _test_process_ovn_lb(self, action, provider=False):
+        mock_expose_remote_ip = mock.patch.object(
+            self.bgp_driver, '_expose_remote_ip').start()
+        mock_withdraw_remote_ip = mock.patch.object(
+            self.bgp_driver, '_withdraw_remote_ip').start()
+        mock_expose_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_expose_ovn_lb_on_provider').start()
+        mock_withdraw_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_withdraw_ovn_lb_on_provider').start()
+
+        self.sb_idl.is_provider_network.return_value = provider
+        ip = 'fake-vip-ip'
+        row = fakes.create_object({
+            'logical_port': 'fake-vip',
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'datapath': 'fake-provider-dp'})
+
+        self.bgp_driver._process_ovn_lb(ip, row, action)
+
+        if action == constants.EXPOSE:
+            if provider:
+                mock_expose_remote_ip.assert_not_called()
+                mock_withdraw_remote_ip.assert_not_called()
+                mock_expose_ovn_lb.assert_called_once_with(
+                    ip, row.logical_port, self.cr_lrp0)
+                mock_withdraw_ovn_lb.assert_not_called()
+            else:
+                mock_expose_ovn_lb.assert_not_called()
+                mock_withdraw_ovn_lb.assert_not_called()
+                mock_expose_remote_ip.assert_called_once_with([ip], row)
+                mock_withdraw_remote_ip.assert_not_called()
+
+        if action == constants.WITHDRAW:
+            if provider:
+                mock_expose_remote_ip.assert_not_called()
+                mock_withdraw_remote_ip.assert_not_called()
+                mock_expose_ovn_lb.assert_not_called()
+                mock_withdraw_ovn_lb.assert_called_once_with(
+                    row.logical_port, self.cr_lrp0)
+            else:
+                mock_expose_ovn_lb.assert_not_called()
+                mock_withdraw_ovn_lb.assert_not_called()
+                mock_expose_remote_ip.assert_not_called()
+                mock_withdraw_remote_ip.assert_called_once_with([ip], row)
+
+    def test__process_ovn_lb_expose_provider(self):
+        self._test_process_ovn_lb(action=constants.EXPOSE, provider=True)
+
+    def test__process_ovn_lb_expose_no_provider(self):
+        self._test_process_ovn_lb(action=constants.EXPOSE)
+
+    def test__process_ovn_lb_withdraw_provider(self):
+        self._test_process_ovn_lb(action=constants.WITHDRAW, provider=True)
+
+    def test__process_ovn_lb_withdraw_no_provider(self):
+        self._test_process_ovn_lb(action=constants.WITHDRAW)
+
+    def test__expose_ovn_lb_on_provider(self):
         mock_expose_provider_port = mock.patch.object(
             self.bgp_driver, '_expose_provider_port').start()
-        self.bgp_driver.expose_ovn_lb_on_provider(
-            self.loadbalancer, self.ipv4, self.cr_lrp0)
+        self.bgp_driver._expose_ovn_lb_on_provider(
+            self.ipv4, self.loadbalancer_vip_port, self.cr_lrp0)
 
         # Assert that the add methods were called
         mock_expose_provider_port.assert_called_once_with(
@@ -829,10 +900,10 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ip_route')
     @mock.patch.object(linux_net, 'del_ip_rule')
     @mock.patch.object(linux_net, 'del_ips_from_dev')
-    def test_withdraw_ovn_lb_on_provider(
+    def test__withdraw_ovn_lb_on_provider(
             self, mock_del_ip_dev, mock_del_rule, mock_del_route):
-        self.bgp_driver.withdraw_ovn_lb_on_provider(
-            self.loadbalancer, self.cr_lrp0)
+        self.bgp_driver._withdraw_ovn_lb_on_provider(
+            self.loadbalancer_vip_port, self.cr_lrp0)
 
         # Assert that the del methods were called
         expected_calls = [mock.call(CONF.bgp_nic, [self.ipv4]),
@@ -1048,17 +1119,11 @@ class TestOVNBGPDriver(test_base.TestCase):
             'datapath': 'fake-router-dp'})
 
         ovn_lb_vip = '172.24.4.5'
-        ovn_lb_vip_port = ovn_lb_vip + ':80'
-        ovn_lb1 = fakes.create_object({
-            'name': 'ovn_lb1', 'datapaths': [self.cr_lrp0, 'fake-lrp-dp'],
-            'vips': {ovn_lb_vip_port: '192.168.100.5:::8080'}})
-        ovn_lb2 = fakes.create_object({
-            'name': 'ovn_lb2', 'datapaths': [self.cr_lrp0, 'fake-lrp1-db'],
-            'vips': {'172.24.4.6:80': '192.168.200.5:::8080'}})
-        self.sb_idl.get_ovn_lb_on_provider_datapath.return_value = [ovn_lb1,
-                                                                    ovn_lb2]
-        mock_process_ovn_lb = mock.patch.object(
-            self.bgp_driver, '_process_ovn_lb').start()
+        ovn_lb_vips = {'fake-vip-port': ovn_lb_vip}
+        self.sb_idl.get_ovn_lb_vips_on_provider_datapath.return_value = (
+            ovn_lb_vips)
+        mock_expose_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_expose_ovn_lb_on_provider').start()
 
         ips = [self.ipv4, self.ipv6]
         self.bgp_driver.expose_ip(ips, row)
@@ -1085,10 +1150,8 @@ class TestOVNBGPDriver(test_base.TestCase):
                           mock.call(lrp1, self.cr_lrp0),
                           mock.call(lrp2, self.cr_lrp0)]
         mock_process_lrp_port.assert_has_calls(expected_calls)
-
-        expected_calls = [mock.call(ovn_lb1, self.cr_lrp0),
-                          mock.call(ovn_lb2, self.cr_lrp0)]
-        mock_process_ovn_lb.assert_has_calls(expected_calls)
+        mock_expose_ovn_lb.assert_called_once_with(
+            ovn_lb_vip, 'fake-vip-port', self.cr_lrp0)
 
     @mock.patch.object(linux_net, 'del_ip_route')
     @mock.patch.object(linux_net, 'del_ip_rule')
@@ -1490,16 +1553,17 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.bgp_driver, '_expose_provider_port').start()
         mock_process_lrp_port = mock.patch.object(
             self.bgp_driver, '_process_lrp_port').start()
-        mock_process_ovn_lb = mock.patch.object(
-            self.bgp_driver, '_process_ovn_lb').start()
+        mock_expose_ovn_lb = mock.patch.object(
+            self.bgp_driver, '_expose_ovn_lb_on_provider').start()
         ips = [self.ipv4, self.ipv6]
         mock_ip_version.side_effect = [constants.IP_VERSION_4,
                                        constants.IP_VERSION_6]
 
         dp_port0 = mock.Mock()
         self.sb_idl.get_lrp_ports_for_router.return_value = [dp_port0]
-        ovn_lb = mock.Mock()
-        self.sb_idl.get_ovn_lb_on_provider_datapath.return_value = [ovn_lb]
+        ovn_lb_vips = {'fake-vip-port': 'fake-vip-ip'}
+        self.sb_idl.get_ovn_lb_vips_on_provider_datapath.return_value = (
+            ovn_lb_vips)
 
         self.bgp_driver._expose_cr_lrp_port(
             ips, self.mac, self.bridge, None, router_datapath='fake-router-dp',
@@ -1511,7 +1575,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             lladdr=self.mac)
         mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, None)
         mock_process_lrp_port.assert_called_once_with(dp_port0, self.cr_lrp0)
-        mock_process_ovn_lb.assert_called_once_with(ovn_lb, self.cr_lrp0)
+        mock_expose_ovn_lb.assert_called_once_with(
+            'fake-vip-ip', 'fake-vip-port', self.cr_lrp0)
 
     @mock.patch.object(linux_net, 'del_ndp_proxy')
     @mock.patch.object(linux_net, 'get_ip_version')
@@ -1521,12 +1586,12 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_withdraw_lrp_port = mock.patch.object(
             self.bgp_driver, '_withdraw_lrp_port').start()
         mock_withdraw_ovn_lb_on_provider = mock.patch.object(
-            self.bgp_driver, 'withdraw_ovn_lb_on_provider').start()
+            self.bgp_driver, '_withdraw_ovn_lb_on_provider').start()
 
         ips = [self.ipv4, self.ipv6]
         mock_ip_version.side_effect = [constants.IP_VERSION_4,
                                        constants.IP_VERSION_6]
-        ovn_lb = mock.Mock()
+        ovn_lb_vip_port = mock.Mock()
         gateway = {
             'ips': ips,
             'provider_datapath': 'fake-provider-dp',
@@ -1534,7 +1599,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             'bridge_device': self.bridge,
             'bridge_vlan': 10,
             'mac': self.mac,
-            'ovn_lbs': [ovn_lb]}
+            'ovn_lb_vips': [ovn_lb_vip_port]}
         self.bgp_driver.ovn_local_cr_lrps = {'gateway_port': gateway}
 
         self.bgp_driver._withdraw_cr_lrp_port(
@@ -1549,7 +1614,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_withdraw_lrp_port.assert_called_once_with('192.168.1.1/24', None,
                                                        'gateway_port')
         mock_withdraw_ovn_lb_on_provider.assert_called_once_with(
-            ovn_lb, 'gateway_port')
+            ovn_lb_vip_port, 'gateway_port')
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')

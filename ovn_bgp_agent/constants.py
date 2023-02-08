@@ -53,3 +53,6 @@ LINK_DOWN = "down"
 
 SUBNET_POOL_ADDR_SCOPE4 = "neutron:subnet_pool_addr_scope4"
 SUBNET_POOL_ADDR_SCOPE6 = "neutron:subnet_pool_addr_scope6"
+
+EXPOSE = "expose"
+WITHDRAW = "withdraw"

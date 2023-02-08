@@ -303,27 +303,23 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             datapath, port_type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
-    def get_ovn_lb_on_provider_datapath(self, datapath):
-        # TODO(ltomasbo): Once ovsdbapp supports {>=} operator we can query
-        # it directly with:
-        # ovn_lbs = self.db_find_rows(
-        #     'Load_Balancer',
-        #     ('datapaths', '{>=}', [datapath])).execute(check_error=True)
-        # return [ovn_lb for ovn_lb in ovn_lbs if len(ovn_lb.datapaths) > 1]
-        ovn_lbs = self.db_list_rows('Load_Balancer').execute(
-            check_error=True)
+    def get_ovn_lb_vips_on_provider_datapath(self, datapath):
+        # return {vip_port: vip_ip, vip_port2: vip_ip2, ...}
+        # ovn-sbctl find port_binding type=\"\" chassis=[] mac=[] up=false
+        cmd = self.db_find_rows('Port_Binding',
+                                ('datapath', '=', datapath),
+                                ('type', '=', constants.OVN_VM_VIF_PORT_TYPE),
+                                ('chassis', '=', []),
+                                ('mac', '=', []),
+                                ('up', '=', False))
+        lbs = {}
+        for row in cmd.execute(check_error=True):
+            # This is depending on the external-id information added by
+            # neutron, regarding the neutron:cidrs
+            ext_n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+            if not ext_n_cidr:
+                continue
+            ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
+            lbs[row.logical_port] = ovn_lb_ip
 
-        lbs = []
-        for ovn_lb in ovn_lbs:
-            if hasattr(ovn_lb, 'datapath_group'):
-                if ovn_lb.datapath_group:
-                    dp_group_datapaths = ovn_lb.datapath_group[0].datapaths
-                    if (len(dp_group_datapaths) > 1 and
-                            datapath in dp_group_datapaths):
-                        lbs.append(ovn_lb)
-            else:
-                # TODO(ltomasbo): Once usage of datapath_group is common, we
-                # should remove the checks for datapaths
-                if len(ovn_lb.datapaths) > 1 and datapath in ovn_lb.datapaths:
-                    lbs.append(ovn_lb)
         return lbs
