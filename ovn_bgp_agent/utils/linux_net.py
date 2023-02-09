@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import ipaddress
-import pyroute2
 import random
 import re
 import sys
@@ -22,6 +21,9 @@ from socket import AF_INET
 from socket import AF_INET6
 
 from oslo_log import log as logging
+import pyroute2
+from pyroute2.netlink import exceptions as netlink_exceptions
+import tenacity
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
@@ -34,12 +36,24 @@ def get_ip_version(ip):
     return ipaddress.ip_address(ip.split('/')[0]).version
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_interfaces(filter_out=[]):
     with pyroute2.NDB() as ndb:
         return [iface.ifname for iface in ndb.interfaces
                 if iface.ifname not in filter_out]
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_interface_index(nic):
     with pyroute2.NDB() as ndb:
         return ndb.interfaces[nic]['index']
@@ -138,6 +152,16 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
         LOG.debug("Added routing table for %s with number: %s", bridge,
                   table_number)
 
+    return _ensure_routing_table_routes(ovn_routing_tables, bridge)
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+def _ensure_routing_table_routes(ovn_routing_tables, bridge):
     # add default route on that table if it does not exist
     extra_routes = []
 
@@ -244,6 +268,12 @@ def enable_proxy_arp(device):
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_exposed_ips(nic):
     exposed_ips = []
     with pyroute2.NDB() as ndb:
@@ -253,6 +283,12 @@ def get_exposed_ips(nic):
     return exposed_ips
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_nic_ip(nic, prefixlen_filter=None):
     exposed_ips = []
     with pyroute2.NDB() as ndb:
@@ -267,6 +303,12 @@ def get_nic_ip(nic, prefixlen_filter=None):
     return exposed_ips
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_exposed_ips_on_network(nic, network):
     exposed_ips = []
     with pyroute2.NDB() as ndb:
@@ -282,6 +324,12 @@ def get_exposed_ips_on_network(nic, network):
     return exposed_ips
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_exposed_routes_on_network(table_ids, network):
     with pyroute2.NDB() as ndb:
         # NOTE: skip bgp routes (proto 186)
@@ -296,6 +344,12 @@ def get_exposed_routes_on_network(table_ids, network):
         ]
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_ovn_ip_rules(routing_table):
     # get the rules pointing to ovn bridges
     ovn_ip_rules = {}
@@ -356,13 +410,29 @@ def delete_bridge_ip_routes(routing_tables, routing_tables_routes,
 
 
 def delete_routes_from_table(table):
-    with pyroute2.NDB() as ndb:
-        # FIXME: problem in pyroute2 removing routes with local (254) scope
-        table_routes = [r for r in ndb.routes.dump().filter(table=table)
-                        if r.scope != 254 and r.proto != 186]
+    table_routes = _get_table_routes(table)
     delete_ip_routes(table_routes)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+def _get_table_routes(table):
+    with pyroute2.NDB() as ndb:
+        # FIXME: problem in pyroute2 removing routes with local (254) scope
+        return [r for r in ndb.routes.dump().filter(table=table)
+                if r.scope != 254 and r.proto != 186]
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def get_routes_on_tables(table_ids):
     with pyroute2.NDB() as ndb:
         # NOTE: skip bgp routes (proto 186)
