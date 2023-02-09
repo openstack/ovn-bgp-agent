@@ -14,14 +14,16 @@
 
 import ipaddress
 import os
-import pyroute2
 
-from pyroute2 import netlink as pyroute_netlink
-from pyroute2.netlink.rtnl import ndmsg
 from socket import AF_INET6
 
 from oslo_concurrency import processutils
 from oslo_log import log as logging
+import pyroute2
+from pyroute2 import netlink as pyroute_netlink
+from pyroute2.netlink import exceptions as netlink_exceptions
+from pyroute2.netlink.rtnl import ndmsg
+import tenacity
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.utils import linux_net as l_net
@@ -31,6 +33,12 @@ import ovn_bgp_agent.privileged.linux_net
 LOG = logging.getLogger(__name__)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def set_device_status(device, status, ndb=None):
     _ndb = ndb
@@ -92,6 +100,12 @@ def ensure_veth(veth_name, veth_peer):
     set_device_status(veth_peer, constants.LINK_UP)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def set_master_for_device(device, master):
     with pyroute2.NDB() as ndb:
