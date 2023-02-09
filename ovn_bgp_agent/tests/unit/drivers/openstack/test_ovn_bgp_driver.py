@@ -1017,13 +1017,11 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_route.assert_called_once_with(
             mock.ANY, self.fip, 'fake-table', self.bridge, vlan=10)
 
-    @mock.patch.object(ovs, 'ensure_default_ovs_flows')
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test_expose_ip_vm_with_fip_no_fip_address(
-            self, mock_add_ip_dev, mock_add_rule, mock_add_route,
-            mock_ovs_flows):
+            self, mock_add_ip_dev, mock_add_rule, mock_add_route):
         self.sb_idl.is_provider_network.return_value = False
         self.sb_idl.get_fip_associated.return_value = (None, None)
         row = fakes.create_object({
@@ -1039,10 +1037,6 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_not_called()
         mock_add_rule.assert_not_called()
         mock_add_route.assert_not_called()
-
-        # Assert ensure_default_ovs_flows() is called instead
-        mock_ovs_flows.assert_called_once_with(
-            mock.ANY, constants.OVS_RULE_COOKIE)
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
