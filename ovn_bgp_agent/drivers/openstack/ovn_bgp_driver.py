@@ -746,6 +746,11 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 # This should not happen: subnet without CIDR
                 return
 
+            if not lrp.options.get('peer'):
+                # if there is no peer associated to the port we need to
+                # 1) creation: wait for another re-sync to expose it
+                # 2) deletion: no need to add it as it being removed
+                return
             if not self._address_scope_allowed(lrp_ip, lrp.options['peer']):
                 return
             subnet_datapath = self.sb_idl.get_port_datapath(
