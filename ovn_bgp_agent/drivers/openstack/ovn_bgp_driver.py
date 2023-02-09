@@ -488,9 +488,6 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self._expose_provider_port([fip_address], fip_datapath)
                 LOG.debug("Added BGP route for FIP with ip %s", fip_address)
                 return [fip_address]
-            else:
-                ovs.ensure_default_ovs_flows(self.ovn_bridge_mappings.values(),
-                                             constants.OVS_RULE_COOKIE)
 
         # FIP association to VM
         elif row.type == constants.OVN_PATCH_VIF_PORT_TYPE:
