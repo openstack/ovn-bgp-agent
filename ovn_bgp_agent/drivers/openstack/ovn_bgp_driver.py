@@ -1005,7 +1005,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                           "triggering a subnet exposure.",
                           row.logical_port)
                 return
-        if not cr_lrp:
+        if not cr_lrp or cr_lrp not in self.ovn_local_cr_lrps.keys():
+            # NOTE(ltomasbo) there is a chance the cr-lrp just got moved
+            # to this node but was not yet processed. In that case there
+            # is no need to withdraw the network as it was not exposed here
             return
 
         self._withdraw_lrp_port(ip, row.logical_port, cr_lrp)
