@@ -127,7 +127,11 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         else:
             cmd = self.db_find_rows('Port_Binding',
                                     ('datapath', '=', datapath))
-        return cmd.execute(check_error=True)
+        try:
+            return cmd.execute(check_error=True)
+        except ValueError:
+            # Datapath has been removed.
+            raise exceptions.DatapathNotFound(datapath=datapath)
 
     def get_ports_by_type(self, port_type):
         cmd = self.db_find_rows('Port_Binding',
@@ -135,10 +139,15 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return cmd.execute(check_error=True)
 
     def is_provider_network(self, datapath):
-        cmd = self.db_find_rows('Port_Binding', ('datapath', '=', datapath),
-                                ('type', '=',
-                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
-        return bool(cmd.execute(check_error=True))
+        try:
+            cmd = self.db_find_rows('Port_Binding',
+                                    ('datapath', '=', datapath),
+                                    ('type', '=',
+                                     constants.OVN_LOCALNET_VIF_PORT_TYPE))
+            return bool(cmd.execute(check_error=True))
+        except ValueError:
+            # Datapath has been removed.
+            raise exceptions.DatapathNotFound(datapath=datapath)
 
     def get_fip_associated(self, port):
         cmd = self.db_find_rows(

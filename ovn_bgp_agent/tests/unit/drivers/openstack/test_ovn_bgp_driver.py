@@ -1857,12 +1857,13 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_withdraw_lrp_port.assert_not_called()
 
-    def test_withdraw_subnet_no_value_error(self):
+    def test_withdraw_subnet_no_datapath_error(self):
         row = fakes.create_object({
             'name': 'fake-row',
             'logical_port': 'fake-logical-port',  # to match the cr-lrp name
             'datapath': 'fake-dp'})
-        self.sb_idl.is_router_gateway_on_chassis.side_effect = ValueError
+        self.sb_idl.is_router_gateway_on_chassis.side_effect = (
+            agent_exc.DatapathNotFound(datapath="fake-dp"))
         mock_withdraw_lrp_port = mock.patch.object(
             self.bgp_driver, '_withdraw_lrp_port').start()
 

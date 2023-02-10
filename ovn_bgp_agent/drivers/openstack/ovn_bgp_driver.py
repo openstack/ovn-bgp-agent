@@ -273,9 +273,16 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             # For FIPs associated to VM ports we don't need the port IP, so
             # we can check if it is a VM on the provider and trigger the
             # expose_ip without passing any port_ips
-            if ((port.type != constants.OVN_VM_VIF_PORT_TYPE and
-                    port.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
-                    self.sb_idl.is_provider_network(port.datapath)):
+            try:
+                if ((port.type != constants.OVN_VM_VIF_PORT_TYPE and
+                        port.type != constants.OVN_VIRTUAL_VIF_PORT_TYPE) or
+                        self.sb_idl.is_provider_network(port.datapath)):
+                    return
+            except agent_exc.DatapathNotFound:
+                # There is no need to expose anything related to a removed
+                # datapath
+                LOG.debug("Port %s not being exposed as its datapath %s was "
+                          "removed", port.logical_port, port.datapath)
                 return
         else:
             if len(port.mac[0].split(' ')) < 2:
@@ -415,7 +422,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._process_ovn_lb(ip, row, constants.WITHDRAW)
 
     def _process_ovn_lb(self, ip, row, action):
-        if not self.sb_idl.is_provider_network(row.datapath):
+        try:
+            provider_network = self.sb_idl.is_provider_network(row.datapath)
+        except agent_exc.DatapathNotFound:
+            # There is no need to expose anything related to a removed
+            # datapath
+            LOG.debug("LoadBalancer with VIP %s not being exposed as its "
+                      "associated datapath %s was removed", ip, row.datapath)
+            return
+        if not provider_network:
             if not self._expose_tenant_networks:
                 return
             if action == constants.EXPOSE:
@@ -483,38 +498,50 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._expose_ip(ips, row, associated_port)
 
     def _expose_ip(self, ips, row, associated_port=None):
-        # VM on provider Network
-        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE or
-                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
-                self.sb_idl.is_provider_network(row.datapath)):
-            LOG.debug("Adding BGP route for logical port with ip %s", ips)
-            self._expose_provider_port(ips, row.datapath)
-            # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
-            # network, we need a NDP Proxy so that the traffic from the
-            # amphora can properly be redirected back
-            if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
-                bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-                    row.datapath)
-                # NOTE: This is neutron specific as we need the provider
-                # prefix to add the ndp proxy
-                n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-                if n_cidr and (linux_net.get_ip_version(n_cidr) ==
-                               constants.IP_VERSION_6):
-                    linux_net.add_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
-            LOG.debug("Added BGP route for logical port with ip %s", ips)
-            return ips
-
-        # VM with FIP
-        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE or
+        if (row.type == constants.OVN_VM_VIF_PORT_TYPE or
                 row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
-            # FIPs are only supported with IPv4
-            fip_address, fip_datapath = self.sb_idl.get_fip_associated(
-                row.logical_port)
-            if fip_address:
-                LOG.debug("Adding BGP route for FIP with ip %s", fip_address)
-                self._expose_provider_port([fip_address], fip_datapath)
-                LOG.debug("Added BGP route for FIP with ip %s", fip_address)
-                return [fip_address]
+            try:
+                provider_network = self.sb_idl.is_provider_network(
+                    row.datapath)
+            except agent_exc.DatapathNotFound:
+                # There is no need to expose anything related to a removed
+                # datapath
+                LOG.debug("Port %s not being exposed as its associated "
+                          "datapath %s was removed", row.logical_port,
+                          row.datapath)
+                return
+            # VM on provider Network
+            if provider_network:
+                LOG.debug("Adding BGP route for logical port with ip %s", ips)
+                self._expose_provider_port(ips, row.datapath)
+                # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
+                # network, we need a NDP Proxy so that the traffic from the
+                # amphora can properly be redirected back
+                if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                    bridge_device, bridge_vlan = self._get_bridge_for_datapath(
+                        row.datapath)
+                    # NOTE: This is neutron specific as we need the provider
+                    # prefix to add the ndp proxy
+                    n_cidr = row.external_ids.get(
+                        constants.OVN_CIDRS_EXT_ID_KEY)
+                    if n_cidr and (linux_net.get_ip_version(n_cidr) ==
+                                   constants.IP_VERSION_6):
+                        linux_net.add_ndp_proxy(n_cidr, bridge_device,
+                                                bridge_vlan)
+                LOG.debug("Added BGP route for logical port with ip %s", ips)
+                return ips
+            # VM with FIP
+            else:
+                # FIPs are only supported with IPv4
+                fip_address, fip_datapath = self.sb_idl.get_fip_associated(
+                    row.logical_port)
+                if fip_address:
+                    LOG.debug("Adding BGP route for FIP with ip %s",
+                              fip_address)
+                    self._expose_provider_port([fip_address], fip_datapath)
+                    LOG.debug("Added BGP route for FIP with ip %s",
+                              fip_address)
+                    return [fip_address]
 
         # FIP association to VM
         elif row.type == constants.OVN_PATCH_VIF_PORT_TYPE:
@@ -575,47 +602,62 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         - VM FIP, or
         - CR-LRP OVN port
         '''
-        # VM on provider Network
-        if ((row.type == constants.OVN_VM_VIF_PORT_TYPE or
-                row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE) and
-                self.sb_idl.is_provider_network(row.datapath)):
-            LOG.debug("Deleting BGP route for logical port with ip %s", ips)
-            self._withdraw_provider_port(ips, row.datapath)
-            if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
-                virtual_provider_ports = (
-                    self.sb_idl.get_virtual_ports_on_datapath_by_chassis(
-                        row.datapath, self.chassis))
-                if not virtual_provider_ports:
-                    cr_lrps_on_same_provider = [
-                        p for p in self.ovn_local_cr_lrps.values()
-                        if p['provider_datapath'] == row.datapath]
-                    if not cr_lrps_on_same_provider:
-                        bridge_device, bridge_vlan = (
-                            self._get_bridge_for_datapath(row.datapath))
-                        # NOTE: This is neutron specific as we need the
-                        # provider prefix to add the ndp proxy
-                        n_cidr = row.external_ids.get(
-                            constants.OVN_CIDRS_EXT_ID_KEY)
-                        if n_cidr and (linux_net.get_ip_version(n_cidr) ==
-                                       constants.IP_VERSION_6):
-                            linux_net.del_ndp_proxy(n_cidr, bridge_device,
-                                                    bridge_vlan)
-            LOG.debug("Deleted BGP route for logical port with ip %s", ips)
-
-        # VM with FIP
-        elif (row.type == constants.OVN_VM_VIF_PORT_TYPE or
+        if (row.type == constants.OVN_VM_VIF_PORT_TYPE or
                 row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE):
-            # FIPs are only supported with IPv4
-            fip_address, fip_datapath = self.sb_idl.get_fip_associated(
-                row.logical_port)
-            if not fip_address:
-                return
+            try:
+                provider_network = self.sb_idl.is_provider_network(
+                    row.datapath)
+            except agent_exc.DatapathNotFound:
+                # NOTE(ltomasbo): Datapath has been deleted. This means that:
+                # - If it was a provider network we need to withdraw it
+                # - It it was a VM with a FIP, the removal would be handled
+                #   by the FIP dissassociation even (FIP removal) that must
+                #   happen before removing the subnet from the router, and
+                #   before being able to remove the subnet
+                # This means we only need to process the "provider_network"
+                # case
+                provider_network = True
+                LOG.debug("Port %s belongs to a removed datapath %s. "
+                          "Assuming it was a provider network to avoid "
+                          "leaks.", row.logical_port, row.datapath)
+            # VM on provider Network
+            if provider_network:
+                LOG.debug("Deleting BGP route for logical port with ip %s",
+                          ips)
+                self._withdraw_provider_port(ips, row.datapath)
+                if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                    virtual_provider_ports = (
+                        self.sb_idl.get_virtual_ports_on_datapath_by_chassis(
+                            row.datapath, self.chassis))
+                    if not virtual_provider_ports:
+                        cr_lrps_on_same_provider = [
+                            p for p in self.ovn_local_cr_lrps.values()
+                            if p['provider_datapath'] == row.datapath]
+                        if not cr_lrps_on_same_provider:
+                            bridge_device, bridge_vlan = (
+                                self._get_bridge_for_datapath(row.datapath))
+                            # NOTE: This is neutron specific as we need the
+                            # provider prefix to add the ndp proxy
+                            n_cidr = row.external_ids.get(
+                                constants.OVN_CIDRS_EXT_ID_KEY)
+                            if n_cidr and (linux_net.get_ip_version(n_cidr) ==
+                                           constants.IP_VERSION_6):
+                                linux_net.del_ndp_proxy(n_cidr, bridge_device,
+                                                        bridge_vlan)
+                LOG.debug("Deleted BGP route for logical port with ip %s", ips)
+            # VM with FIP
+            else:
+                # FIPs are only supported with IPv4
+                fip_address, fip_datapath = self.sb_idl.get_fip_associated(
+                    row.logical_port)
+                if not fip_address:
+                    return
 
-            LOG.debug("Deleting BGP route for FIP with ip %s", fip_address)
-            self._withdraw_provider_port([fip_address], fip_datapath)
-            LOG.debug("Deleted BGP route for FIP with ip %s", fip_address)
+                LOG.debug("Deleting BGP route for FIP with ip %s", fip_address)
+                self._withdraw_provider_port([fip_address], fip_datapath)
+                LOG.debug("Deleted BGP route for FIP with ip %s", fip_address)
 
-        # FIP association to VM
+        # FIP disassociation to VM
         elif row.type == constants.OVN_PATCH_VIF_PORT_TYPE:
             if (associated_port and (
                     self.sb_idl.is_port_on_chassis(
@@ -647,8 +689,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._expose_remote_ip(ips, row)
 
     def _expose_remote_ip(self, ips, row):
-        if (self.sb_idl.is_provider_network(row.datapath) or
-                not self._expose_tenant_networks):
+        try:
+            if (self.sb_idl.is_provider_network(row.datapath) or
+                    not self._expose_tenant_networks):
+                return
+        except agent_exc.DatapathNotFound:
+            # There is no need to expose anything related to a removed
+            # datapath
+            LOG.debug("Port %s not being exposed as its datapath %s was "
+                      "removed", row.logical_port, row.datapath)
             return
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
@@ -680,8 +729,17 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._withdraw_remote_ip(ips, row, chassis)
 
     def _withdraw_remote_ip(self, ips, row, chassis=None):
-        if (self.sb_idl.is_provider_network(row.datapath) or
-                not self._expose_tenant_networks):
+        try:
+            if (self.sb_idl.is_provider_network(row.datapath) or
+                    not self._expose_tenant_networks):
+                return
+        except agent_exc.DatapathNotFound:
+            # There is no need to continue as the subnet removal (patch port
+            # removal) will trigger a withdraw_subnet event that will remove
+            # the associated IPs
+            LOG.debug("Port %s not being withdrawn as its datapath %s was "
+                      "removed. The subnet withdraw action will take care of "
+                      "the withdrawal.", row.logical_port, row.datapath)
             return
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
@@ -982,7 +1040,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         try:
             cr_lrp = self.sb_idl.is_router_gateway_on_chassis(
                 row.datapath, self.chassis)
-        except ValueError:
+        except agent_exc.DatapathNotFound:
             # NOTE(ltomasbo): This happens when the router (datapath) gets
             # deleted at the same time as subnets are detached from it.
             # Usually this will be hit when router is deleted without

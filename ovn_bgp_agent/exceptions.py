@@ -49,3 +49,12 @@ class PortNotFound(OVNBGPAgentException):
     """
 
     message = _("OVN port was not found: %(port)s.")
+
+
+class DatapathNotFound(OVNBGPAgentException):
+    """Datapath not found
+
+    :param datapath: The datapath UUID
+    """
+
+    message = _("Datapath was not found: %(datapath)s.")
