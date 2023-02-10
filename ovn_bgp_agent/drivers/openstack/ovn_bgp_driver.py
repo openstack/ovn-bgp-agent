@@ -852,9 +852,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         bridge_vlan = cr_lrp_info.get('bridge_vlan')
 
         # update information needed for the loadbalancers
-        self.ovn_local_cr_lrps[associated_cr_lrp]['subnets_datapath'].update(
-            {lrp: subnet_datapath})
-        self.ovn_local_cr_lrps[associated_cr_lrp]['subnets_cidr'].append(ip)
+        cr_lrp_info['subnets_datapath'].update({lrp: subnet_datapath})
+        cr_lrp_info['subnets_cidr'].append(ip)
         self.ovn_local_lrps.update({lrp: associated_cr_lrp})
 
         LOG.debug("Adding IP Rules for network %s on chassis %s", ip,
@@ -920,17 +919,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     exposed_lrp = True
                     self.ovn_local_lrps.pop(subnet_lp)
                     break
-        self.ovn_local_cr_lrps[associated_cr_lrp]['subnets_datapath'].pop(
-            lrp, None)
+        cr_lrp_info['subnets_datapath'].pop(lrp, None)
         if not exposed_lrp:
             return
 
         cr_lrp_ips = [ip_address.split('/')[0]
                       for ip_address in cr_lrp_info.get('ips', [])]
-        bridge_device = self.ovn_local_cr_lrps[associated_cr_lrp].get(
-            'bridge_device')
-        bridge_vlan = self.ovn_local_cr_lrps[associated_cr_lrp].get(
-            'bridge_vlan')
+        bridge_device = cr_lrp_info.get('bridge_device')
+        bridge_vlan = cr_lrp_info.get('bridge_vlan')
 
         linux_net.del_ip_rule(ip, self.ovn_routing_tables[bridge_device],
                               bridge_device)
