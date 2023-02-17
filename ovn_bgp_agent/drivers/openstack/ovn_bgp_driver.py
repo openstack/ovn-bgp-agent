@@ -765,30 +765,6 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
                       ips_to_withdraw, self.chassis)
 
-    def _process_cr_lrp_port(self, cr_lrp_port_name, provider_datapath,
-                             router_port):
-        ips = router_port.mac[0].split(' ')[1:]
-        bridge_device, bridge_vlan = self._get_bridge_for_datapath(
-            provider_datapath)
-        mac = router_port.mac[0].split(' ')[0]
-        self.ovn_local_cr_lrps[cr_lrp_port_name] = {
-            'router_datapath': router_port.datapath,
-            'provider_datapath': provider_datapath,
-            'ips': ips,
-            'mac': mac,
-            'subnets_datapath': {},
-            'subnets_cidr': [],
-            'ovn_lb_vips': [],
-            'bridge_vlan': bridge_vlan,
-            'bridge_device': bridge_device
-        }
-        # NOTE: This is like if it was the cr-lrp action on expose_ip
-        return self._expose_cr_lrp_port(
-            ips, mac, bridge_device, bridge_vlan,
-            router_datapath=router_port.datapath,
-            provider_datapath=provider_datapath,
-            cr_lrp_port=cr_lrp_port_name)
-
     def _process_lrp_port(self, lrp, associated_cr_lrp, exposed_ips=[],
                           ovn_ip_rules={}):
         if (lrp.chassis or
