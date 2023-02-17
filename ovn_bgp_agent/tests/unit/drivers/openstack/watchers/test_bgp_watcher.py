@@ -810,6 +810,116 @@ class OVNLBVIPPortEvent(test_base.TestCase):
         self.agent.withdraw_ovn_lb.assert_not_called()
 
 
+class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOVNLBMemberCreateDeleteEvent, self).setUp()
+        self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.ovn_local_cr_lrps = {
+            'cr-lrp1': {'provider_datapath': 'dp1',
+                        'subnets_datapath': {'lrp1': 's_dp1'},
+                        'ovn_lbs': 'ovn-lb1'}}
+        self.event = bgp_watcher.OVNLBMemberCreateDeleteEvent(self.agent)
+
+    def test_match_fn(self):
+        self.assertTrue(self.event.match_fn(mock.Mock(), mock.Mock(),
+                                            mock.Mock()))
+
+    def test_match_fn_no_cr_lrp(self):
+        self.agent.ovn_local_cr_lrps = {}
+        self.assertFalse(self.event.match_fn(mock.Mock(), mock.Mock(),
+                                             mock.Mock()))
+
+    def test_run(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        vip_port = utils.create_row(
+            datapath='dp1',
+            logical_port='ovn-lb-port-1',
+            external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
+            '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_no_vip_port(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = []
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_different_provider(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        vip_port = utils.create_row(
+            datapath='dp2',
+            logical_port='ovn-lb-port-1',
+            external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_no_cr_lrp_match(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp2'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        vip_port = utils.create_row(
+            datapath='dp1',
+            logical_port='ovn-lb-port-1',
+            external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_no_vip(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        vip_port = utils.create_row(
+            datapath='dp1',
+            logical_port='port-1',
+            external_ids={})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_delete(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        vip_port = utils.create_row(
+            datapath='dp1',
+            logical_port='ovn-lb-port-1',
+            external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_DELETE, row, mock.Mock())
+        self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
+            'ovn-lb-port-1', 'cr-lrp1')
+        self.agent.expose_ovn_lb_on_provider.assert_not_called()
+
+
 class TestChassisCreateEvent(test_base.TestCase):
     _event = bgp_watcher.ChassisCreateEvent
 

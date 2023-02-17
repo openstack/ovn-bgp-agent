@@ -312,11 +312,16 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             datapath, port_type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
-    def get_ovn_lb_vips_on_provider_datapath(self, datapath):
+    def get_ovn_lb(self, name):
+        cmd = self.db_find_rows('Load_Balancer', ('name', '=', name))
+        lb_info = cmd.execute(check_error=True)
+        return lb_info[0] if lb_info else []
+
+    def get_ovn_lb_vips_on_cr_lrp(self, provider_dp, subnets_dp):
         # return {vip_port: vip_ip, vip_port2: vip_ip2, ...}
         # ovn-sbctl find port_binding type=\"\" chassis=[] mac=[] up=false
         cmd = self.db_find_rows('Port_Binding',
-                                ('datapath', '=', datapath),
+                                ('datapath', '=', provider_dp),
                                 ('type', '=', constants.OVN_VM_VIF_PORT_TYPE),
                                 ('chassis', '=', []),
                                 ('mac', '=', []),
@@ -325,10 +330,37 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         for row in cmd.execute(check_error=True):
             # This is depending on the external-id information added by
             # neutron, regarding the neutron:cidrs
-            ext_n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-            if not ext_n_cidr:
+            port_name = row.external_ids.get(
+                constants.OVN_PORT_NAME_EXT_ID_KEY)
+            if (not port_name or
+                    len(port_name) <= len(constants.LB_VIP_PORT_PREFIX)):
                 continue
-            ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
-            lbs[row.logical_port] = ovn_lb_ip
-
+            lb_name = port_name[len(constants.LB_VIP_PORT_PREFIX):]
+            lb = self.get_ovn_lb(lb_name)
+            if not lb:
+                continue
+            if hasattr(lb, 'datapath_group'):
+                lb_dp = lb.datapath_group[0].datapaths
+            else:
+                lb_dp = lb.datapaths
+            if set(lb_dp).intersection(subnets_dp):
+                ip_info = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                if not ip_info:
+                    continue
+                lb_ip = ip_info.split(" ")[0].split("/")[0]
+                lbs[row.logical_port] = lb_ip
         return lbs
+
+    def get_ovn_vip_port(self, name):
+        # ovn-sbctl find port_binding type=\"\" chassis=[] mac=[] up=false
+        cmd = self.db_find_rows('Port_Binding',
+                                ('type', '=', constants.OVN_VM_VIF_PORT_TYPE),
+                                ('chassis', '=', []),
+                                ('mac', '=', []),
+                                ('up', '=', False))
+
+        for row in cmd.execute(check_error=True):
+            port_name = row.external_ids.get(
+                constants.OVN_PORT_NAME_EXT_ID_KEY)
+            if port_name[len(constants.LB_VIP_PORT_PREFIX):] == name:
+                return row

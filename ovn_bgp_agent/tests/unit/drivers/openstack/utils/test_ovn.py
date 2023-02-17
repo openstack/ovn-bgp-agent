@@ -488,19 +488,69 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
             self.assertEqual([port1], ret)
 
-    def test_get_ovn_lb_vips_on_provider_datapath(self):
+    def test_get_ovn_lb(self):
+        fake_lb_info = 'fake-lbinfo'
+        lb = 'fake-lb'
+        self.sb_idl.db_find_rows.return_value.execute.return_value = [
+            fake_lb_info]
+        ret = self.sb_idl.get_ovn_lb(lb)
+
+        self.assertEqual(fake_lb_info, ret)
+        self.sb_idl.db_find_rows.assert_called_once_with(
+            'Load_Balancer', ('name', '=', lb))
+
+    def test_get_ovn_lb_empty(self):
+        lb = 'fake-port'
+        self.sb_idl.db_find_rows.return_value.execute.return_value = []
+        ret = self.sb_idl.get_ovn_lb(lb)
+
+        self.assertEqual([], ret)
+        self.sb_idl.db_find_rows.assert_called_once_with(
+            'Load_Balancer', ('name', '=', lb))
+
+    def test_get_ovn_lb_vips_on_cr_lrp(self):
+        lb1_name = 'ovn-lb-vip-fake-lb1'
+        lb2_name = 'ovn-lb-vip-fake-lb2'
+        provider_dp = 'fake-provider-dp'
+        subnets_dp = ['fake-subnet-dp']
+        dp1 = fakes.create_object({'datapaths': ['fake-subnet-dp']})
+        lb1 = fakes.create_object({'datapath_group': [dp1]})
         port0 = fakes.create_object({
             'logical_port': 'fake-port-0',
-            'external_ids': {constants.OVN_CIDRS_EXT_ID_KEY: '10.0.0.15/24'}})
-        port1 = fakes.create_object({'logical_port': 'fake-port-1',
-                                     'external_ids': {}})
+            'external_ids': {constants.OVN_CIDRS_EXT_ID_KEY: '10.0.0.15/24',
+                             constants.OVN_PORT_NAME_EXT_ID_KEY: lb1_name}})
+        port1 = fakes.create_object({
+            'logical_port': 'fake-port-1',
+            'external_ids': {constants.OVN_CIDRS_EXT_ID_KEY: '10.0.0.16/24'}})
+        port2 = fakes.create_object({
+            'logical_port': 'fake-port-0',
+            'external_ids': {constants.OVN_CIDRS_EXT_ID_KEY: '10.0.0.17/24',
+                             constants.OVN_PORT_NAME_EXT_ID_KEY: lb2_name}})
 
         self.sb_idl.db_find_rows.return_value.execute.return_value = [
-            port0, port1]
+            port0, port1, port2]
 
-        ret = self.sb_idl.get_ovn_lb_vips_on_provider_datapath('fake-datapath')
-        expected_return = {'fake-port-0': '10.0.0.15'}
-        self.assertEqual(expected_return, ret)
+        with mock.patch.object(self.sb_idl, 'get_ovn_lb') as mock_p:
+            mock_p.side_effect = (lb1, [])
+
+            ret = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(provider_dp,
+                                                        subnets_dp)
+            expected_return = {'fake-port-0': '10.0.0.15'}
+            self.assertEqual(expected_return, ret)
+
+    def test_get_ovn_vip_port(self):
+        lb_name = 'ovn-lb-vip-fake-lb'
+        lb1 = fakes.create_object(
+            {'external_ids': {
+                constants.OVN_PORT_NAME_EXT_ID_KEY: 'different-name'}})
+        lb2 = fakes.create_object(
+            {'external_ids': {constants.OVN_PORT_NAME_EXT_ID_KEY: lb_name}})
+
+        self.sb_idl.db_find_rows.return_value.execute.return_value = [
+            lb1, lb2]
+        ret = self.sb_idl.get_ovn_vip_port('fake-lb')
+
+        self.assertEqual(lb2, ret)
 
 
 class TestOvnSbIdl(test_base.TestCase):

@@ -350,6 +350,61 @@ class OVNLBVIPPortEvent(base_watcher.PortBindingChassisEvent):
                 self.agent.expose_ovn_lb(ovn_lb_ip, row)
 
 
+class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_CREATE, self.ROW_DELETE,)
+        super(OVNLBMemberCreateDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # Only process event if the local node has a cr-lrp ports associated
+        return bool(self.agent.ovn_local_cr_lrps)
+
+    def run(self, event, row, old):
+        # Only process event if the local node has a cr-lrp port whose provider
+        # datapath is included into the loadbalancer. This means the
+        # loadbalancer has the VIP on a provider network
+        # Also, the cr-lrp port needs to have subnet datapaths (LS) associated
+        # to it that include the load balancer
+        try:
+            row_dp = row.datapaths
+        except AttributeError:
+            row_dp = []
+        if hasattr(row, 'datapath_group'):
+            if row.datapath_group:
+                dp_datapaths = row.datapath_group[0].datapaths
+                if dp_datapaths:
+                    row_dp = dp_datapaths
+
+        vip_port = self.agent.sb_idl.get_ovn_vip_port(row.name)
+        if not vip_port:
+            return
+        associated_cr_lrp_port = None
+        for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
+            if vip_port.datapath != cr_lrp_info.get('provider_datapath'):
+                continue
+            if set(row_dp).intersection(set(
+                    cr_lrp_info.get('subnets_datapath').values())):
+                associated_cr_lrp_port = cr_lrp_port
+                break
+        else:
+            return
+
+        with _SYNC_STATE_LOCK.read_lock():
+            if event == self.ROW_DELETE:
+                # loadbalancer deleted. Withdraw the VIP through the cr-lrp
+                return self.agent.withdraw_ovn_lb_on_provider(
+                    vip_port.logical_port, associated_cr_lrp_port)
+            if event == self.ROW_CREATE:
+                vip_ip = vip_port.external_ids.get(
+                    constants.OVN_CIDRS_EXT_ID_KEY)
+                if not vip_ip:
+                    return
+                vip_ip = vip_ip.split(" ")[0].split("/")[0]
+                return self.agent.expose_ovn_lb_on_provider(
+                    vip_ip, vip_port.logical_port, associated_cr_lrp_port)
+
+
 class ChassisCreateEventBase(row_event.RowEvent):
     table = None
 

@@ -21,6 +21,8 @@ OVN_CHASSISREDIRECT_VIF_PORT_TYPE = "chassisredirect"
 OVN_LOCALNET_VIF_PORT_TYPE = "localnet"
 
 OVN_CIDRS_EXT_ID_KEY = 'neutron:cidrs'
+OVN_PORT_NAME_EXT_ID_KEY = 'neutron:port_name'
+LB_VIP_PORT_PREFIX = "ovn-lb-vip-"
 
 OVS_RULE_COOKIE = "999"
 OVS_VRF_RULE_COOKIE = "998"

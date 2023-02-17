@@ -835,10 +835,6 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.bgp_driver, '_expose_remote_ip').start()
         mock_withdraw_remote_ip = mock.patch.object(
             self.bgp_driver, '_withdraw_remote_ip').start()
-        mock_expose_ovn_lb = mock.patch.object(
-            self.bgp_driver, '_expose_ovn_lb_on_provider').start()
-        mock_withdraw_ovn_lb = mock.patch.object(
-            self.bgp_driver, '_withdraw_ovn_lb_on_provider').start()
 
         self.sb_idl.is_provider_network.return_value = provider
         ip = 'fake-vip-ip'
@@ -853,12 +849,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             if provider:
                 mock_expose_remote_ip.assert_not_called()
                 mock_withdraw_remote_ip.assert_not_called()
-                mock_expose_ovn_lb.assert_called_once_with(
-                    ip, row.logical_port, self.cr_lrp0)
-                mock_withdraw_ovn_lb.assert_not_called()
             else:
-                mock_expose_ovn_lb.assert_not_called()
-                mock_withdraw_ovn_lb.assert_not_called()
                 mock_expose_remote_ip.assert_called_once_with([ip], row)
                 mock_withdraw_remote_ip.assert_not_called()
 
@@ -866,12 +857,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             if provider:
                 mock_expose_remote_ip.assert_not_called()
                 mock_withdraw_remote_ip.assert_not_called()
-                mock_expose_ovn_lb.assert_not_called()
-                mock_withdraw_ovn_lb.assert_called_once_with(
-                    row.logical_port, self.cr_lrp0)
             else:
-                mock_expose_ovn_lb.assert_not_called()
-                mock_withdraw_ovn_lb.assert_not_called()
                 mock_expose_remote_ip.assert_not_called()
                 mock_withdraw_remote_ip.assert_called_once_with([ip], row)
 
@@ -1114,7 +1100,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         ovn_lb_vip = '172.24.4.5'
         ovn_lb_vips = {'fake-vip-port': ovn_lb_vip}
-        self.sb_idl.get_ovn_lb_vips_on_provider_datapath.return_value = (
+        self.sb_idl.get_ovn_lb_vips_on_cr_lrp.return_value = (
             ovn_lb_vips)
         mock_expose_ovn_lb = mock.patch.object(
             self.bgp_driver, '_expose_ovn_lb_on_provider').start()
@@ -1556,7 +1542,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         dp_port0 = mock.Mock()
         self.sb_idl.get_lrp_ports_for_router.return_value = [dp_port0]
         ovn_lb_vips = {'fake-vip-port': 'fake-vip-ip'}
-        self.sb_idl.get_ovn_lb_vips_on_provider_datapath.return_value = (
+        self.sb_idl.get_ovn_lb_vips_on_cr_lrp.return_value = (
             ovn_lb_vips)
 
         self.bgp_driver._expose_cr_lrp_port(

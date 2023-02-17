@@ -37,7 +37,7 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding"]
+OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer"]
 
 
 class OVNBGPDriver(driver_api.AgentDriverBase):
@@ -134,13 +134,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "PortBindingChassisDeletedEvent",
                       "FIPSetEvent",
                       "FIPUnsetEvent",
-                      "OVNLBVIPPortEvent",
+                      "OVNLBMemberCreateDeleteEvent",
                       "ChassisCreateEvent"])
         if self._expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",
                            "TenantPortCreatedEvent",
-                           "TenantPortDeletedEvent"])
+                           "TenantPortDeletedEvent",
+                           "OVNLBVIPPortEvent"])
         return events
 
     @lockutils.synchronized('bgp')
@@ -228,8 +229,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
             # add missing routes/ips related to ovn-octavia loadbalancers
             # on the provider networks
-            ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_provider_datapath(
-                cr_lrp_info['provider_datapath'])
+            cr_lrp_subnets_dp = set(cr_lrp_info['subnets_datapath'].values())
+            ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
+                cr_lrp_info['provider_datapath'], cr_lrp_subnets_dp)
             for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
                 self._expose_ovn_lb_on_provider(ovn_lb_ip,
                                                 ovn_lb_port,
@@ -429,34 +431,30 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     def _process_ovn_lb(self, ip, row, action):
         try:
-            provider_network = self.sb_idl.is_provider_network(row.datapath)
+            if (not self._expose_tenant_networks or
+                    self.sb_idl.is_provider_network(row.datapath)):
+                return
         except agent_exc.DatapathNotFound:
             # There is no need to expose anything related to a removed
             # datapath
-            LOG.debug("LoadBalancer with VIP %s not being exposed as its "
-                      "associated datapath %s was removed", ip, row.datapath)
+            LOG.debug("LoadBalancer with VIP %s not being exposed/withdraw as"
+                      " its associated datapath %s was removed", ip,
+                      row.datapath)
             return
-        if not provider_network:
-            if not self._expose_tenant_networks:
-                return
-            if action == constants.EXPOSE:
-                return self._expose_remote_ip([ip], row)
-            if action == constants.WITHDRAW:
-                return self._withdraw_remote_ip([ip], row)
-            # if unknown action return
-            return
-        local_lb_cr_lrp = None
-        for cr_lrp_port, cr_lrp_info in self.ovn_local_cr_lrps.items():
-            if cr_lrp_info['provider_datapath'] == row.datapath:
-                local_lb_cr_lrp = cr_lrp_port
-                break
-        if not local_lb_cr_lrp:
-            return
-        vip_port = row.logical_port
         if action == constants.EXPOSE:
-            self._expose_ovn_lb_on_provider(ip, vip_port, local_lb_cr_lrp)
+            return self._expose_remote_ip([ip], row)
         if action == constants.WITHDRAW:
-            self._withdraw_ovn_lb_on_provider(vip_port, local_lb_cr_lrp)
+            return self._withdraw_remote_ip([ip], row)
+        # if unknown action return
+        return
+
+    @lockutils.synchronized('bgp')
+    def expose_ovn_lb_on_provider(self, ip, vip_port, cr_lrp_port):
+        self._expose_ovn_lb_on_provider(ip, vip_port, cr_lrp_port)
+
+    @lockutils.synchronized('bgp')
+    def withdraw_ovn_lb_on_provider(self, vip_port, cr_lrp_port):
+        self._withdraw_ovn_lb_on_provider(vip_port, cr_lrp_port)
 
     def _expose_ovn_lb_on_provider(self, ip, ovn_lb_vip_port, cr_lrp,
                                    exposed_ips=None, ovn_ip_rules=None):
@@ -829,8 +827,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         for lrp in lrp_ports:
             self._process_lrp_port(lrp, cr_lrp_port)
 
-        ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_provider_datapath(
-            provider_datapath)
+        cr_lrp_provider_dp = self.ovn_local_cr_lrps[cr_lrp_port][
+            'provider_datapath']
+        cr_lrp_subnets_dp = set(self.ovn_local_cr_lrps[cr_lrp_port][
+            'subnets_datapath'].values())
+        ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
+            cr_lrp_provider_dp, cr_lrp_subnets_dp)
         for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
             self._expose_ovn_lb_on_provider(ovn_lb_ip,
                                             ovn_lb_port,
