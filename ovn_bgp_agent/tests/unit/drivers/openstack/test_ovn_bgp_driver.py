@@ -1646,11 +1646,11 @@ class TestOVNBGPDriver(test_base.TestCase):
             mask='32', via=self.fip)
         expected_calls = [
             mock.call(dp_port0, ip_version=constants.IP_VERSION_4,
-                      exposed_ips=[], ovn_ip_rules={}),
+                      exposed_ips=None, ovn_ip_rules=None),
             mock.call(dp_port1, ip_version=constants.IP_VERSION_4,
-                      exposed_ips=[], ovn_ip_rules={}),
+                      exposed_ips=None, ovn_ip_rules=None),
             mock.call(dp_port2, ip_version=constants.IP_VERSION_4,
-                      exposed_ips=[], ovn_ip_rules={})]
+                      exposed_ips=None, ovn_ip_rules=None)]
         mock_expose_tenant_port.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')
@@ -1732,11 +1732,11 @@ class TestOVNBGPDriver(test_base.TestCase):
             mask='128', via=self.fip)
         expected_calls = [
             mock.call(dp_port0, ip_version=constants.IP_VERSION_6,
-                      exposed_ips=[], ovn_ip_rules={}),
+                      exposed_ips=None, ovn_ip_rules=None),
             mock.call(dp_port1, ip_version=constants.IP_VERSION_6,
-                      exposed_ips=[], ovn_ip_rules={}),
+                      exposed_ips=None, ovn_ip_rules=None),
             mock.call(dp_port2, ip_version=constants.IP_VERSION_6,
-                      exposed_ips=[], ovn_ip_rules={})]
+                      exposed_ips=None, ovn_ip_rules=None)]
         mock_expose_tenant_port.assert_has_calls(expected_calls)
 
     @mock.patch.object(linux_net, 'add_ip_route')

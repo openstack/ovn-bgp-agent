@@ -233,7 +233,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
                 self._expose_ovn_lb_on_provider(ovn_lb_ip,
                                                 ovn_lb_port,
-                                                cr_lrp_port)
+                                                cr_lrp_port,
+                                                exposed_ips,
+                                                ovn_ip_rules)
 
         # remove extra routes/ips
         # remove all the leftovers on the list of current ips on dev OVN
@@ -255,14 +257,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return
         self._expose_ip(ips, patch_port_row, associated_port=cr_lrp_port)
         for ip in ips:
-            ip_version = linux_net.get_ip_version(ip)
-            if ip_version == constants.IP_VERSION_6:
-                ip_dst = "{}/128".format(ip)
-            else:
-                ip_dst = "{}/32".format(ip)
-            if ip in exposed_ips:
+            if exposed_ips and ip in exposed_ips:
                 exposed_ips.remove(ip)
-            ovn_ip_rules.pop(ip_dst, None)
+            if ovn_ip_rules:
+                ip_version = linux_net.get_ip_version(ip)
+                if ip_version == constants.IP_VERSION_6:
+                    ip_dst = "{}/128".format(ip)
+                else:
+                    ip_dst = "{}/32".format(ip)
+                ovn_ip_rules.pop(ip_dst, None)
 
     def _ensure_port_exposed(self, port, exposed_ips, ovn_ip_rules):
         if port.type not in constants.OVN_VIF_PORT_TYPES or not port.mac:
@@ -293,15 +296,16 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
         for port_ip in ips_adv:
             ip_address = port_ip.split("/")[0]
-            ip_version = linux_net.get_ip_version(port_ip)
-            if ip_version == constants.IP_VERSION_6:
-                ip_dst = "{}/128".format(ip_address)
-            else:
-                ip_dst = "{}/32".format(ip_address)
-            if ip_address in exposed_ips:
+            if exposed_ips and ip_address in exposed_ips:
                 # remove each ip to add from the list of current ips on dev OVN
                 exposed_ips.remove(ip_address)
-            ovn_ip_rules.pop(ip_dst, None)
+            if ovn_ip_rules:
+                ip_version = linux_net.get_ip_version(port_ip)
+                if ip_version == constants.IP_VERSION_6:
+                    ip_dst = "{}/128".format(ip_address)
+                else:
+                    ip_dst = "{}/32".format(ip_address)
+                ovn_ip_rules.pop(ip_dst, None)
 
     def _expose_provider_port(self, port_ips, provider_datapath,
                               bridge_device=None, bridge_vlan=None,
@@ -330,8 +334,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_routing_tables[bridge_device], bridge_device,
                 vlan=bridge_vlan)
 
-    def _expose_tenant_port(self, port, ip_version, exposed_ips=[],
-                            ovn_ip_rules={}):
+    def _expose_tenant_port(self, port, ip_version, exposed_ips=None,
+                            ovn_ip_rules=None):
         # specific case for ovn-lb vips on tenant networks
         if not port.mac and not port.chassis and not port.up[0]:
             ext_n_cidr = port.external_ids.get(
@@ -340,9 +344,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
                 linux_net.add_ips_to_dev(
                     CONF.bgp_nic, [ovn_lb_ip])
-                if ovn_lb_ip in exposed_ips:
+                if exposed_ips and ovn_lb_ip in exposed_ips:
                     exposed_ips.remove(ovn_lb_ip)
-                ovn_ip_rules.pop(ext_n_cidr.split(" ")[0], None)
+                if ovn_ip_rules:
+                    ovn_ip_rules.pop(ext_n_cidr.split(" ")[0], None)
             return
         elif (not port.mac or
                 port.type not in (
@@ -370,13 +375,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if port_ip_version == ip_version:
                 linux_net.add_ips_to_dev(
                     CONF.bgp_nic, [port_ip])
-                if port_ip in exposed_ips:
+                if exposed_ips and port_ip in exposed_ips:
                     exposed_ips.remove(port_ip)
-                if port_ip_version == constants.IP_VERSION_6:
-                    ip_dst = "{}/128".format(port_ip)
-                else:
-                    ip_dst = "{}/32".format(port_ip)
-                ovn_ip_rules.pop(ip_dst, None)
+                if ovn_ip_rules:
+                    if port_ip_version == constants.IP_VERSION_6:
+                        ip_dst = "{}/128".format(port_ip)
+                    else:
+                        ip_dst = "{}/32".format(port_ip)
+                    ovn_ip_rules.pop(ip_dst, None)
 
     def _withdraw_provider_port(self, port_ips, provider_datapath,
                                 bridge_device=None, bridge_vlan=None,
@@ -452,7 +458,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         if action == constants.WITHDRAW:
             self._withdraw_ovn_lb_on_provider(vip_port, local_lb_cr_lrp)
 
-    def _expose_ovn_lb_on_provider(self, ip, ovn_lb_vip_port, cr_lrp):
+    def _expose_ovn_lb_on_provider(self, ip, ovn_lb_vip_port, cr_lrp,
+                                   exposed_ips=None, ovn_ip_rules=None):
         self.ovn_local_cr_lrps[cr_lrp]['ovn_lb_vips'].append(ovn_lb_vip_port)
         self.ovn_lb_vips.setdefault(ovn_lb_vip_port, []).append(ip)
         bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
@@ -462,6 +469,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._expose_provider_port([ip], None, bridge_device=bridge_device,
                                    bridge_vlan=bridge_vlan)
         LOG.debug("Added BGP route for loadbalancer VIP %s", ip)
+        if exposed_ips and ip in exposed_ips:
+            exposed_ips.remove(ip)
+        if ovn_ip_rules:
+            ip_version = linux_net.get_ip_version(ip)
+            if ip_version == constants.IP_VERSION_6:
+                ip_dst = "{}/128".format(ip)
+            else:
+                ip_dst = "{}/32".format(ip)
+            ovn_ip_rules.pop(ip_dst, None)
 
     def _withdraw_ovn_lb_on_provider(self, ovn_lb_vip_port, cr_lrp):
         bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
@@ -765,8 +781,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
                       ips_to_withdraw, self.chassis)
 
-    def _process_lrp_port(self, lrp, associated_cr_lrp, exposed_ips=[],
-                          ovn_ip_rules={}):
+    def _process_lrp_port(self, lrp, associated_cr_lrp, exposed_ips=None,
+                          ovn_ip_rules=None):
         if (lrp.chassis or
                 not lrp.logical_port.startswith('lrp-') or
                 "chassis-redirect-port" in lrp.options.keys() or
@@ -863,7 +879,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       cr_lrp_port)
 
     def _expose_lrp_port(self, ip, lrp, associated_cr_lrp, subnet_datapath,
-                         exposed_ips=[], ovn_ip_rules={}):
+                         exposed_ips=None, ovn_ip_rules=None):
         if not self._expose_tenant_networks:
             return
         if not CONF.expose_tenant_networks:
