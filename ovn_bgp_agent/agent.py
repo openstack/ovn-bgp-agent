@@ -58,7 +58,10 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
     def sync(self, context):
         LOG.info("Running reconciliation loop to ensure routes/rules are "
                  "in place.")
-        self.agent_driver.sync()
+        try:
+            self.agent_driver.sync()
+        except Exception as e:
+            LOG.exception("Unexpected exception while running the sync: %s", e)
 
     def wait(self):
         super(BGPAgent, self).wait()
