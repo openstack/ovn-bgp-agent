@@ -108,7 +108,9 @@ class FIPSetEvent(base_watcher.PortBindingChassisEvent):
                 port = nat.split(" ")[-1].split("\"")[1]
                 ips_to_expose = [ip for ip in ips
                                  if ip not in old_cr_lrps.get(port, set())]
-                self.agent.expose_ip(ips_to_expose, row, associated_port=port)
+                if ips_to_expose:
+                    self.agent.expose_ip(ips_to_expose, row,
+                                         associated_port=port)
 
 
 class FIPUnsetEvent(base_watcher.PortBindingChassisEvent):
@@ -145,8 +147,9 @@ class FIPUnsetEvent(base_watcher.PortBindingChassisEvent):
                 ips_to_withdraw = [ip for ip in ips
                                    if ip not in current_cr_lrps.get(port,
                                                                     set())]
-                self.agent.withdraw_ip(ips_to_withdraw, row,
-                                       associated_port=port)
+                if ips_to_withdraw:
+                    self.agent.withdraw_ip(ips_to_withdraw, row,
+                                           associated_port=port)
 
 
 class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
