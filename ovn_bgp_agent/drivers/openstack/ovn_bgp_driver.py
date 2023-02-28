@@ -320,13 +320,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         for ip in port_ips:
             try:
                 if lladdr:
+                    dev = bridge_device
+                    if bridge_vlan:
+                        dev = '{}.{}'.format(dev, bridge_vlan)
                     linux_net.add_ip_rule(
                         ip, self.ovn_routing_tables[bridge_device],
-                        bridge_device, lladdr=lladdr)
+                        dev=dev, lladdr=lladdr)
                 else:
                     linux_net.add_ip_rule(
-                        ip, self.ovn_routing_tables[bridge_device],
-                        bridge_device)
+                        ip, self.ovn_routing_tables[bridge_device])
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to create a rule for port"
                               " on the provider network: %s", ip)
@@ -912,7 +914,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                   self.chassis)
         try:
             linux_net.add_ip_rule(
-                ip, self.ovn_routing_tables[bridge_device], bridge_device)
+                ip, self.ovn_routing_tables[bridge_device])
         except agent_exc.InvalidPortIP:
             LOG.exception("Invalid IP to create a rule for the "
                           "lrp (network router interface) port: %s", ip)

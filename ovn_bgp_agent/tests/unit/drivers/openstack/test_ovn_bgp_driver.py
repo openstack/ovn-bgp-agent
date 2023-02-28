@@ -281,7 +281,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
-            self.ipv4, 'fake-table', self.bridge)
+            self.ipv4, 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=10)
 
@@ -301,7 +301,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
-            self.ipv4, 'fake-table', self.bridge)
+            self.ipv4, 'fake-table')
         mock_add_route.assert_not_called()
 
     @mock.patch.object(linux_net, 'add_ips_to_dev')
@@ -319,7 +319,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
-            self.ipv4, 'fake-table', self.bridge, lladdr='fake-mac')
+            self.ipv4, 'fake-table', dev='{}.{}'.format(self.bridge, 10),
+            lladdr='fake-mac')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=10)
 
@@ -593,7 +594,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_add_rule.assert_called_once_with(
-            '{}/32'.format(self.ipv4), 'fake-table', self.bridge)
+            '{}/32'.format(self.ipv4), 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge,
             vlan=10, mask='32', via=self.fip)
@@ -680,7 +681,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         # Assert that the add methods were called
         mock_ipv6_gua.assert_called_once_with('{}/128'.format(self.ipv6))
         mock_add_rule.assert_called_once_with(
-            '{}/128'.format(self.ipv6), 'fake-table', self.bridge)
+            '{}/128'.format(self.ipv6), 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv6, 'fake-table', self.bridge,
             vlan=10, mask='128', via=self.fip)
@@ -764,7 +765,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.bgp_driver._process_lrp_port(router_port, 'gateway_port')
 
         mock_add_rule.assert_called_once_with(
-            '{}/32'.format(self.ipv4), 'fake-table', self.bridge)
+            '{}/32'.format(self.ipv4), 'fake-table')
         # Assert that add_ip_route() was not called
         mock_add_route.assert_not_called()
 
@@ -927,8 +928,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
-                          mock.call(self.ipv6, 'fake-table', self.bridge)]
+        expected_calls = [mock.call(self.ipv4, 'fake-table'),
+                          mock.call(self.ipv6, 'fake-table')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -963,8 +964,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
-                          mock.call(self.ipv6, 'fake-table', self.bridge)]
+        expected_calls = [mock.call(self.ipv4, 'fake-table'),
+                          mock.call(self.ipv6, 'fake-table')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -999,7 +1000,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, [self.fip])
         mock_add_rule.assert_called_once_with(
-            self.fip, 'fake-table', self.bridge)
+            self.fip, 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.fip, 'fake-table', self.bridge, vlan=10)
 
@@ -1047,8 +1048,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge),
-                          mock.call(self.ipv6, 'fake-table', self.bridge)]
+        expected_calls = [mock.call(self.ipv4, 'fake-table'),
+                          mock.call(self.ipv6, 'fake-table')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1112,9 +1113,11 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table', self.bridge,
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                          dev='{}.{}'.format(self.bridge, 10),
                           lladdr=self.mac),
-                          mock.call(self.ipv6, 'fake-table', self.bridge,
+                          mock.call(self.ipv6, 'fake-table',
+                          dev='{}.{}'.format(self.bridge, 10),
                           lladdr=self.mac)]
         mock_add_rule.assert_has_calls(expected_calls)
 
@@ -1626,7 +1629,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             '{}/32'.format(self.ipv4), self.lrp0, self.cr_lrp0, 'fake-lrp-dp')
 
         mock_add_rule.assert_called_once_with(
-            '{}/32'.format(self.ipv4), 'fake-table', self.bridge)
+            '{}/32'.format(self.ipv4), 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=None,
             mask='32', via=self.fip)
@@ -1671,7 +1674,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             '{}/32'.format(self.ipv4), self.lrp0, self.cr_lrp0, 'fake-lrp-dp')
 
         mock_add_rule.assert_called_once_with(
-            '{}/32'.format(self.ipv4), 'fake-table', self.bridge)
+            '{}/32'.format(self.ipv4), 'fake-table')
         mock_add_route.assert_not_called()
         mock_expose_tenant_port.assert_not_called()
 
@@ -1712,7 +1715,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             '{}/128'.format(self.ipv6), self.lrp0, self.cr_lrp0, 'fake-lrp-dp')
 
         mock_add_rule.assert_called_once_with(
-            '{}/128'.format(self.ipv6), 'fake-table', self.bridge)
+            '{}/128'.format(self.ipv6), 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv6, 'fake-table', self.bridge, vlan=None,
             mask='128', via=self.fip)
