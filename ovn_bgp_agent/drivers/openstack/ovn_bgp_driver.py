@@ -177,7 +177,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 if not extra_routes.get(bridge):
                     extra_routes[bridge] = (
                         linux_net.ensure_routing_table_for_bridge(
-                            self.ovn_routing_tables, bridge))
+                            self.ovn_routing_tables, bridge,
+                            CONF.bgp_vrf_table_id))
                 vlan_tag = self.sb_idl.get_network_vlan_tag_by_network_name(
                     network)
 

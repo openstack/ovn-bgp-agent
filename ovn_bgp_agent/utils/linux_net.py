@@ -116,7 +116,7 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
         enable_proxy_ndp(bridge)
 
 
-def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
+def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
     # check a routing table with the bridge name exists on
     # /etc/iproute2/rt_tables
     regex = r'^[0-9]*[\s]*{}$'.format(bridge)
@@ -139,8 +139,9 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge):
         # pick a number between 1 and 252
         try:
             table_number = random.choice(list(
-                set([x for x in range(1, 253)]).difference(
-                    set(existing_routes))))
+                set([x for x in range(1, 253)
+                    if x != int(vrf_table)]).difference(
+                        set(existing_routes))))
         except IndexError:
             LOG.error("No more routing tables available for bridge %s "
                       "at /etc/iproute2/rt_tables", bridge)
@@ -471,10 +472,10 @@ def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
 
     if clear_local_route_at_table:
         for ip in ips:
+            if ip in already_added_ips:
+                continue
             with pyroute2.NDB() as ndb:
                 oif = ndb.interfaces[nic]['index']
-                if ip in already_added_ips:
-                    continue
                 route = {'table': clear_local_route_at_table,
                          'proto': 2,
                          'scope': 254,
