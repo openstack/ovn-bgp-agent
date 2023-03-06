@@ -1019,8 +1019,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized('bgp')
     def expose_subnet(self, ip, row):
-        cr_lrp = self.sb_idl.is_router_gateway_on_chassis(
-            row.datapath, self.chassis)
+        try:
+            cr_lrp = self.sb_idl.is_router_gateway_on_chassis(
+                row.datapath, self.chassis)
+        except agent_exc.DatapathNotFound:
+            # It seems it may also happen that router gets deleted before the
+            # subnet attachment to it gets processed, and in that case there
+            # is no need to expose anything
+            return
         subnet_datapath = self.sb_idl.get_port_datapath(
             row.options['peer'])
 
