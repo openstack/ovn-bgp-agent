@@ -1027,6 +1027,11 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             # subnet attachment to it gets processed, and in that case there
             # is no need to expose anything
             return
+        if not row.options.get('peer'):
+            # if there is no peer associated to the port we need to
+            # 1) creation: wait for another re-sync to expose it
+            # 2) deletion: no need to add it as it being removed
+            return
         subnet_datapath = self.sb_idl.get_port_datapath(
             row.options['peer'])
 
