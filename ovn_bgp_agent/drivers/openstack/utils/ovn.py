@@ -245,11 +245,13 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         except IndexError:
             return False
 
-    def get_lrp_port_for_datapath(self, datapath):
+    def get_lrps_for_datapath(self, datapath):
+        lrps = []
         for row in self.get_ports_on_datapath(
                 datapath, constants.OVN_PATCH_VIF_PORT_TYPE):
             if row.options:
-                return row.options['peer']
+                lrps.append(row.options['peer'])
+        return lrps
 
     def get_lrp_ports_for_router(self, datapath):
         return self.get_ports_on_datapath(
@@ -317,7 +319,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         lb_info = cmd.execute(check_error=True)
         return lb_info[0] if lb_info else []
 
-    def get_ovn_lb_vips_on_cr_lrp(self, provider_dp, subnets_dp):
+    def get_ovn_lb_vips_on_cr_lrp(self, provider_dp, router_dp):
         # return {vip_port: vip_ip, vip_port2: vip_ip2, ...}
         # ovn-sbctl find port_binding type=\"\" chassis=[] mac=[] up=false
         cmd = self.db_find_rows('Port_Binding',
@@ -343,12 +345,20 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                 lb_dp = lb.datapath_group[0].datapaths
             else:
                 lb_dp = lb.datapaths
-            if set(lb_dp).intersection(subnets_dp):
-                ip_info = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-                if not ip_info:
-                    continue
-                lb_ip = ip_info.split(" ")[0].split("/")[0]
-                lbs[row.logical_port] = lb_ip
+
+            # assume all the members are connected through the same router
+            # so only one datapath needs to be checked
+            router_lrps = self.get_lrps_for_datapath(lb_dp[0])
+            for lrp in router_lrps:
+                router_lrp_dp = self.get_port_datapath(lrp)
+                if router_lrp_dp == router_dp:
+                    ip_info = row.external_ids.get(
+                        constants.OVN_CIDRS_EXT_ID_KEY)
+                    if not ip_info:
+                        continue
+                    lb_ip = ip_info.split(" ")[0].split("/")[0]
+                    lbs[row.logical_port] = lb_ip
+                    break
         return lbs
 
     def get_ovn_vip_port(self, name):

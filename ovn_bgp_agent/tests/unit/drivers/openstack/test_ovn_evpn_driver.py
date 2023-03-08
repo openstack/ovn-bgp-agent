@@ -290,7 +290,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
         self.sb_idl.is_provider_network.return_value = False
         self.sb_idl.get_evpn_info_from_port_name.return_value = self.evpn_info
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.evpn_driver.ovn_local_lrps = {lrp: 'fake-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -317,7 +317,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
     def test_expose_remote_ip_not_local(self, mock_add_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.evpn_driver.ovn_local_lrps = {}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -332,7 +332,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
         self.sb_idl.is_provider_network.return_value = False
         self.sb_idl.get_evpn_info_from_port_name.return_value = self.evpn_info
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.evpn_driver.ovn_local_lrps = {lrp: 'fake-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -358,7 +358,7 @@ class TestOVNEVPNDriver(test_base.TestCase):
     def test_withdraw_remote_ip_not_local(self, mock_del_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.evpn_driver.ovn_local_lrps = {}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})

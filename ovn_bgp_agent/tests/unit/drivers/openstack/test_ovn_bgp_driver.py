@@ -1341,7 +1341,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_expose_remote_ip(self, mock_add_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1366,7 +1366,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_expose_remote_ip_not_local(self, mock_add_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1386,7 +1386,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ipv6_gua.side_effect = [False, True]
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1406,7 +1406,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ipv6_gua.side_effect = [False, False]
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1420,7 +1420,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_expose_remote_ip_address_scope(self, mock_add_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1438,7 +1438,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_withdraw_remote_ip(self, mock_del_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1463,7 +1463,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_withdraw_remote_ip_not_local(self, mock_del_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1483,7 +1483,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ipv6_gua.side_effect = [False, True]
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1503,7 +1503,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ipv6_gua.side_effect = [False, False]
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})
@@ -1517,7 +1517,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_withdraw_remote_ip_address_scope(self, mock_del_ip_dev):
         self.sb_idl.is_provider_network.return_value = False
         lrp = 'fake-lrp'
-        self.sb_idl.get_lrp_port_for_datapath.return_value = lrp
+        self.sb_idl.get_lrps_for_datapath.return_value = [lrp]
         self.bgp_driver.ovn_local_lrps = {lrp: 'fake-cr-lrp'}
         row = fakes.create_object({
             'name': 'fake-row', 'datapath': 'fake-dp'})

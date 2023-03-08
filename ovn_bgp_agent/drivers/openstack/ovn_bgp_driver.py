@@ -230,9 +230,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
             # add missing routes/ips related to ovn-octavia loadbalancers
             # on the provider networks
-            cr_lrp_subnets_dp = set(cr_lrp_info['subnets_datapath'].values())
             ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
-                cr_lrp_info['provider_datapath'], cr_lrp_subnets_dp)
+                cr_lrp_info['provider_datapath'],
+                cr_lrp_info['router_datapath'])
             for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
                 self._expose_ovn_lb_on_provider(ovn_lb_ip,
                                                 ovn_lb_port,
@@ -733,13 +733,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         if not ips_to_expose:
             return
 
-        port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
-        if port_lrp in self.ovn_local_lrps.keys():
-            LOG.debug("Adding BGP route for tenant IP %s on chassis %s",
-                      ips_to_expose, self.chassis)
-            linux_net.add_ips_to_dev(CONF.bgp_nic, ips_to_expose)
-            LOG.debug("Added BGP route for tenant IP %s on chassis %s",
-                      ips_to_expose, self.chassis)
+        port_lrps = self.sb_idl.get_lrps_for_datapath(row.datapath)
+        for port_lrp in port_lrps:
+            if port_lrp in self.ovn_local_lrps.keys():
+                LOG.debug("Adding BGP route for tenant IP %s on chassis %s",
+                          ips_to_expose, self.chassis)
+                linux_net.add_ips_to_dev(CONF.bgp_nic, ips_to_expose)
+                LOG.debug("Added BGP route for tenant IP %s on chassis %s",
+                          ips_to_expose, self.chassis)
+                break
 
     @lockutils.synchronized('bgp')
     def withdraw_remote_ip(self, ips, row, chassis=None):
@@ -774,13 +776,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 ips_to_withdraw.append(ip)
         if not ips_to_withdraw:
             return
-        port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
-        if port_lrp in self.ovn_local_lrps.keys():
-            LOG.debug("Deleting BGP route for tenant IP %s on chassis %s",
-                      ips_to_withdraw, self.chassis)
-            linux_net.del_ips_from_dev(CONF.bgp_nic, ips_to_withdraw)
-            LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
-                      ips_to_withdraw, self.chassis)
+        port_lrps = self.sb_idl.get_lrps_for_datapath(row.datapath)
+        for port_lrp in port_lrps:
+            if port_lrp in self.ovn_local_lrps.keys():
+                LOG.debug("Deleting BGP route for tenant IP %s on chassis %s",
+                          ips_to_withdraw, self.chassis)
+                linux_net.del_ips_from_dev(CONF.bgp_nic, ips_to_withdraw)
+                LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
+                          ips_to_withdraw, self.chassis)
+                break
 
     def _process_lrp_port(self, lrp, associated_cr_lrp, exposed_ips=None,
                           ovn_ip_rules=None):
@@ -832,10 +836,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
         cr_lrp_provider_dp = self.ovn_local_cr_lrps[cr_lrp_port][
             'provider_datapath']
-        cr_lrp_subnets_dp = set(self.ovn_local_cr_lrps[cr_lrp_port][
-            'subnets_datapath'].values())
+        cr_lrp_router_dp = self.ovn_local_cr_lrps[cr_lrp_port][
+            'router_datapath']
         ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
-            cr_lrp_provider_dp, cr_lrp_subnets_dp)
+            cr_lrp_provider_dp, cr_lrp_router_dp)
         for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
             self._expose_ovn_lb_on_provider(ovn_lb_ip,
                                             ovn_lb_port,

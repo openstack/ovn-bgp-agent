@@ -340,36 +340,38 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
     def expose_remote_ip(self, ips, row):
         if self.sb_idl.is_provider_network(row.datapath):
             return
-        port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
-        if port_lrp in self.ovn_local_lrps.keys():
-            evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
-            if not evpn_info:
-                LOG.debug("No EVPN information for LRP Port %s. "
-                          "Not exposing IPs: %s.", port_lrp, ips)
-                return
-            LOG.info("Add BGP route for tenant IP %s on chassis %s",
-                     ips, self.chassis)
-            lo_name = constants.OVN_EVPN_LO_PREFIX + str(evpn_info['vni'])
-            linux_net.add_ips_to_dev(
-                lo_name, ips, clear_local_route_at_table=evpn_info['vni'])
-            self._ovn_exposed_evpn_ips.setdefault(
-                lo_name, []).extend(ips)
+        port_lrps = self.sb_idl.get_lrps_for_datapath(row.datapath)
+        for port_lrp in port_lrps:
+            if port_lrp in self.ovn_local_lrps.keys():
+                evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
+                if not evpn_info:
+                    LOG.debug("No EVPN information for LRP Port %s. "
+                              "Not exposing IPs: %s.", port_lrp, ips)
+                    continue
+                LOG.info("Add BGP route for tenant IP %s on chassis %s",
+                         ips, self.chassis)
+                lo_name = constants.OVN_EVPN_LO_PREFIX + str(evpn_info['vni'])
+                linux_net.add_ips_to_dev(
+                    lo_name, ips, clear_local_route_at_table=evpn_info['vni'])
+                self._ovn_exposed_evpn_ips.setdefault(
+                    lo_name, []).extend(ips)
 
     @lockutils.synchronized('evpn')
     def withdraw_remote_ip(self, ips, row):
         if self.sb_idl.is_provider_network(row.datapath):
             return
-        port_lrp = self.sb_idl.get_lrp_port_for_datapath(row.datapath)
-        if port_lrp in self.ovn_local_lrps.keys():
-            evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
-            if not evpn_info:
-                LOG.debug("No EVPN information for LRP Port %s. "
-                          "Not withdrawing IPs: %s.", port_lrp, ips)
-                return
-            LOG.info("Delete BGP route for tenant IP %s on chassis %s",
-                     ips, self.chassis)
-            lo_name = constants.OVN_EVPN_LO_PREFIX + str(evpn_info['vni'])
-            linux_net.del_ips_from_dev(lo_name, ips)
+        port_lrps = self.sb_idl.get_lrps_for_datapath(row.datapath)
+        for port_lrp in port_lrps:
+            if port_lrp in self.ovn_local_lrps.keys():
+                evpn_info = self.sb_idl.get_evpn_info_from_port_name(port_lrp)
+                if not evpn_info:
+                    LOG.debug("No EVPN information for LRP Port %s. "
+                              "Not withdrawing IPs: %s.", port_lrp, ips)
+                    continue
+                LOG.info("Delete BGP route for tenant IP %s on chassis %s",
+                         ips, self.chassis)
+                lo_name = constants.OVN_EVPN_LO_PREFIX + str(evpn_info['vni'])
+                linux_net.del_ips_from_dev(lo_name, ips)
 
     @lockutils.synchronized('evpn')
     def expose_subnet(self, row):

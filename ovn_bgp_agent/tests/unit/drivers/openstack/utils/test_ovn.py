@@ -312,7 +312,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
     def test_is_router_gateway_on_chassis_not_on_any_chassis(self):
         self._test_is_router_gateway_on_any_chassis(match=False)
 
-    def _test_get_lrp_port_for_datapath(self, has_options=True):
+    def _test_get_lrps_for_datapath(self, has_options=True):
         peer = '75c793bd-d865-48f3-8f05-68ba4239d14e'
         with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as m_dp:
             options = {}
@@ -320,18 +320,18 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
                 options.update({'peer': peer})
             row = fakes.create_object({'options': options})
             m_dp.return_value = [row, ]
-            ret = self.sb_idl.get_lrp_port_for_datapath('fake-dp')
+            ret = self.sb_idl.get_lrps_for_datapath('fake-dp')
 
             if has_options:
-                self.assertEqual(peer, ret)
+                self.assertEqual([peer], ret)
             else:
-                self.assertIsNone(ret)
+                self.assertEqual([], ret)
 
-    def test_get_lrp_port_for_datapath(self):
-        self._test_get_lrp_port_for_datapath()
+    def test_get_lrps_for_datapath(self):
+        self._test_get_lrps_for_datapath()
 
-    def test_get_lrp_port_for_datapath_no_options(self):
-        self._test_get_lrp_port_for_datapath(has_options=False)
+    def test_get_lrps_for_datapath_no_options(self):
+        self._test_get_lrps_for_datapath(has_options=False)
 
     def test_get_lrp_ports_for_router(self):
         with mock.patch.object(self.sb_idl, 'get_ports_on_datapath') as m_dp:
@@ -512,7 +512,8 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         lb1_name = 'ovn-lb-vip-fake-lb1'
         lb2_name = 'ovn-lb-vip-fake-lb2'
         provider_dp = 'fake-provider-dp'
-        subnets_dp = ['fake-subnet-dp']
+        router_dp = ['fake-router-dp']
+        router_lrp = 'fake-router-lrp'
         dp1 = fakes.create_object({'datapaths': ['fake-subnet-dp']})
         lb1 = fakes.create_object({'datapath_group': [dp1]})
         port0 = fakes.create_object({
@@ -530,13 +531,20 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self.sb_idl.db_find_rows.return_value.execute.return_value = [
             port0, port1, port2]
 
-        with mock.patch.object(self.sb_idl, 'get_ovn_lb') as mock_p:
-            mock_p.side_effect = (lb1, [])
+        mock_lb = mock.patch.object(self.sb_idl, 'get_ovn_lb').start()
+        mock_lb.side_effect = (lb1, [])
 
-            ret = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(provider_dp,
-                                                        subnets_dp)
-            expected_return = {'fake-port-0': '10.0.0.15'}
-            self.assertEqual(expected_return, ret)
+        mock_lrp = mock.patch.object(self.sb_idl,
+                                     'get_lrps_for_datapath').start()
+        mock_lrp.return_value = [router_lrp]
+
+        mock_get_port_dp = mock.patch.object(self.sb_idl,
+                                             'get_port_datapath').start()
+        mock_get_port_dp.return_value = router_dp
+
+        ret = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(provider_dp, router_dp)
+        expected_return = {'fake-port-0': '10.0.0.15'}
+        self.assertEqual(expected_return, ret)
 
     def test_get_ovn_vip_port(self):
         lb_name = 'ovn-lb-vip-fake-lb'

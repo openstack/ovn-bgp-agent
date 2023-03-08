@@ -587,6 +587,16 @@ class TestTenantPortCreatedEvent(test_base.TestCase):
                                    'neutron:cidrs': '10.10.1.16/24'})
         self.assertTrue(self.event.match_fn(event, row, old))
 
+    def test_match_fn_unknown_mac_no_cidr(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(chassis=[mock.Mock()],
+                               mac=['unknown'],
+                               external_ids={})
+        old = utils.create_row(chassis=[],
+                               mac=['unknown'],
+                               external_ids={})
+        self.assertFalse(self.event.match_fn(event, row, old))
+
     def test_match_fn_no_chassis(self):
         row = utils.create_row(mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'])
         old = utils.create_row(chassis=[])
@@ -672,6 +682,16 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
                                    'neutron:cidrs': '192.168.1.10/24'})
         self.assertTrue(self.event.match_fn(event, row, old))
 
+    def test_match_fn_unknown_mac_no_cidr(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(chassis=[],
+                               mac=['unknown'],
+                               external_ids={})
+        old = utils.create_row(chassis=[mock.Mock()],
+                               mac=['unknown'],
+                               external_ids={})
+        self.assertFalse(self.event.match_fn(event, row, old))
+
     def test_match_fn_delete(self):
         event = self.event.ROW_DELETE
         row = utils.create_row(chassis=[],
@@ -695,10 +715,11 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_run(self):
+        event = self.event.ROW_UPDATE
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
                                chassis=[mock.Mock()])
-        self.event.run(mock.Mock(), row, mock.Mock())
+        self.event.run(event, row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_called_once_with(
             ['10.10.1.16'], row, mock.ANY)
 
@@ -842,6 +863,29 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             logical_port='ovn-lb-port-1',
             external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.event.run(self.event.ROW_CREATE, row, mock.Mock())
+        self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
+            '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')
+        self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
+
+    def test_run_no_subnets_datapath(self):
+        dpg1 = utils.create_row(_uuid='fake_dp_group',
+                                datapaths=['s_dp1'])
+        row = utils.create_row(name='ovn-lb1',
+                               datapath_group=[dpg1],
+                               vips={'172.24.100.66:80': '10.0.0.5:8080'})
+        self.agent.ovn_local_cr_lrps = {
+            'cr-lrp1': {'provider_datapath': 'dp1',
+                        'router_datapath': 'r_dp',
+                        'subnets_datapath': {},
+                        'ovn_lbs': 'ovn-lb1'}}
+        vip_port = utils.create_row(
+            datapath='dp1',
+            logical_port='ovn-lb-port-1',
+            external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
             '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')

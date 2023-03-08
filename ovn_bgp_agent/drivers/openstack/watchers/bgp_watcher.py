@@ -379,6 +379,12 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
                 if dp_datapaths:
                     row_dp = dp_datapaths
 
+        if not row_dp:
+            # No need to continue. If it is a create action, there is no need
+            # to expose it as there is no datapaths (aka members). And if it
+            # is a delete action there is not enough information to get the
+            # associated cr-lrp and it will need to be corrected by the sync
+            return
         vip_port = self.agent.sb_idl.get_ovn_vip_port(row.name)
         if not vip_port:
             return
@@ -386,10 +392,26 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
         for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
             if vip_port.datapath != cr_lrp_info.get('provider_datapath'):
                 continue
-            if set(row_dp).intersection(set(
-                    cr_lrp_info.get('subnets_datapath').values())):
-                associated_cr_lrp_port = cr_lrp_port
-                break
+            if cr_lrp_info.get('subnets_datapath'):
+                if set(row_dp).intersection(set(
+                        cr_lrp_info.get('subnets_datapath').values())):
+                    associated_cr_lrp_port = cr_lrp_port
+                    break
+            else:
+                # assume all the members are connected through the same router
+                # so only one member needs to be checked
+                member_dp = row_dp[0]
+                # get lrps on that dp (patch ports)
+                router_lrps = (
+                    self.agent.sb_idl.get_lrps_for_datapath(member_dp))
+                for lrp in router_lrps:
+                    router_dp = self.agent.sb_idl.get_port_datapath(lrp)
+                    if router_dp == cr_lrp_info.get('router_datapath'):
+                        associated_cr_lrp_port = cr_lrp_port
+                        break
+                if associated_cr_lrp_port:
+                    break
+
         else:
             return
 
