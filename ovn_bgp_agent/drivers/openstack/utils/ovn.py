@@ -310,8 +310,11 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             return port
 
     def get_virtual_ports_on_datapath_by_chassis(self, datapath, chassis):
-        rows = self.get_ports_on_datapath(
-            datapath, port_type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
+        try:
+            rows = self.get_ports_on_datapath(
+                datapath, port_type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
+        except exceptions.DatapathNotFound:
+            return []
         return [r for r in rows if r.chassis and r.chassis[0].name == chassis]
 
     def get_ovn_lb(self, name):
