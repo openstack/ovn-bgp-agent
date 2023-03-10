@@ -537,8 +537,7 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
         if ip_version == constants.IP_VERSION_6:
             rule['family'] = AF_INET6
     else:
-        LOG.error("Invalid ip: {}".format(ip))
-        return
+        raise agent_exc.InvalidPortIP(ip=ip)
 
     ovn_bgp_agent.privileged.linux_net.rule_delete(rule)
 

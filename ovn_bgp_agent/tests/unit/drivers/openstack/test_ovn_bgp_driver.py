@@ -300,8 +300,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_rule.side_effect = agent_exc.InvalidPortIP(ip=self.ipv4)
         self.bgp_driver._expose_provider_port(port_ips, provider_datapath)
 
-        mock_add_ips_dev.assert_called_once_with(
-            CONF.bgp_nic, [self.ipv4])
+        mock_add_ips_dev.assert_not_called()
         mock_add_rule.assert_called_once_with(
             self.ipv4, 'fake-table')
         mock_add_route.assert_not_called()
@@ -1305,6 +1304,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ip_version.side_effect = (constants.IP_VERSION_4,
                                        constants.IP_VERSION_6,
                                        constants.IP_VERSION_4,
+                                       constants.IP_VERSION_6,
                                        constants.IP_VERSION_6)
         row = fakes.create_object({
             'name': 'fake-row',
@@ -1531,9 +1531,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_del_ip_dev.assert_called_once_with(CONF.bgp_nic, [self.ipv6])
 
-    @mock.patch.object(linux_net, 'add_ndp_proxy')
     @mock.patch.object(linux_net, 'get_ip_version')
-    def test__expose_cr_lrp_port(self, mock_ip_version, mock_ndp_proxy):
+    def test__expose_cr_lrp_port(self, mock_ip_version):
         mock_expose_provider_port = mock.patch.object(
             self.bgp_driver, '_expose_provider_port').start()
         mock_process_lrp_port = mock.patch.object(
@@ -1557,15 +1556,13 @@ class TestOVNBGPDriver(test_base.TestCase):
         ips_without_mask = [ip.split("/")[0] for ip in ips]
         mock_expose_provider_port.assert_called_once_with(
             ips_without_mask, 'fake-provider-dp', self.bridge, None,
-            lladdr=self.mac)
-        mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, None)
+            lladdr=self.mac, proxy_cidrs=ips)
         mock_process_lrp_port.assert_called_once_with(dp_port0, self.cr_lrp0)
         mock_expose_ovn_lb.assert_called_once_with(
             'fake-vip-ip', 'fake-vip-port', self.cr_lrp0)
 
-    @mock.patch.object(linux_net, 'del_ndp_proxy')
     @mock.patch.object(linux_net, 'get_ip_version')
-    def test__withdraw_cr_lrp_port(self, mock_ip_version, mock_ndp_proxy):
+    def test__withdraw_cr_lrp_port(self, mock_ip_version):
         mock_withdraw_provider_port = mock.patch.object(
             self.bgp_driver, '_withdraw_provider_port').start()
         mock_withdraw_lrp_port = mock.patch.object(
@@ -1594,8 +1591,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         ips_without_mask = [ip.split("/")[0] for ip in ips]
         mock_withdraw_provider_port.assert_called_once_with(
             ips_without_mask, 'fake-provider-dp', bridge_device=self.bridge,
-            bridge_vlan=10, lladdr=self.mac)
-        mock_ndp_proxy.assert_called_once_with(self.ipv6, self.bridge, 10)
+            bridge_vlan=10, lladdr=self.mac, proxy_cidrs=[self.ipv6])
         mock_withdraw_lrp_port.assert_called_once_with('192.168.1.1/24', None,
                                                        'gateway_port')
         mock_withdraw_ovn_lb_on_provider.assert_called_once_with(

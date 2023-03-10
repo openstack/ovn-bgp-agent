@@ -524,7 +524,8 @@ class TestLinuxNet(test_base.TestCase):
         rule = mock.MagicMock()
         self.fake_ndb.rules.__getitem__.return_value = rule
 
-        self.assertIsNone(linux_net.del_ip_rule('10.10.1.6/30/128', 7))
+        self.assertRaises(agent_exc.InvalidPortIP,
+                          linux_net.del_ip_rule, '10.10.1.6/30/128', 7)
 
         mock_rule_delete.assert_not_called()
         mock_del_ip_nei.assert_not_called()
