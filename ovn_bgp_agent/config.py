@@ -39,6 +39,8 @@ agent_opts = [
                 default=False),
     cfg.StrOpt('driver',
                help='Driver to be used',
+               choices=('ovn_bgp_driver', 'ovn_evpn_driver',
+                        'ovn_stretched_l2_bgp_driver', 'nb_ovn_bgp_driver'),
                default='ovn_bgp_driver'),
     cfg.StrOpt('ovsdb_connection',
                default='unix:/usr/local/var/run/openvswitch/db.sock',
@@ -118,6 +120,22 @@ agent_opts = [
                 help='Allows to filter on the address scope. Only networks'
                      ' with the same address scope on the provider and'
                      ' internal interface are announced.'),
+    cfg.StrOpt('exposing_method',
+               default='underlay',
+               choices=('underlay', 'l2vni', 'vrf', 'dynamic', 'ovn'),
+               help='The exposing mechanism to be used. underlay is the '
+                    'default and simply expose it on the default/plain '
+                    'network.'
+                    'With l2vni the l2 is extended over the l3 infrastructure '
+                    'and it is exposed on a given VNI (Type-2).'
+                    'With vrf the routes are exposed in different VRFs/VNIs '
+                    '(Type-5).'
+                    'With dynamic, a mix between underlay, l2vni and vrf is '
+                    'used, depending on the information annotated on the '
+                    'ports. '
+                    'Finally, with ovn, instead of using kernel networking a '
+                    'dedicated ovn cluster per node is used for the traffic '
+                    'redirection'),
 ]
 
 root_helper_opts = [
