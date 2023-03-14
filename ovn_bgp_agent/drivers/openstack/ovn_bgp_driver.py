@@ -23,6 +23,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
+from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
@@ -310,12 +311,6 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     ip_dst = "{}/32".format(ip_address)
                 ovn_ip_rules.pop(ip_dst, None)
 
-    def _bgp_announce_ips(self, port_ips):
-        linux_net.add_ips_to_dev(CONF.bgp_nic, port_ips)
-
-    def _bgp_withdraw_ips(self, port_ips):
-        linux_net.del_ips_from_dev(CONF.bgp_nic, port_ips)
-
     def _wire_provider_port(self, port_ips, bridge_device, bridge_vlan,
                             lladdr, proxy_cidrs):
         for ip in port_ips:
@@ -455,7 +450,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         if self._wire_provider_port(port_ips, bridge_device, bridge_vlan,
                                     lladdr, proxy_cidrs):
             # Expose the IP now that it is connected
-            self._bgp_announce_ips(port_ips)
+            bgp_utils.announce_ips(port_ips)
 
     def _expose_tenant_port(self, port, ip_version, exposed_ips=None,
                             ovn_ip_rules=None):
@@ -465,7 +460,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 constants.OVN_CIDRS_EXT_ID_KEY)
             if ext_n_cidr:
                 ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
-                self._bgp_announce_ips([ovn_lb_ip])
+                bgp_utils.announce_ips([ovn_lb_ip])
                 if exposed_ips and ovn_lb_ip in exposed_ips:
                     exposed_ips.remove(ovn_lb_ip)
                 if ovn_ip_rules:
@@ -495,7 +490,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             # IP version
             port_ip_version = linux_net.get_ip_version(port_ip)
             if port_ip_version == ip_version:
-                self._bgp_announce_ips([port_ip])
+                bgp_utils.announce_ips([port_ip])
                 if exposed_ips and port_ip in exposed_ips:
                     exposed_ips.remove(port_ip)
                 if ovn_ip_rules:
@@ -509,7 +504,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                                 bridge_device=None, bridge_vlan=None,
                                 lladdr=None, proxy_cidrs=None):
         # Withdraw IP before disconnecting it
-        self._bgp_withdraw_ips(port_ips)
+        bgp_utils.withdraw_ips(port_ips)
 
         # Disconnect IP from OVN
         # assuming either you pass both or none
@@ -844,7 +839,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if port_lrp in self.ovn_local_lrps.keys():
                 LOG.debug("Adding BGP route for tenant IP %s on chassis %s",
                           ips_to_expose, self.chassis)
-                self._bgp_announce_ips(ips_to_expose)
+                bgp_utils.announce_ips(ips_to_expose)
                 LOG.debug("Added BGP route for tenant IP %s on chassis %s",
                           ips_to_expose, self.chassis)
                 break
@@ -887,7 +882,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if port_lrp in self.ovn_local_lrps.keys():
                 LOG.debug("Deleting BGP route for tenant IP %s on chassis %s",
                           ips_to_withdraw, self.chassis)
-                self._bgp_withdraw_ips(ips_to_withdraw)
+                bgp_utils.withdraw_ips(ips_to_withdraw)
                 LOG.debug("Deleted BGP route for tenant IP %s on chassis %s",
                           ips_to_withdraw, self.chassis)
                 break
