@@ -26,6 +26,8 @@ LOG = logging.getLogger(__name__)
 
 def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
                        bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+    if not bridge_device:
+        return False
     for ip in port_ips:
         try:
             if lladdr:
@@ -52,6 +54,8 @@ def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
 
 def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
                          bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+    if not bridge_device:
+        return False
     for ip in port_ips:
         if lladdr:
             if linux_net.get_ip_version(ip) == constants.IP_VERSION_6:
@@ -83,6 +87,8 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
 
 def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
                   routing_table, cr_lrp_ips):
+    if not bridge_device:
+        return False
     LOG.debug("Adding IP Rules for network %s", ip)
     try:
         linux_net.add_ip_rule(ip, routing_table)
@@ -113,6 +119,8 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
 
 def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
                     routing_table, cr_lrp_ips):
+    if not bridge_device:
+        return False
     LOG.debug("Deleting IP Rules for network %s", ip)
     try:
         linux_net.del_ip_rule(ip, routing_table, bridge_device)
