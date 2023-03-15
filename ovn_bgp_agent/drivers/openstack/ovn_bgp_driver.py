@@ -291,9 +291,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                           "removed", port.logical_port, port.datapath)
                 return
         else:
-            if len(port.mac[0].split(' ')) < 2:
+            if len(port.mac[0].strip().split(' ')) < 2:
                 return
-            port_ips = port.mac[0].split(' ')[1:]
+            port_ips = port.mac[0].strip().split(' ')[1:]
 
         ips_adv = self._expose_ip(port_ips, port)
 
@@ -486,7 +486,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 n_cidrs = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
                 port_ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
             else:
-                port_ips = port.mac[0].split(' ')[1:]
+                port_ips = port.mac[0].strip().split(' ')[1:]
         except IndexError:
             return
 
@@ -683,7 +683,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
             bridge_device, bridge_vlan = self._get_bridge_for_datapath(
                 cr_lrp_datapath)
-            mac = row.mac[0].split(' ')[0]
+            mac = row.mac[0].strip().split(' ')[0]
             # Keeping information about the associated network for
             # tenant network advertisement
             self.ovn_local_cr_lrps[row.logical_port] = {
@@ -802,7 +802,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 'bridge_vlan')
             bridge_device = self.ovn_local_cr_lrps[row.logical_port].get(
                 'bridge_device')
-            mac = row.mac[0].split(' ')[0]
+            mac = row.mac[0].strip().split(' ')[0]
             self._withdraw_cr_lrp_port(ips, mac, bridge_device, bridge_vlan,
                                        provider_datapath=cr_lrp_datapath,
                                        cr_lrp_port=row.logical_port)
@@ -902,7 +902,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # add missing route/ips for tenant network VMs
         if self._expose_tenant_networks:
             try:
-                lrp_ip = lrp.mac[0].split(' ')[1]
+                lrp_ip = lrp.mac[0].strip().split(' ')[1]
             except IndexError:
                 # This should not happen: subnet without CIDR
                 return

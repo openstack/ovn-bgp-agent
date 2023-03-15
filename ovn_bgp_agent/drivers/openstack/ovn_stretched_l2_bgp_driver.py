@@ -146,10 +146,12 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         vrf_routes = linux_net.get_routes_on_tables([CONF.bgp_vrf_table_id])
 
         for cr_lrp_port in self.sb_idl.get_cr_lrp_ports():
-            if not cr_lrp_port.mac or len(cr_lrp_port.mac[0].split(" ")) <= 1:
+            if (not cr_lrp_port.mac or
+                    len(cr_lrp_port.mac[0].strip().split(" ")) <= 1):
                 continue
 
-            self._expose_cr_lrp(cr_lrp_port.mac[0].split(" ")[1:], cr_lrp_port)
+            self._expose_cr_lrp(cr_lrp_port.mac[0].strip().split(" ")[1:],
+                                cr_lrp_port)
 
         # remove all left over routes
         delete_routes = []
@@ -232,13 +234,14 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
     @lockutils.synchronized("bgp")
     def update_subnet(self, old, row):
         cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
-        if not cr_lrp or not cr_lrp.mac or len(cr_lrp.mac[0].split(" ")) <= 1:
+        if (not cr_lrp or not cr_lrp.mac or
+                len(cr_lrp.mac[0].strip().split(" ")) <= 1):
             return
 
-        current_ips = row.mac[0].split(" ")[1:]
+        current_ips = row.mac[0].strip().split(" ")[1:]
         previous_ips = (
-            old.mac[0].split(" ")[1:]
-            if old.mac or len(old.mac[0].split(" ")) > 1
+            old.mac[0].strip().split(" ")[1:]
+            if old.mac or len(old.mac[0].strip().split(" ")) > 1
             else []
         )
         add_ips = list(
@@ -378,7 +381,8 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
             # function can fix.
             return
         gateway_ips = gateway["ips"]
-        if not router_port.mac or len(router_port.mac[0].split(" ")) <= 1:
+        if (not router_port.mac or
+                len(router_port.mac[0].strip().split(" ")) <= 1):
             return
 
         # get all ips from the router port
@@ -473,13 +477,14 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
             # function can fix.
             return
         gateway_ips = gateway["ips"]
-        if not router_port.mac or len(router_port.mac[0].split(" ")) <= 1:
+        if (not router_port.mac or
+                len(router_port.mac[0].strip().split(" ")) <= 1):
             return
 
         # get all ips from the router port
         router_ips = [
             ipaddress.ip_interface(ip)
-            for ip in router_port.mac[0].split(" ")[1:]]
+            for ip in router_port.mac[0].strip().split(" ")[1:]]
 
         for router_ip in router_ips:
             if router_ip in gateway_ips:

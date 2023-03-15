@@ -146,7 +146,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
 
         gateway_ips = [ip.split('/')[0] for ip in gateway['ips']]
         try:
-            router_port_ip = router_port.mac[0].split(' ')[1]
+            router_port_ip = router_port.mac[0].strip().split(' ')[1]
         except IndexError:
             return
         router_ip = router_port_ip.split('/')[0]
@@ -203,9 +203,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         if not cr_lrp_datapath:
             return
 
-        if len(cr_lrp_port.mac[0].split(' ')) < 2:
+        if len(cr_lrp_port.mac[0].strip().split(' ')) < 2:
             return
-        ips = cr_lrp_port.mac[0].split(' ')[1:]
+        ips = cr_lrp_port.mac[0].strip().split(' ')[1:]
 
         if cr_lrp:
             evpn_info = self.sb_idl.get_evpn_info_from_port_name(
@@ -232,7 +232,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
             'router_datapath': cr_lrp_port.datapath,
             'provider_datapath': cr_lrp_datapath,
             'ips': ips,
-            'mac': cr_lrp_port.mac[0].split(' ')[0],
+            'mac': cr_lrp_port.mac[0].strip().split(' ')[0],
             'vni': int(evpn_info['vni']),
             'bgp_as': evpn_info['bgp_as'],
             'lo': evpn_devices.lo_name,
@@ -478,7 +478,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                  not port.chassis)):
                 continue
             try:
-                port_ips = port.mac[0].split(' ')[1:]
+                port_ips = port.mac[0].strip().split(' ')[1:]
             except IndexError:
                 continue
 

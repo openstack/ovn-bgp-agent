@@ -100,12 +100,12 @@ class FIPSetEvent(base_watcher.PortBindingChassisEvent):
             #      cr-lrp-add962d2-21ab-4733-b6ef-35538eff25a8\")"]
             old_cr_lrps = {}
             for nat in old.nat_addresses:
-                ips = nat.split(" ")[1:-1]
-                port = nat.split(" ")[-1].split("\"")[1]
+                ips = nat.strip().split(" ")[1:-1]
+                port = nat.strip().split(" ")[-1].split("\"")[1]
                 old_cr_lrps.setdefault(port, set()).update(ips)
             for nat in row.nat_addresses:
-                ips = nat.split(" ")[1:-1]
-                port = nat.split(" ")[-1].split("\"")[1]
+                ips = nat.strip().split(" ")[1:-1]
+                port = nat.strip().split(" ")[-1].split("\"")[1]
                 ips_to_expose = [ip for ip in ips
                                  if ip not in old_cr_lrps.get(port, set())]
                 if ips_to_expose:
@@ -138,12 +138,12 @@ class FIPUnsetEvent(base_watcher.PortBindingChassisEvent):
             #      cr-lrp-add962d2-21ab-4733-b6ef-35538eff25a8\")"]
             current_cr_lrps = {}
             for nat in row.nat_addresses:
-                ips = nat.split(" ")[1:-1]
-                port = nat.split(" ")[-1].split("\"")[1]
+                ips = nat.strip().split(" ")[1:-1]
+                port = nat.strip().split(" ")[-1].split("\"")[1]
                 current_cr_lrps.setdefault(port, set()).update(ips)
             for nat in old.nat_addresses:
-                ips = nat.split(" ")[1:-1]
-                port = nat.split(" ")[-1].split("\"")[1]
+                ips = nat.strip().split(" ")[1:-1]
+                port = nat.strip().split(" ")[-1].split("\"")[1]
                 ips_to_withdraw = [ip for ip in ips
                                    if ip not in current_cr_lrps.get(port,
                                                                     set())]
@@ -346,7 +346,7 @@ class OVNLBVIPPortEvent(base_watcher.PortBindingChassisEvent):
             if not ext_n_cidr:
                 return
 
-            ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
+            ovn_lb_ip = ext_n_cidr.strip().split(" ")[0].split("/")[0]
             if event == self.ROW_DELETE:
                 self.agent.withdraw_ovn_lb(ovn_lb_ip, row)
             if event == self.ROW_CREATE:
@@ -425,7 +425,7 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
                     constants.OVN_CIDRS_EXT_ID_KEY)
                 if not vip_ip:
                     return
-                vip_ip = vip_ip.split(" ")[0].split("/")[0]
+                vip_ip = vip_ip.strip().split(" ")[0].split("/")[0]
                 return self.agent.expose_ovn_lb_on_provider(
                     vip_ip, vip_port.logical_port, associated_cr_lrp_port)
 

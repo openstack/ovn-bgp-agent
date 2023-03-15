@@ -24,7 +24,7 @@ class PortBindingChassisEvent(row_event.RowEvent):
         self.event_name = self.__class__.__name__
 
     def _check_ip_associated(self, mac):
-        return len(mac.split(' ')) > 1
+        return len(mac.strip().split(' ')) > 1
 
 
 class OVNLBMemberEvent(row_event.RowEvent):
