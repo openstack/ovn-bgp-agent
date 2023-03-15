@@ -105,7 +105,8 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                       "TenantPortCreatedEvent",
                       "TenantPortDeletedEvent",
                       "ChassisCreateEvent",
-                      "ChassisPrivateCreateEvent"])
+                      "ChassisPrivateCreateEvent",
+                      "LocalnetCreateDeleteEvent"])
         return events
 
     @lockutils.synchronized('evpn')

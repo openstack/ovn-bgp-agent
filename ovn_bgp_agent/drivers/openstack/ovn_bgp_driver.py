@@ -139,7 +139,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "FIPUnsetEvent",
                       "OVNLBMemberCreateDeleteEvent",
                       "ChassisCreateEvent",
-                      "ChassisPrivateCreateEvent"])
+                      "ChassisPrivateCreateEvent",
+                      "LocalnetCreateDeleteEvent"])
         if self._expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",

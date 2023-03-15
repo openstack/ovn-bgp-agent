@@ -483,6 +483,26 @@ class TestTenantPortDeletedEvent(test_base.TestCase):
         self.agent.withdraw_remote_ip.assert_not_called()
 
 
+class TestLocalnetCreateDeleteEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestLocalnetCreateDeleteEvent, self).setUp()
+        self.agent = mock.Mock()
+        self.event = evpn_watcher.LocalnetCreateDeleteEvent(self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(type=constants.OVN_LOCALNET_VIF_PORT_TYPE)
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_not_match(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE)
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        self.event.run(mock.Mock(), mock.Mock(), mock.Mock())
+        self.agent.sync.assert_called_once()
+
+
 class TestChassisCreateEvent(test_base.TestCase):
     _event = evpn_watcher.ChassisCreateEvent
 

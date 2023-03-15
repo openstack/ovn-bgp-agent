@@ -430,6 +430,20 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
                     vip_ip, vip_port.logical_port, associated_cr_lrp_port)
 
 
+class LocalnetCreateDeleteEvent(base_watcher.PortBindingChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_CREATE, self.ROW_DELETE,)
+        super(LocalnetCreateDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        return row.type == constants.OVN_LOCALNET_VIF_PORT_TYPE
+
+    def run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.sync()
+
+
 class ChassisCreateEventBase(row_event.RowEvent):
     table = None
 
