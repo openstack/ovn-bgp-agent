@@ -120,6 +120,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     tables=OVN_TABLES + ["Chassis_Private"],
                     events=events).start()
         except AssertionError:
+            events.remove("ChassisPrivateCreateEvent")
             self.sb_idl = ovn.OvnSbIdl(
                 self.ovn_remote,
                 chassis=self.chassis,
@@ -135,7 +136,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "FIPSetEvent",
                       "FIPUnsetEvent",
                       "OVNLBMemberCreateDeleteEvent",
-                      "ChassisCreateEvent"])
+                      "ChassisCreateEvent",
+                      "ChassisPrivateCreateEvent"])
         if self._expose_tenant_networks:
             events.update(["SubnetRouterAttachedEvent",
                            "SubnetRouterDetachedEvent",

@@ -87,6 +87,7 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                 tables=OVN_TABLES + ["Chassis_Private"],
                 events=events).start()
         except AssertionError:
+            events.remove("ChassisPrivateCreateEvent")
             self.sb_idl = ovn.OvnSbIdl(
                 self.ovn_remote,
                 chassis=self.chassis,
@@ -103,7 +104,8 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                       "SubnetRouterDetachedEvent",
                       "TenantPortCreatedEvent",
                       "TenantPortDeletedEvent",
-                      "ChassisCreateEvent"])
+                      "ChassisCreateEvent",
+                      "ChassisPrivateCreateEvent"])
         return events
 
     @lockutils.synchronized('evpn')
