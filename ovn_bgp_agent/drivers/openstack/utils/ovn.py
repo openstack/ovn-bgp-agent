@@ -30,8 +30,8 @@ LOG = logging.getLogger(__name__)
 
 
 class OvnIdl(connection.OvsdbIdl):
-    def __init__(self, driver, remote, schema):
-        super(OvnIdl, self).__init__(remote, schema)
+    def __init__(self, driver, remote, schema, **kwargs):
+        super(OvnIdl, self).__init__(remote, schema, **kwargs)
         self.driver = driver
         self.notify_handler = OvnDbNotifyHandler(driver)
 
@@ -60,7 +60,7 @@ class OvnSbIdl(OvnIdl):
         for table in tables:
             helper.register_table(table)
         super(OvnSbIdl, self).__init__(
-            None, connection_string, helper)
+            None, connection_string, helper, leader_only=False)
         if chassis:
             table = ('Chassis_Private' if 'Chassis_Private' in tables
                      else 'Chassis')
