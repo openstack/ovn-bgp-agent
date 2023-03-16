@@ -188,6 +188,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             [self.ipv4, self.ipv6], patch_port_row)
 
         exposed_ips = [self.ipv4, '192.168.1.20']
+        mock_expose_ip.return_value = exposed_ips
         ip_rules = {"{}/128".format(self.ipv6): 'fake-rules'}
         self.bgp_driver._ensure_cr_lrp_associated_ports_exposed(
             'fake-cr-lrp', exposed_ips, ip_rules)
@@ -196,7 +197,6 @@ class TestOVNBGPDriver(test_base.TestCase):
             [self.ipv4, self.ipv6], patch_port_row,
             associated_port='fake-cr-lrp')
         self.assertEqual(['192.168.1.20'], exposed_ips)
-        self.assertEqual({}, ip_rules)
 
     def test__ensure_port_exposed(self):
         mock_expose_ip = mock.patch.object(
@@ -1161,7 +1161,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test__expose_ip_vm_with_fip(
             self, mock_add_ip_dev, mock_add_rule, mock_add_route):
-        self.sb_idl.is_provider_network.return_value = False
+        self.sb_idl.is_provider_network.side_effect = [False, True]
         self.sb_idl.get_fip_associated.return_value = (
             self.fip, 'fake-dp')
         mock_get_bridge = mock.patch.object(
@@ -1183,6 +1183,31 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.fip, 'fake-table')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.fip, 'fake-table', self.bridge, vlan=10)
+
+    @mock.patch.object(linux_net, 'add_ip_route')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    @mock.patch.object(linux_net, 'add_ips_to_dev')
+    def test__expose_ip_vm_with_fip_no_provider(
+            self, mock_add_ip_dev, mock_add_rule, mock_add_route):
+        self.sb_idl.is_provider_network.side_effect = [False, False]
+        self.sb_idl.get_fip_associated.return_value = (
+            self.fip, 'fake-dp')
+        mock_get_bridge = mock.patch.object(
+            self.bgp_driver, '_get_bridge_for_datapath').start()
+        mock_get_bridge.return_value = (self.bridge, 10)
+        row = fakes.create_object({
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_port': 'fake-logical-port',
+            'datapath': 'fake-dp'})
+
+        ips = [self.ipv4, self.ipv6]
+        ret = self.bgp_driver._expose_ip(ips, row)
+
+        # Assert that the add methods were called
+        self.assertEqual([], ret)
+        mock_add_ip_dev.assert_not_called()
+        mock_add_rule.assert_not_called()
+        mock_add_route.assert_not_called()
 
     @mock.patch.object(linux_net, 'add_ip_route')
     @mock.patch.object(linux_net, 'add_ip_rule')
@@ -1221,7 +1246,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             'datapath': 'fake-dp'})
 
         ips = [self.ipv4, self.ipv6]
-        ret = self.bgp_driver._expose_ip(ips, row, associated_port=True)
+        ret = self.bgp_driver._expose_ip(ips, row,
+                                         associated_port=self.cr_lrp0)
 
         # Assert that the add methods were called
         self.assertEqual(ips, ret)
@@ -1417,7 +1443,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ips_from_dev')
     def test_withdraw_ip_vm_with_fip(
             self, mock_del_ip_dev, mock_del_rule, mock_del_route):
-        self.sb_idl.is_provider_network.return_value = False
+        self.sb_idl.is_provider_network.side_effect = [False, True]
         self.sb_idl.get_fip_associated.return_value = (
             self.fip, 'fake-dp')
         mock_get_bridge = mock.patch.object(
@@ -1475,7 +1501,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             'datapath': 'fake-dp'})
 
         ips = [self.ipv4, self.ipv6]
-        self.bgp_driver.withdraw_ip(ips, row, associated_port=True)
+        self.bgp_driver.withdraw_ip(ips, row, associated_port=self.cr_lrp0)
 
         # Assert that the del methods were called
         mock_del_ip_dev.assert_called_once_with(

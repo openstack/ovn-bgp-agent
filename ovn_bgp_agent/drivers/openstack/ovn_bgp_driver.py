@@ -263,8 +263,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             cr_lrp_port, self.chassis, self.sb_idl)
         if not ips:
             return
-        self._expose_ip(ips, patch_port_row, associated_port=cr_lrp_port)
-        for ip in ips:
+        ips_adv = self._expose_ip(ips, patch_port_row,
+                                  associated_port=cr_lrp_port)
+        for ip in ips_adv:
             if exposed_ips and ip in exposed_ips:
                 exposed_ips.remove(ip)
             if ovn_ip_rules:
@@ -560,21 +561,30 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 # FIPs are only supported with IPv4
                 fip_address, fip_datapath = self.sb_idl.get_fip_associated(
                     row.logical_port)
-                if fip_address:
-                    LOG.debug("Adding BGP route for FIP with ip %s",
-                              fip_address)
-                    if self._expose_provider_port([fip_address], fip_datapath):
-                        LOG.debug("Added BGP route for FIP with ip %s",
-                                  fip_address)
-                        return [fip_address]
-                    LOG.debug("Failure adding BGP route for FIP with ip %s",
-                              fip_address)
+
+                if not fip_address:
                     return []
+                if not self.sb_idl.is_provider_network(fip_datapath):
+                    # Only exposing IPs if the associated network is a
+                    # provider network
+                    return []
+                LOG.debug("Adding BGP route for FIP with ip %s", fip_address)
+                if self._expose_provider_port([fip_address], fip_datapath):
+                    LOG.debug("Added BGP route for FIP with ip %s",
+                              fip_address)
+                    return [fip_address]
+                LOG.debug("Failure adding BGP route for FIP with ip %s",
+                          fip_address)
+                return []
 
         # FIP association to VM
         elif row.type == constants.OVN_PATCH_VIF_PORT_TYPE:
             if (associated_port and self.sb_idl.is_port_on_chassis(
                     associated_port, self.chassis)):
+                if not self.ovn_local_cr_lrps.get(associated_port):
+                    # Only exposing IPs if the associated network is a
+                    # provider network
+                    return []
                 LOG.debug("Adding BGP route for FIP with ip %s", ips)
                 if self._expose_provider_port(ips, row.datapath):
                     LOG.debug("Added BGP route for FIP with ip %s", ips)
@@ -588,6 +598,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             cr_lrp_datapath = self.sb_idl.get_provider_datapath_from_cr_lrp(
                 row.logical_port)
             if not cr_lrp_datapath:
+                return []
+            if not self.sb_idl.is_provider_network(cr_lrp_datapath):
+                # Only exposing IPs if the associated network is a
+                # provider network
                 return []
 
             bridge_device, bridge_vlan = self._get_bridge_for_datapath(
@@ -690,7 +704,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     row.logical_port)
                 if not fip_address:
                     return
-
+                if not self.sb_idl.is_provider_network(fip_datapath):
+                    # Only exposing IPs if the associated network is a
+                    # provider network
+                    return
                 LOG.debug("Deleting BGP route for FIP with ip %s", fip_address)
                 if not self._withdraw_provider_port([fip_address],
                                                     fip_datapath):
@@ -706,6 +723,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     self.sb_idl.is_port_on_chassis(
                         associated_port, self.chassis) or
                     self.sb_idl.is_port_deleted(associated_port))):
+                if not self.ovn_local_cr_lrps.get(associated_port):
+                    # Only exposing IPs if the associated network is a
+                    # provider network
+                    return
                 LOG.debug("Deleting BGP route for FIP with ip %s", ips)
                 if not self._withdraw_provider_port(ips, row.datapath):
                     LOG.debug("Failure deleting BGP route for FIP with ip %s",
@@ -1036,7 +1057,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         subnet_datapath = self.sb_idl.get_port_datapath(
             row.options['peer'])
 
-        if not cr_lrp:
+        if not cr_lrp or not self.ovn_local_cr_lrps.get(cr_lrp):
             return
 
         if not self._address_scope_allowed(ip, row.options['peer']):
@@ -1072,7 +1093,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                           "triggering a subnet exposure.",
                           row.logical_port)
                 return
-        if not cr_lrp or cr_lrp not in self.ovn_local_cr_lrps.keys():
+        if not cr_lrp or not self.ovn_local_cr_lrps.get(cr_lrp):
             # NOTE(ltomasbo) there is a chance the cr-lrp just got moved
             # to this node but was not yet processed. In that case there
             # is no need to withdraw the network as it was not exposed here
