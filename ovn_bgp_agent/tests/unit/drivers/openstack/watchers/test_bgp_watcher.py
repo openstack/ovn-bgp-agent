@@ -15,10 +15,14 @@
 
 from unittest import mock
 
+from oslo_config import cfg
+
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils
+
+CONF = cfg.CONF
 
 
 class TestPortBindingChassisCreatedEvent(test_base.TestCase):
@@ -863,12 +867,16 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             logical_port='ovn-lb-port-1',
             external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
             '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_subnets_datapath(self):
+        CONF.set_override('expose_tenant_networks', False)
+        self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp1'])
         row = utils.create_row(name='ovn-lb1',
@@ -912,6 +920,8 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             datapath='dp2',
             logical_port='ovn-lb-port-1',
             external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'dp2'
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
@@ -927,6 +937,8 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             datapath='dp1',
             logical_port='ovn-lb-port-1',
             external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
@@ -942,6 +954,8 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             datapath='dp1',
             logical_port='port-1',
             external_ids={})
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
@@ -957,6 +971,8 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
             datapath='dp1',
             logical_port='ovn-lb-port-1',
             external_ids={constants.OVN_CIDRS_EXT_ID_KEY: '172.24.100.66/26'})
+        self.agent.sb_idl.get_lrps_for_datapath.return_value = ['fake-lrp']
+        self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
         self.event.run(self.event.ROW_DELETE, row, mock.Mock())
         self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(

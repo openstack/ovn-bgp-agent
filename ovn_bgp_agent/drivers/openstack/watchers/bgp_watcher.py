@@ -13,13 +13,15 @@
 # limitations under the License.
 
 from oslo_concurrency import lockutils
+from oslo_config import cfg
 from oslo_log import log as logging
+
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
-
+CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 _SYNC_STATE_LOCK = lockutils.ReaderWriterLock()
 
@@ -369,6 +371,8 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
         # loadbalancer has the VIP on a provider network
         # Also, the cr-lrp port needs to have subnet datapaths (LS) associated
         # to it that include the load balancer
+        if not self.agent.ovn_local_cr_lrps:
+            return
         try:
             row_dp = row.datapaths
         except AttributeError:
@@ -389,6 +393,19 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
         if not vip_port:
             return
         associated_cr_lrp_port = None
+
+        router_dps = []
+        if not (CONF.expose_tenant_networks or
+                CONF.expose_ipv6_gua_tenant_networks):
+            # assume all the members are connected through the same router
+            # so only one member needs to be checked
+            member_dp = row_dp[0]
+            # get lrps on that dp (patch ports)
+            router_lrps = (
+                self.agent.sb_idl.get_lrps_for_datapath(member_dp))
+            for lrp in router_lrps:
+                router_dps.append(self.agent.sb_idl.get_port_datapath(lrp))
+
         for cr_lrp_port, cr_lrp_info in self.agent.ovn_local_cr_lrps.items():
             if vip_port.datapath != cr_lrp_info.get('provider_datapath'):
                 continue
@@ -398,20 +415,9 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
                     associated_cr_lrp_port = cr_lrp_port
                     break
             else:
-                # assume all the members are connected through the same router
-                # so only one member needs to be checked
-                member_dp = row_dp[0]
-                # get lrps on that dp (patch ports)
-                router_lrps = (
-                    self.agent.sb_idl.get_lrps_for_datapath(member_dp))
-                for lrp in router_lrps:
-                    router_dp = self.agent.sb_idl.get_port_datapath(lrp)
-                    if router_dp == cr_lrp_info.get('router_datapath'):
-                        associated_cr_lrp_port = cr_lrp_port
-                        break
-                if associated_cr_lrp_port:
+                if cr_lrp_info.get('router_datapath') in router_dps:
+                    associated_cr_lrp_port = cr_lrp_port
                     break
-
         else:
             return
 
