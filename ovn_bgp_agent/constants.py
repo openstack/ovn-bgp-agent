@@ -67,3 +67,10 @@ EXPOSE = "expose"
 WITHDRAW = "withdraw"
 
 OVN_REQUESTED_CHASSIS = "requested-chassis"
+
+# Exposing method names
+EXPOSE_METHOD_UNDERLAY = 'underlay'
+EXPOSE_METHOD_L2VNI = 'l2vni'
+EXPOSE_METHOD_VRF = 'vrf'
+EXPOSE_METHOD_OVN = 'ovn'
+EXPOSE_METHOD_DYNAMIC = 'dynamic'

@@ -25,7 +25,6 @@ from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
-from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
@@ -78,14 +77,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         LOG.info("Loaded chassis %s.", self.chassis)
 
         LOG.info("Starting VRF configuration for advertising routes")
-        # Create VRF
-        linux_net.ensure_vrf(CONF.bgp_vrf, CONF.bgp_vrf_table_id)
-
-        # Ensure FRR is configure to leak the routes
-        frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
-
-        # Create OVN dummy device
-        linux_net.ensure_ovn_device(CONF.bgp_nic, CONF.bgp_vrf)
+        # Base BGP configuration
+        bgp_utils.ensure_base_bgp_configuration()
 
         # Clear vrf routing table
         if CONF.clear_vrf_routes_on_startup:
@@ -157,14 +150,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_lb_vips = collections.defaultdict()
 
         LOG.debug("Ensuring VRF configuration for advertising routes")
-        # Create VRF
-        linux_net.ensure_vrf(CONF.bgp_vrf,
-                             CONF.bgp_vrf_table_id)
-        # Ensure FRR is configure to leak the routes
-        frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
-        # Create OVN dummy device
-        linux_net.ensure_ovn_device(CONF.bgp_nic,
-                                    CONF.bgp_vrf)
+        # Base BGP configuration
+        bgp_utils.ensure_base_bgp_configuration()
 
         LOG.debug("Configuring br-ex default rule and routing tables for "
                   "each provider network")

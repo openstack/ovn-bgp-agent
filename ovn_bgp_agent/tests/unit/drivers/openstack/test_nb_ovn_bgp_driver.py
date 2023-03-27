@@ -91,7 +91,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_ensure_vrf.assert_called_once_with(
             CONF.bgp_vrf, CONF.bgp_vrf_table_id)
         mock_vrf_leak.assert_called_once_with(
-            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
+            template=frr.LEAK_VRF_TEMPLATE)
         mock_ensure_ovn_device.assert_called_once_with(CONF.bgp_nic,
                                                        CONF.bgp_vrf)
         mock_delete_routes_from_table.assert_called_once_with(
@@ -109,8 +110,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
     @mock.patch.object(linux_net, 'ensure_ovn_device')
+    @mock.patch.object(frr, 'vrf_leak')
     @mock.patch.object(linux_net, 'ensure_vrf')
-    def test_sync(self, mock_ensure_vrf, mock_ensure_ovn_dev,
+    def test_sync(self, mock_ensure_vrf, mock_vrf_leak, mock_ensure_ovn_dev,
                   mock_routing_bridge, mock_ensure_vlan_network,
                   mock_ensure_arp, mock_flows_info, mock_remove_flows,
                   mock_exposed_ips, mock_get_ip_rules, mock_del_exposed_ips,
@@ -139,6 +141,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         mock_ensure_vrf.assert_called_once_with(
             CONF.bgp_vrf, CONF.bgp_vrf_table_id)
+        mock_vrf_leak.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
+            template=frr.LEAK_VRF_TEMPLATE)
         mock_ensure_ovn_dev.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
         expected_calls = [mock.call(self.ovn_routing_tables, 'bridge0',

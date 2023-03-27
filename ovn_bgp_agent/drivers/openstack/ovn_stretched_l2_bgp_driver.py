@@ -23,6 +23,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
+from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
@@ -69,20 +70,10 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         self.ovs_idl = ovs.OvsIdl()
         self.ovs_idl.start(CONF.ovsdb_connection)
 
+        # Base BGP configuration
         # Ensure FRR is configured to leak the routes
-        # NOTE: If we want to recheck this every X time, we should move it
-        # inside the sync function instead
-        frr.vrf_leak(
-            CONF.bgp_vrf,
-            CONF.bgp_AS,
-            CONF.bgp_router_id,
-            template=frr.LEAK_VRF_KERNEL_TEMPLATE,
-        )
-
-        LOG.debug("Setting up VRF %s", CONF.bgp_vrf)
-        linux_net.ensure_vrf(CONF.bgp_vrf, CONF.bgp_vrf_table_id)
-        # Create OVN dummy device
-        linux_net.ensure_ovn_device(CONF.bgp_nic, CONF.bgp_vrf)
+        bgp_utils.ensure_base_bgp_configuration(
+            template=frr.LEAK_VRF_KERNEL_TEMPLATE)
 
         # Clear vrf routing table
         if CONF.clear_vrf_routes_on_startup:
