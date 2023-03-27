@@ -26,6 +26,31 @@ LOG = logging.getLogger(__name__)
 
 def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
                        bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _wire_provider_port_underlay(routing_tables_routes, port_ips,
+                                            bridge_device, bridge_vlan,
+                                            routing_table, proxy_cidrs,
+                                            lladdr=lladdr)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        # No need to wire anything
+        return True
+
+
+def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
+                         bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _unwire_provider_port_underlay(routing_tables_routes, port_ips,
+                                              bridge_device, bridge_vlan,
+                                              routing_table, proxy_cidrs,
+                                              lladdr=lladdr)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        # No need to wire anything
+        return True
+
+
+def _wire_provider_port_underlay(routing_tables_routes, port_ips,
+                                 bridge_device, bridge_vlan, routing_table,
+                                 proxy_cidrs, lladdr=None):
     if not bridge_device:
         return False
     for ip in port_ips:
@@ -52,8 +77,9 @@ def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
     return True
 
 
-def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
-                         bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
+                                   bridge_device, bridge_vlan, routing_table,
+                                   proxy_cidrs, lladdr=None):
     if not bridge_device:
         return False
     for ip in port_ips:
