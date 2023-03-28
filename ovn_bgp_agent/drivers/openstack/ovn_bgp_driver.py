@@ -144,6 +144,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def sync(self):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
+        self.ovn_routing_tables = {}
+        self.ovn_bridge_mappings = {}
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
         self.ovn_routing_tables_routes = collections.defaultdict()

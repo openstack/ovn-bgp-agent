@@ -136,6 +136,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             port0, port1]
         mock_ensure_port_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_port_exposed').start()
+        mock_routing_bridge.return_value = ['fake-route']
 
         self.nb_bgp_driver.sync()
 
@@ -146,10 +147,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             template=frr.LEAK_VRF_TEMPLATE)
         mock_ensure_ovn_dev.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
-        expected_calls = [mock.call(self.ovn_routing_tables, 'bridge0',
-                                    CONF.bgp_vrf_table_id),
-                          mock.call(self.ovn_routing_tables, 'bridge1',
-                                    CONF.bgp_vrf_table_id)]
+        expected_calls = [mock.call({}, 'bridge0', CONF.bgp_vrf_table_id),
+                          mock.call({}, 'bridge1', CONF.bgp_vrf_table_id)]
         mock_routing_bridge.assert_has_calls(expected_calls)
         expected_calls = [mock.call('bridge0', 10), mock.call('bridge1', 11)]
         mock_ensure_vlan_network.assert_has_calls(expected_calls)
@@ -177,8 +176,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             ips, CONF.bgp_nic)
         mock_del_ip_riles.assert_called_once_with(fake_ip_rules)
         moock_del_ip_routes.assert_called_once_with(
-            self.ovn_routing_tables, mock.ANY,
-            {'bridge0': mock.ANY, 'bridge1': mock.ANY})
+            {}, mock.ANY,
+            {'bridge0': ['fake-route'], 'bridge1': ['fake-route']})
 
     def test__ensure_port_exposed_fip(self):
         port0 = fakes.create_object({

@@ -44,19 +44,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
         self.allowed_address_scopes = set(CONF.address_scopes or [])
-        self.ovn_routing_tables = {}  # {'br-ex': 200}
-        self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
-        self.ovn_local_cr_lrps = {}
-        self.ovn_local_lrps = {}
-        # {'br-ex': [route1, route2]}
-        self.ovn_routing_tables_routes = collections.defaultdict()
-        # {ovn_lb: VIP1, VIP2}
-        self.ovn_lb_vips = collections.defaultdict()
-        self.ovn_fips = {}  # {'fip': {'bridge_device': X, 'bridge_vlan': Y}}
-        # {'ls_name': {'bridge_device': X, 'bridge_vlan': Y}}
-        self.ovn_provider_ls = {}
-        # dict instead of list to speed up look ups
-        self.ovn_tenant_ls = {}  # {'ls_name': True}
+
+        self._init_vars()
 
         self._nb_idl = None
         self._post_start_event = threading.Event()
@@ -70,6 +59,23 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     @nb_idl.setter
     def nb_idl(self, val):
         self._nb_idl = val
+
+    def _init_vars(self):
+        self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
+
+        self.ovn_routing_tables = {}  # {'br-ex': 200}
+        # {'br-ex': [route1, route2]}
+        self.ovn_routing_tables_routes = collections.defaultdict()
+
+        self.ovn_local_cr_lrps = {}
+        self.ovn_local_lrps = {}
+        # {ovn_lb: VIP1, VIP2}
+        self.ovn_lb_vips = collections.defaultdict()
+        # {'ls_name': {'bridge_device': X, 'bridge_vlan': Y}}
+        self.ovn_fips = {}  # {'fip': {'bridge_device': X, 'bridge_vlan': Y}}
+        self.ovn_provider_ls = {}
+        # dict instead of list to speed up look ups
+        self.ovn_tenant_ls = {}  # {'ls_name': True}
 
     def start(self):
         self.ovs_idl = ovs.OvsIdl()
@@ -121,12 +127,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def sync(self):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
-        self.ovn_local_cr_lrps = {}
-        self.ovn_local_lrps = {}
-        self.ovn_routing_tables_routes = collections.defaultdict()
-        self.ovn_lb_vips = collections.defaultdict()
-        self.ovn_provider_ls = {}
-        self.ovn_tenant_ls = {}
+        self._init_vars()
 
         LOG.debug("Ensuring VRF configuration for advertising routes")
         # Base BGP configuration

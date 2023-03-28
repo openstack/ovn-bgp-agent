@@ -107,7 +107,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             self, mock_ensure_vrf, mock_vrf_leak, mock_ensure_ovn_dev,
             mock_ensure_arp, mock_routing_bridge, mock_ensure_vlan_network,
             mock_exposed_ips, mock_get_ip_rules, mock_flows_info,
-            mock_remove_flows, mock_del_exposed_ips, mock_del_ip_riles,
+            mock_remove_flows, mock_del_exposed_ips, mock_del_ip_rules,
             mock_del_ip_routes):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
@@ -126,6 +126,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.bgp_driver, '_ensure_port_exposed').start()
         mock_ensure_cr_port_exposed = mock.patch.object(
             self.bgp_driver, '_ensure_cr_lrp_associated_ports_exposed').start()
+        mock_routing_bridge.return_value = ['fake-route']
 
         self.bgp_driver.sync()
 
@@ -141,10 +142,8 @@ class TestOVNBGPDriver(test_base.TestCase):
                           mock.call('bridge1', 2, 11)]
         mock_ensure_arp.assert_has_calls(expected_calls)
 
-        expected_calls = [mock.call({'fake-bridge': 'fake-table'}, 'bridge0',
-                                    CONF.bgp_vrf_table_id),
-                          mock.call({'fake-bridge': 'fake-table'}, 'bridge1',
-                                    CONF.bgp_vrf_table_id)]
+        expected_calls = [mock.call({}, 'bridge0', CONF.bgp_vrf_table_id),
+                          mock.call({}, 'bridge1', CONF.bgp_vrf_table_id)]
         mock_routing_bridge.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call('bridge0', 10), mock.call('bridge1', 11)]
@@ -176,10 +175,10 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_del_exposed_ips.assert_called_once_with(
             ips, CONF.bgp_nic)
-        mock_del_ip_riles.assert_called_once_with(fake_ip_rules)
+        mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
         mock_del_ip_routes.assert_called_once_with(
-            {self.bridge: 'fake-table'}, mock.ANY,
-            {'bridge0': mock.ANY, 'bridge1': mock.ANY})
+            {}, mock.ANY,
+            {'bridge0': ['fake-route'], 'bridge1': ['fake-route']})
 
         mock_get_ip_rules.assert_called_once_with(mock.ANY)
 
