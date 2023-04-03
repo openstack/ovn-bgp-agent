@@ -82,8 +82,6 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         linux_net.ensure_vrf(CONF.bgp_vrf, CONF.bgp_vrf_table_id)
 
         # Ensure FRR is configure to leak the routes
-        # NOTE: If we want to recheck this every X time, we should move it
-        # inside the sync function instead
         frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
 
         # Create OVN dummy device
@@ -162,6 +160,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # Create VRF
         linux_net.ensure_vrf(CONF.bgp_vrf,
                              CONF.bgp_vrf_table_id)
+        # Ensure FRR is configure to leak the routes
+        frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
         # Create OVN dummy device
         linux_net.ensure_ovn_device(CONF.bgp_nic,
                                     CONF.bgp_vrf)
