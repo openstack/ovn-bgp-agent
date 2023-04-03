@@ -319,8 +319,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # Connect to OVN
         if wire_utils.wire_provider_port(
                 self.ovn_routing_tables_routes, port_ips, bridge_device,
-                bridge_vlan, self.ovn_routing_tables[bridge_device],
-                proxy_cidrs, lladdr):
+                bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr):
             # Expose the IP now that it is connected
             bgp_utils.announce_ips(port_ips)
             return True
@@ -389,8 +388,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 return False
         return wire_utils.unwire_provider_port(
             self.ovn_routing_tables_routes, port_ips, bridge_device,
-            bridge_vlan, self.ovn_routing_tables[bridge_device], proxy_cidrs,
-            lladdr)
+            bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr)
 
     def _get_bridge_for_datapath(self, datapath):
         network_name, network_tag = self.sb_idl.get_network_name_and_tag(
@@ -963,7 +961,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
         if not wire_utils.wire_lrp_port(
                 self.ovn_routing_tables_routes, ip, bridge_device, bridge_vlan,
-                self.ovn_routing_tables[bridge_device], cr_lrp_ips):
+                self.ovn_routing_tables, cr_lrp_ips):
             LOG.warning("Not able to expose subnet with IP %s", ip)
             return
         if ovn_ip_rules:
@@ -1028,7 +1026,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # Disconnect the network to OVN
         wire_utils.unwire_lrp_port(
             self.ovn_routing_tables_routes, ip, bridge_device, bridge_vlan,
-            self.ovn_routing_tables[bridge_device], cr_lrp_ips)
+            self.ovn_routing_tables, cr_lrp_ips)
 
     @lockutils.synchronized('bgp')
     def expose_subnet(self, ip, row):

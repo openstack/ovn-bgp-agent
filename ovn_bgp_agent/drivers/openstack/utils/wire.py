@@ -12,16 +12,102 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import pyroute2
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.utils import linux_net
 
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+
+
+def ensure_base_wiring_config(idl, bridge_mappings, routing_tables):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _ensure_base_wiring_config_underlay(idl, bridge_mappings,
+                                                   routing_tables)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        raise NotImplementedError()
+
+
+def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
+    ovn_bridge_mappings = {}
+    for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
+        network = bridge_mapping.split(":")[0]
+        bridge = bridge_mapping.split(":")[1]
+        ovn_bridge_mappings[network] = bridge
+
+        linux_net.ensure_routing_table_for_bridge(
+            routing_tables, bridge, CONF.bgp_vrf_table_id)
+        vlan_tag = idl.get_network_vlan_tag_by_network_name(network)
+
+        if vlan_tag:
+            vlan_tag = vlan_tag[0]
+            linux_net.ensure_vlan_device_for_network(bridge,
+                                                     vlan_tag)
+
+        linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
+                                                    bridge_index,
+                                                    vlan_tag)
+    return ovn_bridge_mappings
+
+
+def cleanup_wiring(bridge_mappings, exposed_ips, routing_tables,
+                   routing_tables_routes):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _cleanup_wiring_underlay(bridge_mappings, exposed_ips,
+                                        routing_tables, routing_tables_routes)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        raise NotImplementedError()
+
+
+def _cleanup_wiring_underlay(bridge_mappings, exposed_ips, routing_tables,
+                             routing_tables_routes):
+    current_ips = linux_net.get_exposed_ips(CONF.bgp_nic)
+    expected_ips = [ip for ip_dict in exposed_ips.values()
+                    for ip in ip_dict.keys()]
+
+    ips_to_delete = [ip for ip in current_ips if ip not in expected_ips]
+    linux_net.delete_exposed_ips(ips_to_delete, CONF.bgp_nic)
+
+    # get flows and delete the extra ones
+    flows_info = {}
+    extra_routes = {}
+    with pyroute2.NDB() as ndb:
+        for bridge in bridge_mappings.values():
+            if flows_info.get(bridge):
+                continue
+
+            flows_info[bridge] = {
+                'mac': ndb.interfaces[bridge]['address'],
+                'in_port': set([])}
+            ovs.get_ovs_flows_info(bridge, flows_info,
+                                   constants.OVS_RULE_COOKIE)
+            extra_routes[bridge] = (
+                linux_net.get_extra_routing_table_for_bridge(routing_tables,
+                                                             bridge))
+    ovs.remove_extra_ovs_flows(flows_info, constants.OVS_RULE_COOKIE)
+
+    # get rules and delete the old ones
+    ovn_ip_rules = linux_net.get_ovn_ip_rules(routing_tables.values())
+    if ovn_ip_rules:
+        for ip in expected_ips:
+            ip_version = linux_net.get_ip_version(ip)
+            if ip_version == constants.IP_VERSION_6:
+                ip_dst = "{}/128".format(ip)
+            else:
+                ip_dst = "{}/32".format(ip)
+            ovn_ip_rules.pop(ip_dst, None)
+    linux_net.delete_ip_rules(ovn_ip_rules)
+
+    # remove all the extra rules not needed
+    linux_net.delete_bridge_ip_routes(routing_tables, routing_tables_routes,
+                                      extra_routes)
 
 
 def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
@@ -59,16 +145,17 @@ def _wire_provider_port_underlay(routing_tables_routes, port_ips,
                 dev = bridge_device
                 if bridge_vlan:
                     dev = '{}.{}'.format(dev, bridge_vlan)
-                linux_net.add_ip_rule(ip, routing_table, dev=dev,
-                                      lladdr=lladdr)
+                linux_net.add_ip_rule(ip, routing_table[bridge_device],
+                                      dev=dev, lladdr=lladdr)
             else:
-                linux_net.add_ip_rule(ip, routing_table)
+                linux_net.add_ip_rule(ip, routing_table[bridge_device])
         except agent_exc.InvalidPortIP:
             LOG.exception("Invalid IP to create a rule for port on the "
                           "provider network: %s", ip)
             return False
-        linux_net.add_ip_route(routing_tables_routes, ip, routing_table,
-                               bridge_device, vlan=bridge_vlan)
+        linux_net.add_ip_route(routing_tables_routes, ip,
+                               routing_table[bridge_device], bridge_device,
+                               vlan=bridge_vlan)
     if proxy_cidrs:
         # add proxy ndp config for ipv6
         for n_cidr in proxy_cidrs:
@@ -92,21 +179,22 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
                 dev = bridge_device
                 if bridge_vlan:
                     dev = '{}.{}'.format(dev, bridge_vlan)
-                linux_net.del_ip_rule(cr_lrp_ip, routing_table, dev=dev,
-                                      lladdr=lladdr)
+                linux_net.del_ip_rule(cr_lrp_ip, routing_table[bridge_device],
+                                      dev=dev, lladdr=lladdr)
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to delete a rule for the "
                               "provider port: %s", cr_lrp_ip)
                 return False
         else:
             try:
-                linux_net.del_ip_rule(ip, routing_table)
+                linux_net.del_ip_rule(ip, routing_table[bridge_device])
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to delete a rule for the "
                               "provider port: %s", ip)
                 return False
-        linux_net.del_ip_route(routing_tables_routes, ip, routing_table,
-                               bridge_device, vlan=bridge_vlan)
+        linux_net.del_ip_route(routing_tables_routes, ip,
+                               routing_table[bridge_device], bridge_device,
+                               vlan=bridge_vlan)
     if proxy_cidrs:
         for n_cidr in proxy_cidrs:
             if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
@@ -120,7 +208,7 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
         return False
     LOG.debug("Adding IP Rules for network %s", ip)
     try:
-        linux_net.add_ip_rule(ip, routing_table)
+        linux_net.add_ip_rule(ip, routing_table[bridge_device])
     except agent_exc.InvalidPortIP:
         LOG.exception("Invalid IP to create a rule for the lrp (network "
                       "router interface) port: %s", ip)
@@ -136,7 +224,7 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
             linux_net.add_ip_route(
                 routing_tables_routes,
                 ip.split("/")[0],
-                routing_table,
+                routing_table[bridge_device],
                 bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],
@@ -152,7 +240,7 @@ def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
         return False
     LOG.debug("Deleting IP Rules for network %s", ip)
     try:
-        linux_net.del_ip_rule(ip, routing_table)
+        linux_net.del_ip_rule(ip, routing_table[bridge_device])
     except agent_exc.InvalidPortIP:
         LOG.exception("Invalid IP to delete a rule for the "
                       "lrp (network router interface) port: %s", ip)
@@ -166,7 +254,7 @@ def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
             linux_net.del_ip_route(
                 routing_tables_routes,
                 ip.split("/")[0],
-                routing_table,
+                routing_table[bridge_device],
                 bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],

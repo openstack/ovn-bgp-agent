@@ -258,7 +258,8 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                name='net-id')
         self.event.run(mock.Mock(), row, mock.Mock())
-        self.agent.expose_fip.assert_called_once_with(external_ip, ls_name)
+        self.agent.expose_fip.assert_called_once_with(external_ip, ls_name,
+                                                      row)
 
     def test_run_no_external_ip(self):
         external_ip = None
@@ -368,7 +369,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
                                up=True)
         self.event.run(mock.Mock(), row, mock.Mock())
-        self.agent.withdraw_fip.assert_called_once_with('fip-ip')
+        self.agent.withdraw_fip.assert_called_once_with('fip-ip', row)
 
     def test_run_no_fip(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
