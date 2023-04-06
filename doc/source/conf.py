@@ -41,7 +41,7 @@ project = u'ovn-bgp-agent'
 copyright = u'2017, OpenStack Developers'
 
 # openstackdocstheme options
-openstackdocs_repo_name = 'x/ovn-bgp-agent'
+openstackdocs_repo_name = 'openstack/ovn-bgp-agent'
 openstackdocs_bug_project = 'ovn-bgp-agent'
 openstackdocs_bug_tag = ''
 

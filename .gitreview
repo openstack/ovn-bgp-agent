@@ -1,5 +1,5 @@
 [gerrit]
 host=review.opendev.org
 port=29418
-project=x/ovn-bgp-agent.git
+project=openstack/ovn-bgp-agent.git
 defaultbranch=master

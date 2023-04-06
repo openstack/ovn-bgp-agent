@@ -1,6 +1,6 @@
 The source repository for this project can be found at:
 
-   https://opendev.org/x/ovn-bgp-agent
+   https://opendev.org/openstack/ovn-bgp-agent
 
 Pull requests submitted through GitHub are not monitored.
 
