@@ -101,11 +101,13 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
     @mock.patch.object(linux_net, 'ensure_ovn_device')
     @mock.patch.object(linux_net, 'ensure_vrf')
+    @mock.patch.object(frr, 'vrf_leak')
     def test_sync(
-            self, mock_ensure_vrf, mock_ensure_ovn_dev, mock_ensure_arp,
-            mock_routing_bridge, mock_ensure_vlan_network, mock_exposed_ips,
-            mock_get_ip_rules, mock_flows_info, mock_remove_flows,
-            mock_del_exposed_ips, mock_del_ip_riles, moock_del_ip_routes):
+            self, mock_vrf_leak, mock_ensure_vrf, mock_ensure_ovn_dev,
+            mock_ensure_arp, mock_routing_bridge, mock_ensure_vlan_network,
+            mock_exposed_ips, mock_get_ip_rules, mock_flows_info,
+            mock_remove_flows, mock_del_exposed_ips, mock_del_ip_riles,
+            mock_del_ip_routes):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.sb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -128,6 +130,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         mock_ensure_vrf.assert_called_once_with(
             CONF.bgp_vrf, CONF.bgp_vrf_table_id)
+        mock_vrf_leak.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id)
         mock_ensure_ovn_dev.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
 
@@ -171,7 +175,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_exposed_ips.assert_called_once_with(
             ips, CONF.bgp_nic)
         mock_del_ip_riles.assert_called_once_with(fake_ip_rules)
-        moock_del_ip_routes.assert_called_once_with(
+        mock_del_ip_routes.assert_called_once_with(
             {self.bridge: 'fake-table'}, mock.ANY,
             {'bridge0': mock.ANY, 'bridge1': mock.ANY})
 
