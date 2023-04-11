@@ -94,8 +94,9 @@ def delete_device(device):
 
 
 def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
-    ipv4 = "192.168." + str(int(offset / 256)) + "." + str(offset % 256)
-    ipv6 = "fd53:d91e:400:7f17::%x" % offset
+    ipv4 = constants.ARP_IPV4_PREFIX + str(int(offset / 256)) + "." + str(
+        offset % 256)
+    ipv6 = constants.NDP_IPV6_PREFIX + "%x" % offset
     try:
         ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv4, bridge)
     except KeyError as e:

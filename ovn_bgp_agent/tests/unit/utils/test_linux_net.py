@@ -128,7 +128,7 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.ensure_arp_ndp_enabled_for_bridge('fake-bridge', 511)
         # NOTE(ltomasbo): hardoced starting ipv4 is 192.168.0.0, and ipv6 is
         # fd53:d91e:400:7f17::0
-        ipv4 = '192.168.1.255'  # base + 511 offset
+        ipv4 = '169.254.1.255'  # base + 511 offset
         ipv6 = 'fd53:d91e:400:7f17::1ff'  # base + 5122 offset (to hex)
         calls = [mock.call(ipv4, 'fake-bridge'),
                  mock.call(ipv6, 'fake-bridge')]
@@ -144,7 +144,7 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.ensure_arp_ndp_enabled_for_bridge('fake-bridge', 511, 11)
         # NOTE(ltomasbo): hardoced starting ipv4 is 192.168.0.0, and ipv6 is
         # fd53:d91e:400:7f17::0
-        ipv4 = '192.168.1.255'  # base + 511 offset
+        ipv4 = '169.254.1.255'  # base + 511 offset
         ipv6 = 'fd53:d91e:400:7f17::1ff'  # base + 5122 offset (to hex)
         calls = [mock.call(ipv4, 'fake-bridge'),
                  mock.call(ipv6, 'fake-bridge')]
