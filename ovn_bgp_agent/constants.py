@@ -19,9 +19,13 @@ OVN_VM_VIF_PORT_TYPE = ""
 OVN_PATCH_VIF_PORT_TYPE = "patch"
 OVN_CHASSISREDIRECT_VIF_PORT_TYPE = "chassisredirect"
 OVN_LOCALNET_VIF_PORT_TYPE = "localnet"
+OVN_DNAT_AND_SNAT = "dnat_and_snat"
 
 OVN_CIDRS_EXT_ID_KEY = 'neutron:cidrs'
 OVN_PORT_NAME_EXT_ID_KEY = 'neutron:port_name'
+OVN_LS_NAME_EXT_ID_KEY = 'neutron:network_name'
+OVN_FIP_EXT_ID_KEY = 'neutron:port_fip'
+OVN_FIP_NET_EXT_ID_KEY = 'neutron:fip_network_id'
 LB_VIP_PORT_PREFIX = "ovn-lb-vip-"
 
 OVS_RULE_COOKIE = "999"
@@ -61,3 +65,5 @@ SUBNET_POOL_ADDR_SCOPE6 = "neutron:subnet_pool_addr_scope6"
 
 EXPOSE = "expose"
 WITHDRAW = "withdraw"
+
+OVN_REQUESTED_CHASSIS = "requested-chassis"

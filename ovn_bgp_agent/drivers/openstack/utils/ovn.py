@@ -20,6 +20,7 @@ from ovsdbapp.backend import ovs_idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp import event
+from ovsdbapp.schema.ovn_northbound import impl_idl as nb_impl_idl
 from ovsdbapp.schema.ovn_southbound import impl_idl as sb_impl_idl
 
 from ovn_bgp_agent import constants
@@ -43,6 +44,47 @@ class OvnDbNotifyHandler(event.RowEventHandler):
     def __init__(self, driver):
         super(OvnDbNotifyHandler, self).__init__()
         self.driver = driver
+
+
+class OvnNbIdl(OvnIdl):
+    SCHEMA = 'OVN_Northbound'
+
+    def __init__(self, connection_string, events=None, tables=None):
+        if connection_string.startswith("ssl"):
+            self._check_and_set_ssl_files(self.SCHEMA)
+        helper = self._get_ovsdb_helper(connection_string)
+        self._events = events
+        if tables is None:
+            tables = ('Logical_Switch_Port', 'NAT', 'NB_Global')
+        for table in tables:
+            helper.register_table(table)
+        super(OvnNbIdl, self).__init__(
+            None, connection_string, helper, leader_only=False)
+
+    def _get_ovsdb_helper(self, connection_string):
+        return idlutils.get_schema_helper(connection_string, self.SCHEMA)
+
+    def _check_and_set_ssl_files(self, schema_name):
+        priv_key_file = CONF.ovn_nb_private_key
+        cert_file = CONF.ovn_nb_certificate
+        ca_cert_file = CONF.ovn_nb_ca_cert
+
+        if priv_key_file:
+            Stream.ssl_set_private_key_file(priv_key_file)
+
+        if cert_file:
+            Stream.ssl_set_certificate_file(cert_file)
+
+        if ca_cert_file:
+            Stream.ssl_set_ca_cert_file(ca_cert_file)
+
+    def start(self):
+        conn = connection.Connection(
+            self, timeout=CONF.ovsdb_connection_timeout)
+        ovsdbNbConn = OvsdbNbOvnIdl(conn)
+        if self._events:
+            self.notify_handler.watch_events(self._events)
+        return ovsdbNbConn
 
 
 class OvnSbIdl(OvnIdl):
@@ -85,7 +127,7 @@ class OvnSbIdl(OvnIdl):
 
     def start(self):
         conn = connection.Connection(
-            self, timeout=180)
+            self, timeout=CONF.ovsdb_connection_timeout)
         ovsdbSbConn = OvsdbSbOvnIdl(conn)
         if self._events:
             self.notify_handler.watch_events(self._events)
@@ -107,6 +149,41 @@ class Backend(ovs_idl.Backend):
     @property
     def tables(self):
         return self.idl.tables
+
+
+class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
+    def __init__(self, connection):
+        super(OvsdbNbOvnIdl, self).__init__(connection)
+        self.idl._session.reconnect.set_probe_interval(60000)
+
+    def get_network_vlan_tag_by_network_name(self, network_name):
+        cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
+                                constants.OVN_LOCALNET_VIF_PORT_TYPE))
+        for row in cmd.execute(check_error=True):
+            if (row.options and
+                    row.options.get('network_name') == network_name):
+                return row.tag
+
+    def ls_has_virtual_ports(self, logical_switch):
+        ls = self.lookup('Logical_Switch', logical_switch)
+        for port in ls.ports:
+            if port.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+                return True
+        return False
+
+    def get_nat_by_logical_port(self, logical_port):
+        cmd = self.db_find_rows('NAT', ('logical_port', '=', logical_port))
+        nat_info = cmd.execute(check_error=True)
+        return nat_info[0] if nat_info else []
+
+    def get_active_ports_on_chassis(self, chassis):
+        ports = []
+        cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True))
+        for row in cmd.execute(check_error=True):
+            if (row.options and
+                    row.options.get('requested-chassis') == chassis):
+                ports.append(row)
+        return ports
 
 
 class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):

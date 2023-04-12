@@ -405,11 +405,11 @@ class TestOvsIdl(test_base.TestCase):
         self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
             'Open_vSwitch', '.', 'external_ids')
 
-    def test_get_own_chassis_name(self):
+    def test_get_own_chassis_id(self):
         expected_return = 'fake-sys'
         row = {'system-id': expected_return}
         self._test_ovs_ext_ids_getters(
-            self.ovs_idl.get_own_chassis_name, row, expected_return)
+            self.ovs_idl.get_own_chassis_id, row, expected_return)
 
     def test_get_ovn_remote(self):
         expected_return = 'fake-ovn-remote'

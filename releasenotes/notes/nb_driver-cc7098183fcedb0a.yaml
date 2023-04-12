@@ -1,0 +1,9 @@
+---
+features:
+  - |
+    This patch introduces a new driver that instead of connecting to the OVN
+    SB DB to watch for relevant events, it connects to the OVN NB DB. The main
+    reasons for doing so are: 1) scalability purposes; and 2) rely on the
+    stable fields offered by the NB DB, instead of the SB DB that may change
+    any time and break our watchers logic (as it has already happened with the
+    OVN Load_Balancer table and its datapath field usage).

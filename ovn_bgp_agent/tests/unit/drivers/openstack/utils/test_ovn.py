@@ -30,6 +30,79 @@ from ovn_bgp_agent.tests.unit import fakes
 CONF = cfg.CONF
 
 
+class TestOvsdbNbOvnIdl(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOvsdbNbOvnIdl, self).setUp()
+        self.nb_idl = ovn_utils.OvsdbNbOvnIdl(mock.Mock())
+
+        # Monkey-patch parent class methods
+        self.nb_idl.db_find_rows = mock.Mock()
+        self.nb_idl.lookup = mock.Mock()
+
+    def test_get_network_vlan_tag_by_network_name(self):
+        network_name = 'net0'
+        tag = 123
+        lsp = fakes.create_object({'name': 'port-0',
+                                   'options': {'network_name': network_name},
+                                   'tag': tag})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            lsp]
+        ret = self.nb_idl.get_network_vlan_tag_by_network_name(network_name)
+
+        self.assertEqual(tag, ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Logical_Switch_Port',
+            ('type', '=', constants.OVN_LOCALNET_VIF_PORT_TYPE))
+
+    def test_ls_has_virtual_ports(self):
+        ls_name = 'logical_switch'
+        port = fakes.create_object(
+            {'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE})
+        ls = fakes.create_object({'ports': [port]})
+        self.nb_idl.lookup.return_value = ls
+        ret = self.nb_idl.ls_has_virtual_ports(ls_name)
+
+        self.assertEqual(True, ret)
+        self.nb_idl.lookup.assert_called_once_with('Logical_Switch', ls_name)
+
+    def test_ls_has_virtual_ports_not_found(self):
+        ls_name = 'logical_switch'
+        port = fakes.create_object({'type': constants.OVN_VM_VIF_PORT_TYPE})
+        ls = fakes.create_object({'ports': [port]})
+        self.nb_idl.lookup.return_value = ls
+        ret = self.nb_idl.ls_has_virtual_ports(ls_name)
+
+        self.assertEqual(False, ret)
+        self.nb_idl.lookup.assert_called_once_with('Logical_Switch', ls_name)
+
+    def test_get_nat_by_logical_port(self):
+        logical_port = 'logical_port'
+        nat_info = ['nat_info']
+        self.nb_idl.db_find_rows.return_value.execute.return_value = nat_info
+        ret = self.nb_idl.get_nat_by_logical_port(logical_port)
+
+        self.assertEqual('nat_info', ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'NAT',
+            ('logical_port', '=', logical_port))
+
+    def test_get_active_ports_on_chassis(self):
+        chassis = 'local_chassis'
+        row1 = fakes.create_object({
+            'options': {'requested-chassis': chassis}})
+        row2 = fakes.create_object({
+            'options': {'requested-chassis': 'other_chassis'}})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            row1, row2]
+        ret = self.nb_idl.get_active_ports_on_chassis(chassis)
+
+        self.assertEqual([row1], ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Logical_Switch_Port',
+            ('up', '=', True))
+
+
 class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def setUp(self):
@@ -559,6 +632,43 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         ret = self.sb_idl.get_ovn_vip_port('fake-lb')
 
         self.assertEqual(lb2, ret)
+
+
+class TestOvnNbIdl(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOvnNbIdl, self).setUp()
+        config.register_opts()
+        mock.patch.object(idlutils, 'get_schema_helper').start()
+        mock.patch.object(ovn_utils.OvnIdl, '__init__').start()
+        self.nb_idl = ovn_utils.OvnNbIdl('tcp:127.0.0.1:6640')
+
+    @mock.patch.object(Stream, 'ssl_set_ca_cert_file')
+    @mock.patch.object(Stream, 'ssl_set_certificate_file')
+    @mock.patch.object(Stream, 'ssl_set_private_key_file')
+    def test__check_and_set_ssl_files(
+            self, mock_ssl_priv_key, mock_ssl_cert, mock_ssl_ca_cert):
+        CONF.set_override('ovn_nb_private_key', 'fake-priv-key')
+        CONF.set_override('ovn_nb_certificate', 'fake-cert')
+        CONF.set_override('ovn_nb_ca_cert', 'fake-ca-cert')
+
+        self.nb_idl._check_and_set_ssl_files('fake-schema')
+
+        mock_ssl_priv_key.assert_called_once_with('fake-priv-key')
+        mock_ssl_cert.assert_called_once_with('fake-cert')
+        mock_ssl_ca_cert.assert_called_once_with('fake-ca-cert')
+
+    @mock.patch.object(connection, 'Connection')
+    def test_start(self, mock_conn):
+        notify_handler = mock.Mock()
+        self.nb_idl.notify_handler = notify_handler
+        self.nb_idl._events = ['fake-event0', 'fake-event1']
+
+        self.nb_idl.start()
+
+        mock_conn.assert_called_once_with(self.nb_idl, timeout=180)
+        notify_handler.watch_events.assert_called_once_with(
+            ['fake-event0', 'fake-event1'])
 
 
 class TestOvnSbIdl(test_base.TestCase):
