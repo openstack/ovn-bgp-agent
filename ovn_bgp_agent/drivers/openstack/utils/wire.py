@@ -89,7 +89,10 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
             else:
                 cr_lrp_ip = '{}/32'.format(ip)
             try:
-                linux_net.del_ip_rule(cr_lrp_ip, routing_table, bridge_device,
+                dev = bridge_device
+                if bridge_vlan:
+                    dev = '{}.{}'.format(dev, bridge_vlan)
+                linux_net.del_ip_rule(cr_lrp_ip, routing_table, dev=dev,
                                       lladdr=lladdr)
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to delete a rule for the "
@@ -97,7 +100,7 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
                 return False
         else:
             try:
-                linux_net.del_ip_rule(ip, routing_table, bridge_device)
+                linux_net.del_ip_rule(ip, routing_table)
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to delete a rule for the "
                               "provider port: %s", ip)
@@ -149,7 +152,7 @@ def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
         return False
     LOG.debug("Deleting IP Rules for network %s", ip)
     try:
-        linux_net.del_ip_rule(ip, routing_table, bridge_device)
+        linux_net.del_ip_rule(ip, routing_table)
     except agent_exc.InvalidPortIP:
         LOG.exception("Invalid IP to delete a rule for the "
                       "lrp (network router interface) port: %s", ip)
