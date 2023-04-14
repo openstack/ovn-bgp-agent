@@ -73,15 +73,19 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
                 return current_chassis == self.agent.chassis
 
             # ROW_UPDATE EVENT
-            old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-            if old_chassis != self.agent.chassis:
-                return False
-            if not old.up:
-                return False
+            if hasattr(old, 'options'):
+                # check chassis change
+                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
+                if old_chassis != self.agent.chassis:
+                    return False
+                if not current_chassis or current_chassis != old_chassis:
+                    return True
 
-            if (not current_chassis or current_chassis != old_chassis or
-                    not row.up):
-                return True
+            if hasattr(old, 'up'):
+                if not old.up:
+                    return False
+                if not row.up:
+                    return True
         except (IndexError, AttributeError):
             return False
 
@@ -170,7 +174,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                 old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
                 if (not old_chassis or old_chassis != self.agent.chassis):
                     return False
-                if current_chassis != old_chassis:
+                if current_chassis != old_chassis and current_port_fip:
                     return True
             # There was no change in chassis, so only progress if the
             # chassis matches
@@ -188,7 +192,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                 # check port status change
                 if not old.up:
                     return False
-                if not row.up:
+                if not row.up and current_port_fip:
                     return True
         except (IndexError, AttributeError):
             return False
