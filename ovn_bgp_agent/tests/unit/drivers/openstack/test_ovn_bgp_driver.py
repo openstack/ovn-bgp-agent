@@ -90,6 +90,21 @@ class TestOVNBGPDriver(test_base.TestCase):
             CONF.ovsdb_connection)
         self.mock_sbdb().start.assert_called_once_with()
 
+    @mock.patch.object(linux_net, 'ensure_ovn_device')
+    @mock.patch.object(frr, 'vrf_leak')
+    @mock.patch.object(linux_net, 'ensure_vrf')
+    def test_frr_sync(self, mock_ensure_vrf, mock_vrf_leak,
+                      mock_ensure_ovn_dev):
+        self.bgp_driver.frr_sync()
+
+        mock_ensure_vrf.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_vrf_table_id)
+        mock_vrf_leak.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
+            template=frr.LEAK_VRF_TEMPLATE)
+        mock_ensure_ovn_dev.assert_called_once_with(
+            CONF.bgp_nic, CONF.bgp_vrf)
+
     @mock.patch.object(linux_net, 'delete_bridge_ip_routes')
     @mock.patch.object(linux_net, 'delete_ip_rules')
     @mock.patch.object(linux_net, 'delete_exposed_ips')
@@ -100,15 +115,11 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
-    @mock.patch.object(linux_net, 'ensure_ovn_device')
-    @mock.patch.object(frr, 'vrf_leak')
-    @mock.patch.object(linux_net, 'ensure_vrf')
     def test_sync(
-            self, mock_ensure_vrf, mock_vrf_leak, mock_ensure_ovn_dev,
-            mock_ensure_arp, mock_routing_bridge, mock_ensure_vlan_network,
-            mock_exposed_ips, mock_get_ip_rules, mock_flows_info,
-            mock_remove_flows, mock_del_exposed_ips, mock_del_ip_rules,
-            mock_del_ip_routes):
+            self, mock_ensure_arp, mock_routing_bridge,
+            mock_ensure_vlan_network, mock_exposed_ips, mock_get_ip_rules,
+            mock_flows_info, mock_remove_flows, mock_del_exposed_ips,
+            mock_del_ip_rules, mock_del_ip_routes):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.sb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -129,14 +140,6 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_routing_bridge.return_value = ['fake-route']
 
         self.bgp_driver.sync()
-
-        mock_ensure_vrf.assert_called_once_with(
-            CONF.bgp_vrf, CONF.bgp_vrf_table_id)
-        mock_vrf_leak.assert_called_once_with(
-            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
-            template=frr.LEAK_VRF_TEMPLATE)
-        mock_ensure_ovn_dev.assert_called_once_with(
-            CONF.bgp_nic, CONF.bgp_vrf)
 
         expected_calls = [mock.call('bridge0', 1, 10),
                           mock.call('bridge1', 2, 11)]

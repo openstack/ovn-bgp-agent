@@ -124,14 +124,16 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         return events
 
     @lockutils.synchronized('nbbgp')
+    def frr_sync(self):
+        LOG.debug("Ensuring VRF configuration for advertising routes")
+        # Base BGP configuration
+        bgp_utils.ensure_base_bgp_configuration()
+
+    @lockutils.synchronized('nbbgp')
     def sync(self):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
         self._init_vars()
-
-        LOG.debug("Ensuring VRF configuration for advertising routes")
-        # Base BGP configuration
-        bgp_utils.ensure_base_bgp_configuration()
 
         LOG.debug("Configuring br-ex default rule and routing tables for "
                   "each provider network")

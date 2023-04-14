@@ -141,6 +141,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         return events
 
     @lockutils.synchronized('bgp')
+    def frr_sync(self):
+        LOG.debug("Ensuring VRF configuration for advertising routes")
+        # Base BGP configuration
+        bgp_utils.ensure_base_bgp_configuration()
+
+    @lockutils.synchronized('bgp')
     def sync(self):
         self._expose_tenant_networks = (CONF.expose_tenant_networks or
                                         CONF.expose_ipv6_gua_tenant_networks)
@@ -150,10 +156,6 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_lrps = {}
         self.ovn_routing_tables_routes = collections.defaultdict()
         self.ovn_lb_vips = collections.defaultdict()
-
-        LOG.debug("Ensuring VRF configuration for advertising routes")
-        # Base BGP configuration
-        bgp_utils.ensure_base_bgp_configuration()
 
         LOG.debug("Configuring br-ex default rule and routing tables for "
                   "each provider network")

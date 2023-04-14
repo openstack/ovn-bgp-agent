@@ -99,6 +99,21 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             CONF.bgp_vrf_table_id)
         self.mock_nbdb().start.assert_called_once_with()
 
+    @mock.patch.object(linux_net, 'ensure_ovn_device')
+    @mock.patch.object(frr, 'vrf_leak')
+    @mock.patch.object(linux_net, 'ensure_vrf')
+    def test_frr_sync(self, mock_ensure_vrf, mock_vrf_leak,
+                      mock_ensure_ovn_dev):
+        self.nb_bgp_driver.frr_sync()
+
+        mock_ensure_vrf.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_vrf_table_id)
+        mock_vrf_leak.assert_called_once_with(
+            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
+            template=frr.LEAK_VRF_TEMPLATE)
+        mock_ensure_ovn_dev.assert_called_once_with(
+            CONF.bgp_nic, CONF.bgp_vrf)
+
     @mock.patch.object(linux_net, 'delete_bridge_ip_routes')
     @mock.patch.object(linux_net, 'delete_ip_rules')
     @mock.patch.object(linux_net, 'delete_exposed_ips')
@@ -109,11 +124,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
-    @mock.patch.object(linux_net, 'ensure_ovn_device')
-    @mock.patch.object(frr, 'vrf_leak')
-    @mock.patch.object(linux_net, 'ensure_vrf')
-    def test_sync(self, mock_ensure_vrf, mock_vrf_leak, mock_ensure_ovn_dev,
-                  mock_routing_bridge, mock_ensure_vlan_network,
+    def test_sync(self, mock_routing_bridge, mock_ensure_vlan_network,
                   mock_ensure_arp, mock_flows_info, mock_remove_flows,
                   mock_exposed_ips, mock_get_ip_rules, mock_del_exposed_ips,
                   mock_del_ip_riles, moock_del_ip_routes):
@@ -140,13 +151,6 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self.nb_bgp_driver.sync()
 
-        mock_ensure_vrf.assert_called_once_with(
-            CONF.bgp_vrf, CONF.bgp_vrf_table_id)
-        mock_vrf_leak.assert_called_once_with(
-            CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
-            template=frr.LEAK_VRF_TEMPLATE)
-        mock_ensure_ovn_dev.assert_called_once_with(
-            CONF.bgp_nic, CONF.bgp_vrf)
         expected_calls = [mock.call({}, 'bridge0', CONF.bgp_vrf_table_id),
                           mock.call({}, 'bridge1', CONF.bgp_vrf_table_id)]
         mock_routing_bridge.assert_has_calls(expected_calls)

@@ -63,6 +63,17 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
         except Exception as e:
             LOG.exception("Unexpected exception while running the sync: %s", e)
 
+    @periodic_task.periodic_task(spacing=CONF.frr_reconcile_interval,
+                                 run_immediately=False)
+    def frr_sync(self, context):
+        LOG.info("Running reconciliation loop to ensure frr configuration is "
+                 "in place.")
+        try:
+            self.agent_driver.frr_sync()
+        except Exception as e:
+            LOG.exception("Unexpected exception while running the frr sync: "
+                          "%s", e)
+
     def wait(self):
         super(BGPAgent, self).wait()
         LOG.info("Service '%s' stopped", self.__class__.__name__)

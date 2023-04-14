@@ -22,8 +22,12 @@ LOG = logging.getLogger(__name__)
 
 agent_opts = [
     cfg.IntOpt('reconcile_interval',
-               help='Time between re-sync actions.',
+               help='Time (seconds) between re-sync actions.',
                default=120),
+    cfg.IntOpt('frr_reconcile_interval',
+               help='Time (seconds) between re-sync actions to ensure frr '
+                    'configuration is correct, in case frr is restart.',
+               default=15),
     cfg.BoolOpt('expose_tenant_networks',
                 help='Expose VM IPs on tenant networks. '
                      'If this flag is enabled, it takes precedence over '
