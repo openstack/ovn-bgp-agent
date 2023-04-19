@@ -49,6 +49,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.allowed_address_scopes = set(CONF.address_scopes or [])
         self.ovn_routing_tables = {}  # {'br-ex': 200}
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
+        self.ovs_flows = {}
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
         # {'br-ex': [route1, route2]}
@@ -156,10 +157,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_lrps = {}
         self.ovn_routing_tables_routes = collections.defaultdict()
         self.ovn_lb_vips = collections.defaultdict()
+        self.ovs_flows = {}
 
         LOG.debug("Configuring br-ex default rule and routing tables for "
                   "each provider network")
-        flows_info = {}
         # 1) Get bridge mappings: xxxx:br-ex,yyyy:br-ex2
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
         # 2) Get macs for bridge mappings
@@ -187,16 +188,22 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                                                             bridge_index,
                                                             vlan_tag)
 
-                if flows_info.get(bridge):
+                if self.ovs_flows.get(bridge):
                     continue
-                flows_info[bridge] = {
+                self.ovs_flows[bridge] = {
                     'mac': ndb.interfaces[bridge]['address'],
                     'in_port': set([])}
                 # 3) Get in_port for bridge mappings (br-ex, br-ex2)
-                ovs.get_ovs_flows_info(bridge, flows_info,
-                                       constants.OVS_RULE_COOKIE)
-        # 4) Add/Remove flows for each bridge mappings
-        ovs.remove_extra_ovs_flows(flows_info, constants.OVS_RULE_COOKIE)
+                self.ovs_flows[bridge]['in_port'] = (
+                    ovs.get_ovs_patch_ports_info(bridge))
+
+                # 4) Add/Remove flows for each bridge mappings
+                ovs.ensure_mac_tweak_flows(bridge,
+                                           self.ovs_flows[bridge]['mac'],
+                                           self.ovs_flows[bridge]['in_port'],
+                                           constants.OVS_RULE_COOKIE)
+                ovs.remove_extra_ovs_flows(self.ovs_flows, bridge,
+                                           constants.OVS_RULE_COOKIE)
 
         LOG.debug("Syncing current routes.")
         exposed_ips = linux_net.get_exposed_ips(CONF.bgp_nic)

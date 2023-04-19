@@ -61,6 +61,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
     def _init_vars(self):
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
+        self.ovs_flows = {}
 
         self.ovn_routing_tables = {}  # {'br-ex': 200}
         # {'br-ex': [route1, route2]}
@@ -139,8 +140,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
 
         # Apply base configuration for each bridge
-        self.ovn_bridge_mappings = wire_utils.ensure_base_wiring_config(
-            self.nb_idl, bridge_mappings, self.ovn_routing_tables)
+        self.ovn_bridge_mappings, self.ovs_flows = (
+            wire_utils.ensure_base_wiring_config(self.nb_idl, bridge_mappings,
+                                                 self.ovn_routing_tables))
 
         LOG.debug("Syncing current routes.")
         # add missing routes/ips for IPs on provider network
@@ -153,6 +155,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         # remove extra wiring leftovers
         wire_utils.cleanup_wiring(self.ovn_bridge_mappings,
+                                  self.ovs_flows,
                                   self._exposed_ips,
                                   self.ovn_routing_tables,
                                   self.ovn_routing_tables_routes)

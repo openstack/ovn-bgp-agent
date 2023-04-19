@@ -37,6 +37,7 @@ def ensure_base_wiring_config(idl, bridge_mappings, routing_tables):
 
 def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
     ovn_bridge_mappings = {}
+    flows_info = {}
     for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
         network = bridge_mapping.split(":")[0]
         bridge = bridge_mapping.split(":")[1]
@@ -54,20 +55,31 @@ def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
         linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
                                                     bridge_index,
                                                     vlan_tag)
-    return ovn_bridge_mappings
+        if not flows_info.get(bridge):
+            with pyroute2.NDB() as ndb:
+                flows_info[bridge] = {
+                    'mac': ndb.interfaces[bridge]['address'],
+                    'in_port': set([])}
+            flows_info[bridge]['in_port'] = ovs.get_ovs_patch_ports_info(
+                bridge)
+            ovs.ensure_mac_tweak_flows(bridge, flows_info[bridge]['mac'],
+                                       flows_info[bridge]['in_port'],
+                                       constants.OVS_RULE_COOKIE)
+    return ovn_bridge_mappings, flows_info
 
 
-def cleanup_wiring(bridge_mappings, exposed_ips, routing_tables,
+def cleanup_wiring(bridge_mappings, ovs_flows, exposed_ips, routing_tables,
                    routing_tables_routes):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
-        return _cleanup_wiring_underlay(bridge_mappings, exposed_ips,
-                                        routing_tables, routing_tables_routes)
+        return _cleanup_wiring_underlay(bridge_mappings, ovs_flows,
+                                        exposed_ips, routing_tables,
+                                        routing_tables_routes)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         raise NotImplementedError()
 
 
-def _cleanup_wiring_underlay(bridge_mappings, exposed_ips, routing_tables,
-                             routing_tables_routes):
+def _cleanup_wiring_underlay(bridge_mappings, ovs_flows, exposed_ips,
+                             routing_tables, routing_tables_routes):
     current_ips = linux_net.get_exposed_ips(CONF.bgp_nic)
     expected_ips = [ip for ip_dict in exposed_ips.values()
                     for ip in ip_dict.keys()]
@@ -75,23 +87,14 @@ def _cleanup_wiring_underlay(bridge_mappings, exposed_ips, routing_tables,
     ips_to_delete = [ip for ip in current_ips if ip not in expected_ips]
     linux_net.delete_exposed_ips(ips_to_delete, CONF.bgp_nic)
 
-    # get flows and delete the extra ones
-    flows_info = {}
     extra_routes = {}
-    with pyroute2.NDB() as ndb:
-        for bridge in bridge_mappings.values():
-            if flows_info.get(bridge):
-                continue
-
-            flows_info[bridge] = {
-                'mac': ndb.interfaces[bridge]['address'],
-                'in_port': set([])}
-            ovs.get_ovs_flows_info(bridge, flows_info,
+    for bridge in bridge_mappings.values():
+        extra_routes[bridge] = (
+            linux_net.get_extra_routing_table_for_bridge(routing_tables,
+                                                         bridge))
+        # delete extra ovs flows
+        ovs.remove_extra_ovs_flows(ovs_flows, bridge,
                                    constants.OVS_RULE_COOKIE)
-            extra_routes[bridge] = (
-                linux_net.get_extra_routing_table_for_bridge(routing_tables,
-                                                             bridge))
-    ovs.remove_extra_ovs_flows(flows_info, constants.OVS_RULE_COOKIE)
 
     # get rules and delete the old ones
     ovn_ip_rules = linux_net.get_ovn_ip_rules(routing_tables.values())
@@ -105,7 +108,7 @@ def _cleanup_wiring_underlay(bridge_mappings, exposed_ips, routing_tables,
             ovn_ip_rules.pop(ip_dst, None)
     linux_net.delete_ip_rules(ovn_ip_rules)
 
-    # remove all the extra rules not needed
+    # remove all the extra routes not needed
     linux_net.delete_bridge_ip_routes(routing_tables, routing_tables_routes,
                                       extra_routes)
 
