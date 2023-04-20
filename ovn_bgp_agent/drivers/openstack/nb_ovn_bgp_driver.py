@@ -200,8 +200,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         # Connect to OVN
         try:
             if wire_utils.wire_provider_port(
-                    self.ovn_routing_tables_routes, port_ips, bridge_device,
-                    bridge_vlan, self.ovn_routing_tables, proxy_cidrs):
+                    self.ovn_routing_tables_routes, self.ovs_flows, port_ips,
+                    bridge_device, bridge_vlan, self.ovn_routing_tables,
+                    proxy_cidrs):
                 # Expose the IP now that it is connected
                 bgp_utils.announce_ips(port_ips)
                 for ip in port_ips:
