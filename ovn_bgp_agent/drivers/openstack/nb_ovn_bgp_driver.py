@@ -195,15 +195,20 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_provider_port(self, port_ips, logical_switch, bridge_device,
                               bridge_vlan, proxy_cidrs=None):
         # Connect to OVN
-        if wire_utils.wire_provider_port(
-                self.ovn_routing_tables_routes, port_ips, bridge_device,
-                bridge_vlan, self.ovn_routing_tables, proxy_cidrs):
-            # Expose the IP now that it is connected
-            bgp_utils.announce_ips(port_ips)
-            for ip in port_ips:
-                self._exposed_ips.setdefault(logical_switch, {}).update(
-                    {ip: {'bridge_device': bridge_device,
-                          'bridge_vlan': bridge_vlan}})
+        try:
+            if wire_utils.wire_provider_port(
+                    self.ovn_routing_tables_routes, port_ips, bridge_device,
+                    bridge_vlan, self.ovn_routing_tables, proxy_cidrs):
+                # Expose the IP now that it is connected
+                bgp_utils.announce_ips(port_ips)
+                for ip in port_ips:
+                    self._exposed_ips.setdefault(logical_switch, {}).update(
+                        {ip: {'bridge_device': bridge_device,
+                              'bridge_vlan': bridge_vlan}})
+        except Exception as e:
+            LOG.exception("Unexpected exception while wiring provider port: "
+                          "%s", e)
+            return False
 
     def _withdraw_provider_port(self, port_ips, logical_switch, bridge_device,
                                 bridge_vlan, proxy_cidrs=None):
@@ -211,9 +216,13 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         bgp_utils.withdraw_ips(port_ips)
 
         # Disconnect IP from OVN
-        wire_utils.unwire_provider_port(
-            self.ovn_routing_tables_routes, port_ips, bridge_device,
-            bridge_vlan, self.ovn_routing_tables, proxy_cidrs)
+        try:
+            wire_utils.unwire_provider_port(
+                self.ovn_routing_tables_routes, port_ips, bridge_device,
+                bridge_vlan, self.ovn_routing_tables, proxy_cidrs)
+        except Exception as e:
+            LOG.exception("Unexpected exception while unwiring provider port: "
+                          "%s", e)
         for ip in port_ips:
             if self._exposed_ips.get(logical_switch, {}).get(ip):
                 self._exposed_ips[logical_switch].pop(ip)

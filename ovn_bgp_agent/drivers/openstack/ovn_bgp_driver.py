@@ -317,13 +317,18 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 return False
 
         # Connect to OVN
-        if wire_utils.wire_provider_port(
-                self.ovn_routing_tables_routes, port_ips, bridge_device,
-                bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr):
-            # Expose the IP now that it is connected
-            bgp_utils.announce_ips(port_ips)
-            return True
-        return False
+        try:
+            if wire_utils.wire_provider_port(
+                    self.ovn_routing_tables_routes, port_ips, bridge_device,
+                    bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr):
+                # Expose the IP now that it is connected
+                bgp_utils.announce_ips(port_ips)
+                return True
+            return False
+        except Exception as e:
+            LOG.exception("Unexpected exception while wiring provider port: "
+                          "%s", e)
+            return False
 
     def _expose_tenant_port(self, port, ip_version, exposed_ips=None,
                             ovn_ip_rules=None):
@@ -386,9 +391,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 provider_datapath)
             if not bridge_device:
                 return False
-        return wire_utils.unwire_provider_port(
-            self.ovn_routing_tables_routes, port_ips, bridge_device,
-            bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr)
+        try:
+            return wire_utils.unwire_provider_port(
+                self.ovn_routing_tables_routes, port_ips, bridge_device,
+                bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr)
+        except Exception as e:
+            LOG.exception("Unexpected exception while unwiring provider port: "
+                          "%s", e)
+            return False
 
     def _get_bridge_for_datapath(self, datapath):
         network_name, network_tag = self.sb_idl.get_network_name_and_tag(
@@ -959,10 +969,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         cr_lrp_info['subnets_cidr'].append(ip)
         self.ovn_local_lrps.update({lrp: associated_cr_lrp})
 
-        if not wire_utils.wire_lrp_port(
-                self.ovn_routing_tables_routes, ip, bridge_device, bridge_vlan,
-                self.ovn_routing_tables, cr_lrp_ips):
-            LOG.warning("Not able to expose subnet with IP %s", ip)
+        try:
+            if not wire_utils.wire_lrp_port(
+                    self.ovn_routing_tables_routes, ip, bridge_device,
+                    bridge_vlan, self.ovn_routing_tables, cr_lrp_ips):
+                LOG.warning("Not able to expose subnet with IP %s", ip)
+                return
+        except Exception as e:
+            LOG.exception("Unexpected exception while wiring lrp port: %s", e)
             return
         if ovn_ip_rules:
             ovn_ip_rules.pop(ip, None)
@@ -1024,9 +1038,13 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             linux_net.delete_exposed_ips(vms_on_net, CONF.bgp_nic)
 
         # Disconnect the network to OVN
-        wire_utils.unwire_lrp_port(
-            self.ovn_routing_tables_routes, ip, bridge_device, bridge_vlan,
-            self.ovn_routing_tables, cr_lrp_ips)
+        try:
+            wire_utils.unwire_lrp_port(
+                self.ovn_routing_tables_routes, ip, bridge_device, bridge_vlan,
+                self.ovn_routing_tables, cr_lrp_ips)
+        except Exception as e:
+            LOG.exception("Unexpected exception while unwiring lrp port: %s",
+                          e)
 
     @lockutils.synchronized('bgp')
     def expose_subnet(self, ip, row):
