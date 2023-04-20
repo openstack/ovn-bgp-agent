@@ -580,7 +580,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         elif row.type == constants.OVN_PATCH_VIF_PORT_TYPE:
             if (associated_port and self.sb_idl.is_port_on_chassis(
                     associated_port, self.chassis)):
-                if not self.ovn_local_cr_lrps.get(associated_port):
+                if not self.sb_idl.is_provider_network(row.datapath):
                     # Only exposing IPs if the associated network is a
                     # provider network
                     return []
@@ -722,7 +722,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     self.sb_idl.is_port_on_chassis(
                         associated_port, self.chassis) or
                     self.sb_idl.is_port_deleted(associated_port))):
-                if not self.ovn_local_cr_lrps.get(associated_port):
+                if not self.sb_idl.is_provider_network(row.datapath):
                     # Only exposing IPs if the associated network is a
                     # provider network
                     return

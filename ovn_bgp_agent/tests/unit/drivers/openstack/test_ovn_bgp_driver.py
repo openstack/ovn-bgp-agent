@@ -1245,7 +1245,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'add_ips_to_dev')
     def test__expose_ip_fip_association_to_vm(
             self, mock_add_ip_dev, mock_add_rule, mock_add_route):
-        self.sb_idl.is_provider_network.return_value = False
+        self.sb_idl.is_provider_network.return_value = True
         self.sb_idl.is_port_on_chassis.return_value = True
         mock_get_bridge = mock.patch.object(
             self.bgp_driver, '_get_bridge_for_datapath').start()
@@ -1500,7 +1500,7 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ips_from_dev')
     def test_withdraw_ip_fip_association_to_vm(
             self, mock_del_ip_dev, mock_del_rule, mock_del_route):
-        self.sb_idl.is_provider_network.return_value = False
+        self.sb_idl.is_provider_network.return_value = True
         self.sb_idl.is_port_on_chassis.return_value = True
         mock_get_bridge = mock.patch.object(
             self.bgp_driver, '_get_bridge_for_datapath').start()
