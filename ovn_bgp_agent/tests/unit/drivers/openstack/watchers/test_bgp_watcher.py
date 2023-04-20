@@ -835,17 +835,17 @@ class OVNLBVIPPortEvent(test_base.TestCase):
         self.agent.withdraw_ovn_lb.assert_not_called()
 
 
-class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
+class TestOVNLBMemberCreateEvent(test_base.TestCase):
 
     def setUp(self):
-        super(TestOVNLBMemberCreateDeleteEvent, self).setUp()
+        super(TestOVNLBMemberCreateEvent, self).setUp()
         self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
         self.agent = mock.Mock(chassis=self.chassis)
         self.agent.ovn_local_cr_lrps = {
             'cr-lrp1': {'provider_datapath': 'dp1',
                         'subnets_datapath': {'lrp1': 's_dp1'},
                         'ovn_lbs': 'ovn-lb1'}}
-        self.event = bgp_watcher.OVNLBMemberCreateDeleteEvent(self.agent)
+        self.event = bgp_watcher.OVNLBMemberCreateEvent(self.agent)
 
     def test_match_fn(self):
         self.assertTrue(self.event.match_fn(mock.Mock(), mock.Mock(),
@@ -871,7 +871,7 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
         self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
-            '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')
+            '172.24.100.66', row.name, 'cr-lrp1')
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_subnets_datapath(self):
@@ -896,7 +896,7 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
         self.agent.sb_idl.get_port_datapath.return_value = 'r_dp'
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
         self.agent.expose_ovn_lb_on_provider.assert_called_once_with(
-            '172.24.100.66', 'ovn-lb-port-1', 'cr-lrp1')
+            '172.24.100.66', row.name, 'cr-lrp1')
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
     def test_run_no_vip_port(self):
@@ -961,7 +961,27 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
         self.agent.withdraw_ovn_lb_on_provider.assert_not_called()
 
-    def test_run_delete(self):
+
+class TestOVNLBMemberDeleteEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOVNLBMemberDeleteEvent, self).setUp()
+        self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.provider_ovn_lbs = {
+            'ovn-lb1': {'ips': ['fake-ip'], 'gateway_port': 'cr-lrp1'}}
+        self.event = bgp_watcher.OVNLBMemberDeleteEvent(self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(name='ovn-lb1')
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_no_lb(self):
+        row = utils.create_row(name='ovn-lb2')
+        self.agent.ovn_local_cr_lrps = {}
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp1'])
         row = utils.create_row(name='ovn-lb1',
@@ -976,7 +996,7 @@ class TestOVNLBMemberCreateDeleteEvent(test_base.TestCase):
         self.agent.sb_idl.get_ovn_vip_port.return_value = vip_port
         self.event.run(self.event.ROW_DELETE, row, mock.Mock())
         self.agent.withdraw_ovn_lb_on_provider.assert_called_once_with(
-            'ovn-lb-port-1', 'cr-lrp1')
+            row.name, 'cr-lrp1')
         self.agent.expose_ovn_lb_on_provider.assert_not_called()
 
 

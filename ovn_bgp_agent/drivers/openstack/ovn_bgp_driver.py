@@ -54,8 +54,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_lrps = {}
         # {'br-ex': [route1, route2]}
         self.ovn_routing_tables_routes = collections.defaultdict()
-        # {ovn_lb: VIP1, VIP2}
-        self.ovn_lb_vips = collections.defaultdict()
+        # {ovn_lb: {'ips': [VIP1, VIP2], 'gateway_port': cr-lrpX}
+        self.provider_ovn_lbs = collections.defaultdict()
 
         self._sb_idl = None
         self._post_fork_event = threading.Event()
@@ -129,7 +129,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                       "PortBindingChassisDeletedEvent",
                       "FIPSetEvent",
                       "FIPUnsetEvent",
-                      "OVNLBMemberCreateDeleteEvent",
+                      "OVNLBMemberCreateEvent",
+                      "OVNLBMemberDeleteEvent",
                       "ChassisCreateEvent",
                       "ChassisPrivateCreateEvent",
                       "LocalnetCreateDeleteEvent"])
@@ -156,7 +157,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
         self.ovn_routing_tables_routes = collections.defaultdict()
-        self.ovn_lb_vips = collections.defaultdict()
+        self.provider_ovn_lbs = collections.defaultdict()
         self.ovs_flows = {}
 
         LOG.debug("Configuring br-ex default rule and routing tables for "
@@ -233,12 +234,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
             # add missing routes/ips related to ovn-octavia loadbalancers
             # on the provider networks
-            ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
+            provider_ovn_lbs = self.sb_idl.get_provider_ovn_lbs_on_cr_lrp(
                 cr_lrp_info['provider_datapath'],
                 cr_lrp_info['router_datapath'])
-            for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
+            for ovn_lb, ovn_lb_ip in provider_ovn_lbs.items():
                 self._expose_ovn_lb_on_provider(ovn_lb_ip,
-                                                ovn_lb_port,
+                                                ovn_lb,
                                                 cr_lrp_port,
                                                 exposed_ips,
                                                 ovn_ip_rules)
@@ -445,14 +446,14 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         return
 
     @lockutils.synchronized('bgp')
-    def expose_ovn_lb_on_provider(self, ip, vip_port, cr_lrp_port):
-        self._expose_ovn_lb_on_provider(ip, vip_port, cr_lrp_port)
+    def expose_ovn_lb_on_provider(self, ip, lb_name, cr_lrp_port):
+        self._expose_ovn_lb_on_provider(ip, lb_name, cr_lrp_port)
 
     @lockutils.synchronized('bgp')
-    def withdraw_ovn_lb_on_provider(self, vip_port, cr_lrp_port):
-        self._withdraw_ovn_lb_on_provider(vip_port, cr_lrp_port)
+    def withdraw_ovn_lb_on_provider(self, lb_name, cr_lrp_port):
+        self._withdraw_ovn_lb_on_provider(lb_name, cr_lrp_port)
 
-    def _expose_ovn_lb_on_provider(self, ip, ovn_lb_vip_port, cr_lrp,
+    def _expose_ovn_lb_on_provider(self, ip, lb_name, cr_lrp,
                                    exposed_ips=None, ovn_ip_rules=None):
         LOG.debug("Adding BGP route for loadbalancer VIP %s", ip)
         try:
@@ -462,8 +463,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Failure adding BGP route for loadbalancer VIP %s", ip)
             return False
 
-        self.ovn_local_cr_lrps[cr_lrp]['ovn_lb_vips'].append(ovn_lb_vip_port)
-        self.ovn_lb_vips.setdefault(ovn_lb_vip_port, []).append(ip)
+        self.ovn_local_cr_lrps[cr_lrp]['provider_ovn_lbs'].append(lb_name)
+        if self.provider_ovn_lbs.get(lb_name):
+            self.provider_ovn_lbs[lb_name]['ips'].append(ip)
+        else:
+            self.provider_ovn_lbs[lb_name] = {'ips': [ip],
+                                              'gateway_port': cr_lrp}
         if not self._expose_provider_port(
                 [ip], None, bridge_device=bridge_device,
                 bridge_vlan=bridge_vlan):
@@ -481,16 +486,16 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             ovn_ip_rules.pop(ip_dst, None)
         return True
 
-    def _withdraw_ovn_lb_on_provider(self, ovn_lb_vip_port, cr_lrp):
+    def _withdraw_ovn_lb_on_provider(self, lb_name, cr_lrp):
         try:
             bridge_device = self.ovn_local_cr_lrps[cr_lrp]['bridge_device']
             bridge_vlan = self.ovn_local_cr_lrps[cr_lrp]['bridge_vlan']
         except KeyError:
-            LOG.debug("Failure deleting BGP routes for loadbalancer VIP port "
-                      "%s", ovn_lb_vip_port)
+            LOG.debug("Failure deleting BGP routes for loadbalancer VIPs "
+                      "%s", self.provider_ovn_lbs[lb_name].get('ips'))
             return False
 
-        for ip in self.ovn_lb_vips[ovn_lb_vip_port].copy():
+        for ip in self.provider_ovn_lbs[lb_name].get('ips').copy():
             LOG.debug("Deleting BGP route for loadbalancer VIP %s", ip)
             if not self._withdraw_provider_port(
                     [ip], None, bridge_device=bridge_device,
@@ -498,12 +503,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 LOG.debug("Failure deleting BGP route for loadbalancer VIP "
                           "%s", ip)
                 return False
-            if ip in self.ovn_lb_vips[ovn_lb_vip_port]:
-                self.ovn_lb_vips[ovn_lb_vip_port].remove(ip)
+            if ip in self.provider_ovn_lbs[lb_name].get('ips', []):
+                self.provider_ovn_lbs[lb_name]['ips'].remove(ip)
             LOG.debug("Deleted BGP route for loadbalancer VIP %s", ip)
-        if ovn_lb_vip_port in self.ovn_local_cr_lrps[cr_lrp]['ovn_lb_vips']:
-            self.ovn_local_cr_lrps[cr_lrp]['ovn_lb_vips'].remove(
-                ovn_lb_vip_port)
+        if lb_name in self.ovn_local_cr_lrps[cr_lrp]['provider_ovn_lbs']:
+            self.ovn_local_cr_lrps[cr_lrp]['provider_ovn_lbs'].remove(
+                lb_name)
         return True
 
     @lockutils.synchronized('bgp')
@@ -623,7 +628,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 'mac': mac,
                 'subnets_datapath': {},
                 'subnets_cidr': [],
-                'ovn_lb_vips': [],
+                'provider_ovn_lbs': [],
                 'bridge_vlan': bridge_vlan,
                 'bridge_device': bridge_device
             }
@@ -894,11 +899,11 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             'provider_datapath']
         cr_lrp_router_dp = self.ovn_local_cr_lrps[cr_lrp_port][
             'router_datapath']
-        ovn_lb_vips = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(
+        provider_ovn_lbs = self.sb_idl.get_provider_ovn_lbs_on_cr_lrp(
             cr_lrp_provider_dp, cr_lrp_router_dp)
-        for ovn_lb_port, ovn_lb_ip in ovn_lb_vips.items():
+        for ovn_lb, ovn_lb_ip in provider_ovn_lbs.items():
             self._expose_ovn_lb_on_provider(ovn_lb_ip,
-                                            ovn_lb_port,
+                                            ovn_lb,
                                             cr_lrp_port)
         return True
 
@@ -936,12 +941,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
 
         # check if there are loadbalancers associated to the router,
         # and if so delete the needed routes/rules
-        ovn_lb_vips = self.ovn_local_cr_lrps[cr_lrp_port][
-            'ovn_lb_vips'].copy()
-        for ovn_lb_vip in ovn_lb_vips:
-            self._withdraw_ovn_lb_on_provider(ovn_lb_vip, cr_lrp_port)
-            self.ovn_local_cr_lrps[cr_lrp_port]['ovn_lb_vips'].remove(
-                ovn_lb_vip)
+        provider_ovn_lbs = self.ovn_local_cr_lrps[cr_lrp_port][
+            'provider_ovn_lbs'].copy()
+        for provider_ovn_lb in provider_ovn_lbs:
+            self._withdraw_ovn_lb_on_provider(provider_ovn_lb, cr_lrp_port)
         try:
             del self.ovn_local_cr_lrps[cr_lrp_port]
         except KeyError:

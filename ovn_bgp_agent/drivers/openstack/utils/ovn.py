@@ -399,7 +399,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         lb_info = cmd.execute(check_error=True)
         return lb_info[0] if lb_info else []
 
-    def get_ovn_lb_vips_on_cr_lrp(self, provider_dp, router_dp):
+    def get_provider_ovn_lbs_on_cr_lrp(self, provider_dp, router_dp):
         # return {vip_port: vip_ip, vip_port2: vip_ip2, ...}
         # ovn-sbctl find port_binding type=\"\" chassis=[] mac=[] up=false
         cmd = self.db_find_rows('Port_Binding',
@@ -412,6 +412,10 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         for row in cmd.execute(check_error=True):
             # This is depending on the external-id information added by
             # neutron, regarding the neutron:cidrs
+            ip_info = row.external_ids.get(
+                constants.OVN_CIDRS_EXT_ID_KEY)
+            if not ip_info:
+                continue
             port_name = row.external_ids.get(
                 constants.OVN_PORT_NAME_EXT_ID_KEY)
             if (not port_name or
@@ -432,12 +436,8 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             for lrp in router_lrps:
                 router_lrp_dp = self.get_port_datapath(lrp)
                 if router_lrp_dp == router_dp:
-                    ip_info = row.external_ids.get(
-                        constants.OVN_CIDRS_EXT_ID_KEY)
-                    if not ip_info:
-                        continue
                     lb_ip = ip_info.split(" ")[0].split("/")[0]
-                    lbs[row.logical_port] = lb_ip
+                    lbs[lb.name] = lb_ip
                     break
         return lbs
 
