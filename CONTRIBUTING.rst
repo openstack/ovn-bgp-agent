@@ -9,9 +9,9 @@ to set up and use Gerrit:
 
    https://docs.openstack.org/contributors/code-and-documentation/quick-start.html
 
-Bugs should be filed on Storyboard:
+Bugs should be filed on Launchpad:
 
-   https://storyboard.openstack.org/#!/project/ovn-bgp-agent
+   https://bugs.launchpad.net/ovn-bgp-agent
 
 For more specific information about contributing to this repository, see the
 replace with the service it implements contributor guide:
