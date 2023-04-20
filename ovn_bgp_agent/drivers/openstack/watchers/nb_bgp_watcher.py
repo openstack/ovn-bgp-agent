@@ -141,7 +141,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             return
 
         with _SYNC_STATE_LOCK.read_lock():
-            self.agent.expose_fip(external_ip, ls_name)
+            self.agent.expose_fip(external_ip, ls_name, row)
 
 
 class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
@@ -204,7 +204,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
         if not fip:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            self.agent.withdraw_fip(fip)
+            self.agent.withdraw_fip(fip, row)
 
 
 class LocalnetCreateDeleteEvent(base_watcher.LSPChassisEvent):

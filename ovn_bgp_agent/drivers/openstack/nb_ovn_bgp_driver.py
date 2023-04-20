@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import collections
-import pyroute2
 import threading
 
 from oslo_concurrency import lockutils
@@ -69,10 +68,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
-        # {ovn_lb: VIP1, VIP2}
-        self.ovn_lb_vips = collections.defaultdict()
-        # {'ls_name': {'bridge_device': X, 'bridge_vlan': Y}}
-        self.ovn_fips = {}  # {'fip': {'bridge_device': X, 'bridge_vlan': Y}}
+
+        # {'ls_name': ['ip': {'bridge_device': X, 'bridge_vlan': Y}]}
+        self._exposed_ips = {}
+        self._ovs_flows = collections.defaultdict()
         self.ovn_provider_ls = {}
         # dict instead of list to speed up look ups
         self.ovn_tenant_ls = {}  # {'ls_name': True}
@@ -135,89 +134,36 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                                         CONF.expose_ipv6_gua_tenant_networks)
         self._init_vars()
 
-        LOG.debug("Configuring br-ex default rule and routing tables for "
-                  "each provider network")
-        flows_info = {}
-        # 1) Get bridge mappings: xxxx:br-ex,yyyy:br-ex2
+        LOG.debug("Configuring default wiring for each provider network")
+        # Get bridge mappings: xxxx:br-ex,yyyy:br-ex2
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
-        # 2) Get macs for bridge mappings
-        extra_routes = {}
-        with pyroute2.NDB() as ndb:
-            for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
-                network = bridge_mapping.split(":")[0]
-                bridge = bridge_mapping.split(":")[1]
-                self.ovn_bridge_mappings[network] = bridge
 
-                if not extra_routes.get(bridge):
-                    extra_routes[bridge] = (
-                        linux_net.ensure_routing_table_for_bridge(
-                            self.ovn_routing_tables, bridge,
-                            CONF.bgp_vrf_table_id))
-                vlan_tag = self.nb_idl.get_network_vlan_tag_by_network_name(
-                    network)
-
-                if vlan_tag:
-                    vlan_tag = vlan_tag[0]
-                    linux_net.ensure_vlan_device_for_network(bridge,
-                                                             vlan_tag)
-
-                linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
-                                                            bridge_index,
-                                                            vlan_tag)
-
-                if flows_info.get(bridge):
-                    continue
-                flows_info[bridge] = {
-                    'mac': ndb.interfaces[bridge]['address'],
-                    'in_port': set([])}
-                # 3) Get in_port for bridge mappings (br-ex, br-ex2)
-                ovs.get_ovs_flows_info(bridge, flows_info,
-                                       constants.OVS_RULE_COOKIE)
-        # 4) Add/Remove flows for each bridge mappings
-        ovs.remove_extra_ovs_flows(flows_info, constants.OVS_RULE_COOKIE)
+        # Apply base configuration for each bridge
+        self.ovn_bridge_mappings = wire_utils.ensure_base_wiring_config(
+            self.nb_idl, bridge_mappings, self.ovn_routing_tables)
 
         LOG.debug("Syncing current routes.")
-        exposed_ips = linux_net.get_exposed_ips(CONF.bgp_nic)
-        # get the rules pointing to ovn bridges
-        ovn_ip_rules = linux_net.get_ovn_ip_rules(
-            self.ovn_routing_tables.values())
-
         # add missing routes/ips for IPs on provider network
         ports = self.nb_idl.get_active_ports_on_chassis(self.chassis)
         for port in ports:
             if port.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                                  constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
                 continue
-            self._ensure_port_exposed(port, exposed_ips, ovn_ip_rules)
+            self._ensure_port_exposed(port)
 
-        # remove extra routes/ips
-        # remove all the leftovers on the list of current ips on dev OVN
-        linux_net.delete_exposed_ips(exposed_ips, CONF.bgp_nic)
-        # remove all the leftovers on the list of current ip rules for ovn
-        # bridges
-        linux_net.delete_ip_rules(ovn_ip_rules)
+        # remove extra wiring leftovers
+        wire_utils.cleanup_wiring(self.ovn_bridge_mappings,
+                                  self._exposed_ips,
+                                  self.ovn_routing_tables,
+                                  self.ovn_routing_tables_routes)
 
-        # remove all the extra rules not needed
-        linux_net.delete_bridge_ip_routes(self.ovn_routing_tables,
-                                          self.ovn_routing_tables_routes,
-                                          extra_routes)
-
-    def _ensure_port_exposed(self, port, exposed_ips, ovn_ip_rules):
+    def _ensure_port_exposed(self, port):
         port_fip = port.external_ids.get(constants.OVN_FIP_EXT_ID_KEY)
         if port_fip:
             external_ip, ls_name = self.get_port_external_ip_and_ls(port.name)
             if not external_ip or not ls_name:
                 return
-            if self._expose_fip(external_ip, ls_name):
-                ip_version = linux_net.get_ip_version(external_ip)
-                if ip_version == constants.IP_VERSION_6:
-                    ip_dst = "{}/128".format(external_ip)
-                else:
-                    ip_dst = "{}/32".format(external_ip)
-                if external_ip in exposed_ips:
-                    exposed_ips.remove(external_ip)
-                ovn_ip_rules.pop(ip_dst, None)
-            return
+            return self._expose_fip(external_ip, ls_name, port)
 
         logical_switch = port.external_ids.get(
             constants.OVN_LS_NAME_EXT_ID_KEY)
@@ -242,38 +188,35 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 'bridge_device': bridge_device,
                 'bridge_vlan': bridge_vlan}
         ips = port.addresses[0].strip().split(' ')[1:]
-        ips_adv = self._expose_ip(ips, bridge_device, bridge_vlan, port.type,
-                                  port.external_ids.get(
-                                      constants.OVN_CIDRS_EXT_ID_KEY))
-        for ip in ips_adv:
-            ip_version = linux_net.get_ip_version(ip)
-            if ip_version == constants.IP_VERSION_6:
-                ip_dst = "{}/128".format(ip)
-            else:
-                ip_dst = "{}/32".format(ip)
-            if ip in exposed_ips:
-                exposed_ips.remove(ip)
-            ovn_ip_rules.pop(ip_dst, None)
+        self._expose_ip(ips, logical_switch, bridge_device, bridge_vlan,
+                        port.type, port.external_ids.get(
+                            constants.OVN_CIDRS_EXT_ID_KEY))
 
-    def _expose_provider_port(self, port_ips, bridge_device, bridge_vlan,
-                              proxy_cidrs=None):
+    def _expose_provider_port(self, port_ips, logical_switch, bridge_device,
+                              bridge_vlan, proxy_cidrs=None):
         # Connect to OVN
         if wire_utils.wire_provider_port(
                 self.ovn_routing_tables_routes, port_ips, bridge_device,
-                bridge_vlan, self.ovn_routing_tables[bridge_device],
-                proxy_cidrs):
+                bridge_vlan, self.ovn_routing_tables, proxy_cidrs):
             # Expose the IP now that it is connected
             bgp_utils.announce_ips(port_ips)
+            for ip in port_ips:
+                self._exposed_ips.setdefault(logical_switch, {}).update(
+                    {ip: {'bridge_device': bridge_device,
+                          'bridge_vlan': bridge_vlan}})
 
-    def _withdraw_provider_port(self, port_ips, bridge_device, bridge_vlan,
-                                proxy_cidrs=None):
+    def _withdraw_provider_port(self, port_ips, logical_switch, bridge_device,
+                                bridge_vlan, proxy_cidrs=None):
         # Withdraw IP before disconnecting it
         bgp_utils.withdraw_ips(port_ips)
 
         # Disconnect IP from OVN
         wire_utils.unwire_provider_port(
             self.ovn_routing_tables_routes, port_ips, bridge_device,
-            bridge_vlan, self.ovn_routing_tables[bridge_device], proxy_cidrs)
+            bridge_vlan, self.ovn_routing_tables, proxy_cidrs)
+        for ip in port_ips:
+            if self._exposed_ips.get(logical_switch, {}).get(ip):
+                self._exposed_ips[logical_switch].pop(ip)
 
     def _get_bridge_for_localnet_port(self, localnet):
         bridge_device = None
@@ -309,20 +252,23 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_provider_ls[logical_switch] = {
             'bridge_device': bridge_device,
             'bridge_vlan': bridge_vlan}
-        return self._expose_ip(ips, bridge_device, bridge_vlan,
+        return self._expose_ip(ips, logical_switch, bridge_device, bridge_vlan,
                                port_type=row.type, cidr=row.external_ids.get(
                                    constants.OVN_CIDRS_EXT_ID_KEY))
 
-    def _expose_ip(self, ips, bridge_device, bridge_vlan, port_type, cidr):
+    def _expose_ip(self, ips, logical_switch, bridge_device, bridge_vlan,
+                   port_type, cidr):
         LOG.debug("Adding BGP route for logical port with ip %s", ips)
 
         if cidr and port_type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
             # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
             # network, we need a NDP Proxy so that the traffic from the
             # amphora can properly be redirected back
-            self._expose_provider_port(ips, bridge_device, bridge_vlan, [cidr])
+            self._expose_provider_port(ips, logical_switch, bridge_device,
+                                       bridge_vlan, [cidr])
         else:
-            self._expose_provider_port(ips, bridge_device, bridge_vlan)
+            self._expose_provider_port(ips, logical_switch, bridge_device,
+                                       bridge_vlan)
 
         LOG.debug("Added BGP route for logical port with ip %s", ips)
         return ips
@@ -357,10 +303,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     proxy_cidr = n_cidr
         LOG.debug("Deleting BGP route for logical port with ip %s", ips)
         if proxy_cidr:
-            self._withdraw_provider_port(ips, bridge_device, bridge_vlan,
-                                         [proxy_cidr])
+            self._withdraw_provider_port(ips, logical_switch, bridge_device,
+                                         bridge_vlan, [proxy_cidr])
         else:
-            self._withdraw_provider_port(ips, bridge_device, bridge_vlan)
+            self._withdraw_provider_port(ips, logical_switch, bridge_device,
+                                         bridge_vlan)
         LOG.debug("Deleted BGP route for logical port with ip %s", ips)
 
     def _get_ls_localnet_info(self, logical_switch):
@@ -383,7 +330,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return nat_entry.external_ip, "neutron-{}".format(net_id)
 
     @lockutils.synchronized('nbbgp')
-    def expose_fip(self, ip, logical_switch):
+    def expose_fip(self, ip, logical_switch, row):
         '''Advertice BGP route by adding IP to device.
 
         This methods ensures BGP advertises the FIP associated to a VM in a
@@ -395,22 +342,26 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         VRF), and adds the IP of:
         - VM FIP
         '''
-        return self._expose_fip(ip, logical_switch)
+        return self._expose_fip(ip, logical_switch, row)
 
-    def _expose_fip(self, ip, logical_switch):
+    def _expose_fip(self, ip, logical_switch, row):
         bridge_device, bridge_vlan = self._get_ls_localnet_info(logical_switch)
         if not bridge_device:
             # This means it is not a provider network
             return False
+        tenant_logical_switch = row.external_ids.get(
+            constants.OVN_LS_NAME_EXT_ID_KEY)
+        if not tenant_logical_switch:
+            return
+        self.ovn_tenant_ls[tenant_logical_switch] = True
         LOG.debug("Adding BGP route for FIP with ip %s", ip)
-        self._expose_provider_port([ip], bridge_device, bridge_vlan)
-        self.ovn_fips[ip] = {'bridge_device': bridge_device,
-                             'bridge_vlan': bridge_vlan}
+        self._expose_provider_port([ip], tenant_logical_switch, bridge_device,
+                                   bridge_vlan)
         LOG.debug("Added BGP route for FIP with ip %s", ip)
         return True
 
     @lockutils.synchronized('nbbgp')
-    def withdraw_fip(self, ip):
+    def withdraw_fip(self, ip, row):
         '''Withdraw BGP route by removing IP from device.
 
         This methods ensures BGP withdraw an advertised the FIP associated to
@@ -422,7 +373,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         VRF), and removes the IP of:
         - VM FIP
         '''
-        fip_info = self.ovn_fips.get(ip)
+        tenant_logical_switch = row.external_ids.get(
+            constants.OVN_LS_NAME_EXT_ID_KEY)
+        if not tenant_logical_switch:
+            return
+        fip_info = self._exposed_ips.get(tenant_logical_switch, {}).get(ip)
         if not fip_info:
             # No information to withdraw the FIP
             return
@@ -430,7 +385,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         bridge_vlan = fip_info['bridge_vlan']
 
         LOG.debug("Deleting BGP route for FIP with ip %s", ip)
-        self._withdraw_provider_port([ip], bridge_device, bridge_vlan)
+        self._withdraw_provider_port([ip], tenant_logical_switch,
+                                     bridge_device, bridge_vlan)
         LOG.debug("Deleted BGP route for FIP with ip %s", ip)
 
     @lockutils.synchronized('nbbgp')

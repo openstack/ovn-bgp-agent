@@ -247,6 +247,68 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
     return extra_routes
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
+    extra_routes = []
+
+    with pyroute2.NDB() as ndb:
+        table_route_dsts = set(
+            [
+                (r.dst, r.dst_len)
+                for r in ndb.routes.summary().filter(
+                    table=ovn_routing_tables[bridge]
+                )
+            ]
+        )
+
+        if not table_route_dsts:
+            return extra_routes
+
+        for (dst, dst_len) in table_route_dsts:
+            if not dst:  # default route
+                try:
+                    route = ndb.routes[
+                        {'table': ovn_routing_tables[bridge],
+                         'dst': '',
+                         'family': AF_INET}]
+                    if (bridge != ndb.interfaces[{'index': route['oif']}][
+                            'ifname']):
+                        extra_routes.append(route)
+                except KeyError:
+                    pass  # no ipv4 default rule
+                try:
+                    route_6 = ndb.routes[
+                        {'table': ovn_routing_tables[bridge],
+                         'dst': '',
+                         'family': AF_INET6}]
+                    if (bridge != ndb.interfaces[{'index': route_6['oif']}][
+                            'ifname']):
+                        extra_routes.append(route_6)
+                except KeyError:
+                    pass  # no ipv6 default rule
+            else:
+                if get_ip_version(dst) == constants.IP_VERSION_6:
+                    extra_routes.append(
+                        ndb.routes[{'table': ovn_routing_tables[bridge],
+                                    'dst': dst,
+                                    'dst_len': dst_len,
+                                    'family': AF_INET6}]
+                    )
+                else:
+                    extra_routes.append(
+                        ndb.routes[{'table': ovn_routing_tables[bridge],
+                                    'dst': dst,
+                                    'dst_len': dst_len,
+                                    'family': AF_INET}]
+                    )
+    return extra_routes
+
+
 def ensure_vlan_device_for_network(bridge, vlan_tag):
     ovn_bgp_agent.privileged.linux_net.ensure_vlan_device_for_network(bridge,
                                                                       vlan_tag)
