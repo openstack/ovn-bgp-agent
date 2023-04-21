@@ -23,7 +23,7 @@ LOG = logging.getLogger(__name__)
 agent_opts = [
     cfg.IntOpt('reconcile_interval',
                help='Time (seconds) between re-sync actions.',
-               default=120),
+               default=300),
     cfg.IntOpt('frr_reconcile_interval',
                help='Time (seconds) between re-sync actions to ensure frr '
                     'configuration is correct, in case frr is restart.',
