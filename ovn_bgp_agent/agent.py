@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import sys
 
 from oslo_config import cfg
 from oslo_log import log as logging
-from oslo_service import periodic_task
+from oslo_service import loopingcall
 from oslo_service import service
 
 from ovn_bgp_agent import config
@@ -28,19 +27,11 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
-class BGPAgentMeta(type(service.Service),
-                   type(periodic_task.PeriodicTasks)):
-    pass
-
-
-class BGPAgent(service.Service, periodic_task.PeriodicTasks,
-               metaclass=BGPAgentMeta):
+class BGPAgent(service.Service):
     """BGP OVN Agent."""
 
     def __init__(self):
         super(BGPAgent, self).__init__()
-        periodic_task.PeriodicTasks.__init__(self, CONF)
-
         self.agent_driver = driver_api.AgentDriverBase.get_instance(
             CONF.driver)
 
@@ -50,12 +41,12 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
         self.agent_driver.start()
 
         LOG.info("Service '%s' started", self.__class__.__name__)
-        f = functools.partial(self.run_periodic_tasks, None)
-        self.tg.add_timer(1, f)
+        sync_routes = loopingcall.FixedIntervalLoopingCall(self.sync)
+        sync_routes.start(interval=CONF.reconcile_interval)
+        sync_frr = loopingcall.FixedIntervalLoopingCall(self.frr_sync)
+        sync_frr.start(interval=CONF.frr_reconcile_interval)
 
-    @periodic_task.periodic_task(spacing=CONF.reconcile_interval,
-                                 run_immediately=True)
-    def sync(self, context):
+    def sync(self):
         LOG.info("Running reconciliation loop to ensure routes/rules are "
                  "in place.")
         try:
@@ -63,9 +54,7 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
         except Exception as e:
             LOG.exception("Unexpected exception while running the sync: %s", e)
 
-    @periodic_task.periodic_task(spacing=CONF.frr_reconcile_interval,
-                                 run_immediately=False)
-    def frr_sync(self, context):
+    def frr_sync(self):
         LOG.info("Running reconciliation loop to ensure frr configuration is "
                  "in place.")
         try:
@@ -84,6 +73,7 @@ class BGPAgent(service.Service, periodic_task.PeriodicTasks,
 
 
 def start():
+    config.register_opts()
     config.init(sys.argv[1:])
     config.setup_logging()
     config.setup_privsep()

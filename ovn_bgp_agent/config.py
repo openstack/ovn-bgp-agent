@@ -174,15 +174,13 @@ https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
 ]
 
 CONF = cfg.CONF
-CONF.register_opts(agent_opts)
-CONF.register_opts(root_helper_opts, "AGENT")
 
 logging.register_options(CONF)
 
 
 def register_opts():
-    cfg.CONF.register_opts(agent_opts)
-    cfg.CONF.register_opts(root_helper_opts, "AGENT")
+    CONF.register_opts(agent_opts)
+    CONF.register_opts(root_helper_opts, "AGENT")
 
 
 def init(args, **kwargs):
