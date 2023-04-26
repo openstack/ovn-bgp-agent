@@ -581,14 +581,15 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         self.sb_idl.db_find_rows.assert_called_once_with(
             'Load_Balancer', ('name', '=', lb))
 
-    def test_get_ovn_lb_vips_on_cr_lrp(self):
+    def test_get_provider_ovn_lbs_on_cr_lrp(self):
         lb1_name = 'ovn-lb-vip-fake-lb1'
         lb2_name = 'ovn-lb-vip-fake-lb2'
         provider_dp = 'fake-provider-dp'
         router_dp = ['fake-router-dp']
         router_lrp = 'fake-router-lrp'
         dp1 = fakes.create_object({'datapaths': ['fake-subnet-dp']})
-        lb1 = fakes.create_object({'datapath_group': [dp1]})
+        lb1 = fakes.create_object({'datapath_group': [dp1],
+                                   'name': 'fake-lb1'})
         port0 = fakes.create_object({
             'logical_port': 'fake-port-0',
             'external_ids': {constants.OVN_CIDRS_EXT_ID_KEY: '10.0.0.15/24',
@@ -615,8 +616,9 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
                                              'get_port_datapath').start()
         mock_get_port_dp.return_value = router_dp
 
-        ret = self.sb_idl.get_ovn_lb_vips_on_cr_lrp(provider_dp, router_dp)
-        expected_return = {'fake-port-0': '10.0.0.15'}
+        ret = self.sb_idl.get_provider_ovn_lbs_on_cr_lrp(provider_dp,
+                                                         router_dp)
+        expected_return = {'fake-lb1': '10.0.0.15'}
         self.assertEqual(expected_return, ret)
 
     def test_get_ovn_vip_port(self):

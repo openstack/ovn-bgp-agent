@@ -355,10 +355,10 @@ class OVNLBVIPPortEvent(base_watcher.PortBindingChassisEvent):
                 self.agent.expose_ovn_lb(ovn_lb_ip, row)
 
 
-class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
+class OVNLBMemberCreateEvent(base_watcher.OVNLBMemberEvent):
     def __init__(self, bgp_agent):
-        events = (self.ROW_CREATE, self.ROW_DELETE,)
-        super(OVNLBMemberCreateDeleteEvent, self).__init__(
+        events = (self.ROW_CREATE,)
+        super(OVNLBMemberCreateEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
@@ -384,14 +384,16 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
                     row_dp = dp_datapaths
 
         if not row_dp:
-            # No need to continue. If it is a create action, there is no need
-            # to expose it as there is no datapaths (aka members). And if it
-            # is a delete action there is not enough information to get the
-            # associated cr-lrp and it will need to be corrected by the sync
+            # No need to continue. There is no need to expose it as there is
+            # no datapaths (aka members).
             return
         vip_port = self.agent.sb_idl.get_ovn_vip_port(row.name)
         if not vip_port:
             return
+        vip_ip = vip_port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+        if not vip_ip:
+            return
+        vip_ip = vip_ip.strip().split(" ")[0].split("/")[0]
         associated_cr_lrp_port = None
 
         router_dps = []
@@ -422,18 +424,30 @@ class OVNLBMemberCreateDeleteEvent(base_watcher.OVNLBMemberEvent):
             return
 
         with _SYNC_STATE_LOCK.read_lock():
-            if event == self.ROW_DELETE:
-                # loadbalancer deleted. Withdraw the VIP through the cr-lrp
-                return self.agent.withdraw_ovn_lb_on_provider(
-                    vip_port.logical_port, associated_cr_lrp_port)
-            if event == self.ROW_CREATE:
-                vip_ip = vip_port.external_ids.get(
-                    constants.OVN_CIDRS_EXT_ID_KEY)
-                if not vip_ip:
-                    return
-                vip_ip = vip_ip.strip().split(" ")[0].split("/")[0]
-                return self.agent.expose_ovn_lb_on_provider(
-                    vip_ip, vip_port.logical_port, associated_cr_lrp_port)
+            return self.agent.expose_ovn_lb_on_provider(
+                vip_ip, row.name, associated_cr_lrp_port)
+
+
+class OVNLBMemberDeleteEvent(base_watcher.OVNLBMemberEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_DELETE,)
+        super(OVNLBMemberDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # Only process event if the local node has the lb exported
+        return bool(self.agent.provider_ovn_lbs.get(row.name))
+
+    def run(self, event, row, old):
+        associated_cr_lrp_port = self.agent.provider_ovn_lbs[row.name].get(
+            'gateway_port')
+        if not associated_cr_lrp_port:
+            # Something is wrong, not enough information to proceed
+            return
+        with _SYNC_STATE_LOCK.read_lock():
+            # loadbalancer deleted. Withdraw the VIP through the cr-lrp
+            return self.agent.withdraw_ovn_lb_on_provider(
+                row.name, associated_cr_lrp_port)
 
 
 class LocalnetCreateDeleteEvent(base_watcher.PortBindingChassisEvent):
