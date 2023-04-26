@@ -110,6 +110,13 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         return events
 
     @lockutils.synchronized('evpn')
+    def frr_sync(self):
+        # Note(ltomasbo): There is no need for resync on this as there is
+        # no base configuration to be made, but one added when subnets are
+        # exposed, so the sync action takes care of it
+        pass
+
+    @lockutils.synchronized('evpn')
     def sync(self):
         self.ovn_local_cr_lrps = {}
         self.ovn_local_lrps = {}
