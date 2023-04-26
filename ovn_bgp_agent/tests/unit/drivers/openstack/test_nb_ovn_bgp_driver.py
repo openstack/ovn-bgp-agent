@@ -267,7 +267,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             port_ips, 'teset-ls', bridge_device, bridge_vlan, proxy_cidrs)
 
         mock_wire_provider_port.assert_called_once_with(
-            self.ovn_routing_tables_routes, port_ips, bridge_device,
+            self.ovn_routing_tables_routes, {}, port_ips, bridge_device,
             bridge_vlan, self.ovn_routing_tables, proxy_cidrs)
         mock_announce_ips.assert_called_once_with(port_ips)
 
@@ -285,7 +285,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             port_ips, 'test-ls', bridge_device, bridge_vlan, proxy_cidrs)
 
         mock_wire_provider_port.assert_called_once_with(
-            self.ovn_routing_tables_routes, port_ips, bridge_device,
+            self.ovn_routing_tables_routes, {}, port_ips, bridge_device,
             bridge_vlan, self.ovn_routing_tables, proxy_cidrs)
         mock_announce_ips.assert_not_called()
 

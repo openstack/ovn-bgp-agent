@@ -113,13 +113,14 @@ def _cleanup_wiring_underlay(bridge_mappings, ovs_flows, exposed_ips,
                                       extra_routes)
 
 
-def wire_provider_port(routing_tables_routes, port_ips, bridge_device,
-                       bridge_vlan, routing_table, proxy_cidrs, lladdr=None):
+def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
+                       bridge_device, bridge_vlan, routing_table, proxy_cidrs,
+                       lladdr=None):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
-        return _wire_provider_port_underlay(routing_tables_routes, port_ips,
-                                            bridge_device, bridge_vlan,
-                                            routing_table, proxy_cidrs,
-                                            lladdr=lladdr)
+        return _wire_provider_port_underlay(routing_tables_routes, ovs_flows,
+                                            port_ips, bridge_device,
+                                            bridge_vlan, routing_table,
+                                            proxy_cidrs, lladdr=lladdr)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # No need to wire anything
         return True
@@ -137,11 +138,23 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
         return True
 
 
-def _wire_provider_port_underlay(routing_tables_routes, port_ips,
+def _ensure_updated_mac_tweak_flows(bridge_device, ovs_flows):
+    current_in_ports = ovs.get_ovs_patch_ports_info(bridge_device)
+    if current_in_ports != ovs_flows[bridge_device]['in_port']:
+        ovs_flows[bridge_device]['in_port'] = current_in_ports
+        ovs.ensure_mac_tweak_flows(bridge_device,
+                                   ovs_flows[bridge_device]['mac'],
+                                   current_in_ports, constants.OVS_RULE_COOKIE)
+
+
+def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
                                  bridge_device, bridge_vlan, routing_table,
                                  proxy_cidrs, lladdr=None):
     if not bridge_device:
         return False
+    # NOTE(ltomasbo): This is needed as the patch ports are not created
+    # until the first VM/FIP in that provider network is created in a node
+    _ensure_updated_mac_tweak_flows(bridge_device, ovs_flows)
     for ip in port_ips:
         try:
             if lladdr:
