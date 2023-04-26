@@ -354,7 +354,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if wire_utils.wire_provider_port(
                     self.ovn_routing_tables_routes, self.ovs_flows, port_ips,
                     bridge_device, bridge_vlan, localnet,
-                    self.ovn_routing_tables, proxy_cidrs, lladdr):
+                    self.ovn_routing_tables, proxy_cidrs, lladdr=lladdr):
                 # Expose the IP now that it is connected
                 bgp_utils.announce_ips(port_ips)
                 return True
@@ -428,7 +428,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         try:
             return wire_utils.unwire_provider_port(
                 self.ovn_routing_tables_routes, port_ips, bridge_device,
-                bridge_vlan, self.ovn_routing_tables, proxy_cidrs, lladdr)
+                bridge_vlan, self.ovn_routing_tables, proxy_cidrs,
+                lladdr=lladdr)
         except Exception as e:
             LOG.exception("Unexpected exception while unwiring provider port: "
                           "%s", e)

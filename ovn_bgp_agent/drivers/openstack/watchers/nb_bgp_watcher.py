@@ -182,12 +182,13 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
-        external_ip, ls_name = self.agent.get_port_external_ip_and_ls(row.name)
+        external_ip, external_mac, ls_name = (
+            self.agent.get_port_external_ip_and_ls(row.name))
         if not external_ip or not ls_name:
             return
 
         with _SYNC_STATE_LOCK.read_lock():
-            self.agent.expose_fip(external_ip, ls_name, row)
+            self.agent.expose_fip(external_ip, external_mac, ls_name, row)
 
 
 class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):

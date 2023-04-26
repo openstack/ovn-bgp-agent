@@ -80,6 +80,22 @@ class GetInterfaceTestCase(base_functional.BaseFunctionalTestCase):
         self.assertRaises(agent_exc.NetworkInterfaceNotFound,
                           linux_net.get_interface_address, 'no_interface_name')
 
+    def test_get_nic_info(self):
+        dev_name = uuidutils.generate_uuid()[:15]
+        ip = '172.24.10.100/32'
+        self.addCleanup(self._delete_interfaces, [dev_name])
+        mac_address = net_utils.get_random_mac(
+            'fa:16:3e:00:00:00'.split(':'))
+        priv_linux_net.create_interface(dev_name, 'dummy',
+                                        address=mac_address)
+        priv_linux_net.add_ip_address(ip, dev_name)
+        ret = linux_net.get_nic_info(dev_name)
+        self.assertEqual((ip, mac_address), ret)
+
+    def test_get_nic_info_no_interface(self):
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
+                          linux_net.get_nic_info, 'no_interface_name')
+
     def test_get_exposed_ips(self):
         ips = ['240.0.0.1', 'fd00::1']
         dev_name = uuidutils.generate_uuid()[:15]
