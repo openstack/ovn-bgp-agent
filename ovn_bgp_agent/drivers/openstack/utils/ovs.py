@@ -51,49 +51,64 @@ def get_device_port_at_ovs(device):
         'ovs-vsctl', ['get', 'Interface', device, 'ofport'])[0].rstrip()
 
 
-def get_ovs_flows_info(bridge, flows_info, cookie):
+def get_ovs_patch_ports_info(bridge):
+    in_ports = []
     ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
-    if not ovs_ports:
-        flow = ("cookie={}/-1").format(cookie)
-        ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-            'ovs-ofctl', ['del-flows', bridge, flow])
-        return
     for ovs_port in ovs_ports.split("\n"):
         if ovs_port.startswith('patch-provnet-'):
             ovs_ofport = get_device_port_at_ovs(ovs_port)
-            flows_info[bridge]['in_port'].add(ovs_ofport)
+            in_ports.append(ovs_ofport)
+    return in_ports
 
 
-def remove_extra_ovs_flows(flows_info, cookie):
-    for bridge, info in flows_info.items():
-        for in_port in info.get('in_port'):
-            flow = ("cookie={},priority=900,ip,in_port={},"
-                    "actions=mod_dl_dst:{},NORMAL".format(
-                        cookie, in_port, info['mac']))
-            flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
-                       "actions=mod_dl_dst:{},NORMAL".format(
-                           cookie, in_port, info['mac']))
+def ensure_mac_tweak_flows(bridge, mac, ports, cookie):
+    cookie_id = "cookie={}/-1".format(cookie)
+    current_flows = get_bridge_flows(bridge, cookie_id)
+    flows_info = [flow.split("priority")[1].replace(" ", ",")
+                  for flow in current_flows]
+
+    for in_port in ports:
+        exist_flow = False
+        exist_flow_v6 = False
+        flow = ("cookie={},priority=900,ip,in_port={},"
+                "actions=mod_dl_dst:{},NORMAL".format(
+                    cookie, in_port, mac))
+        flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
+                   "actions=mod_dl_dst:{},NORMAL".format(
+                       cookie, in_port, mac))
+
+        if flow.split("priority")[1] in flows_info:
+            exist_flow = True
+        if flow_v6.split("priority")[1] in flows_info:
+            exist_flow_v6 = True
+
+        if not exist_flow:
             ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
                 'ovs-ofctl', ['add-flow', bridge, flow])
+        if not exist_flow_v6:
             ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
                 'ovs-ofctl', ['add-flow', bridge, flow_v6])
 
-            cookie_id = "cookie={}/-1".format(cookie)
-            current_flows = get_bridge_flows(bridge, cookie_id)
-            for flow in current_flows:
-                agent_flow = False
-                for port in info.get('in_port'):
-                    in_port = 'in_port={}'.format(port)
-                    if in_port in flow:
-                        agent_flow = True
-                        break
-                if agent_flow:
-                    continue
-                in_port = flow.split("in_port=")[1].split(" ")[0]
-                del_flow = ('{},in_port={}').format(cookie_id, in_port)
-                ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-                    'ovs-ofctl', ['del-flows', bridge, del_flow])
+
+def remove_extra_ovs_flows(ovs_flows, bridge, cookie):
+    expected_flows = []
+    for port in ovs_flows[bridge].get('in_port'):
+        flow = ("=900,ip,in_port={} actions=mod_dl_dst:{},NORMAL".format(
+            port, ovs_flows[bridge]['mac']))
+        expected_flows.append(flow)
+        flow_v6 = ("=900,ipv6,in_port={} actions=mod_dl_dst:{},NORMAL".format(
+            port, ovs_flows[bridge]['mac']))
+        expected_flows.append(flow_v6)
+
+    cookie_id = "cookie={}/-1".format(cookie)
+    current_flows = get_bridge_flows(bridge, cookie_id)
+    for flow in current_flows:
+        if flow.split("priority")[1] not in expected_flows:
+            del_flow = ('{},{}').format(
+                cookie_id, flow.split("priority=900,")[1].split(" actions")[0])
+            ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+                'ovs-ofctl', ['del-flows', bridge, del_flow])
 
 
 def ensure_evpn_ovs_flow(bridge, cookie, mac, output_port, port_dst, net,

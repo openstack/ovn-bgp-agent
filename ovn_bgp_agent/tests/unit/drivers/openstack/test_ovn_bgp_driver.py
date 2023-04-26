@@ -109,7 +109,8 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'delete_ip_rules')
     @mock.patch.object(linux_net, 'delete_exposed_ips')
     @mock.patch.object(ovs, 'remove_extra_ovs_flows')
-    @mock.patch.object(ovs, 'get_ovs_flows_info')
+    @mock.patch.object(ovs, 'ensure_mac_tweak_flows')
+    @mock.patch.object(ovs, 'get_ovs_patch_ports_info')
     @mock.patch.object(linux_net, 'get_ovn_ip_rules')
     @mock.patch.object(linux_net, 'get_exposed_ips')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
@@ -118,8 +119,8 @@ class TestOVNBGPDriver(test_base.TestCase):
     def test_sync(
             self, mock_ensure_arp, mock_routing_bridge,
             mock_ensure_vlan_network, mock_exposed_ips, mock_get_ip_rules,
-            mock_flows_info, mock_remove_flows, mock_del_exposed_ips,
-            mock_del_ip_rules, mock_del_ip_routes):
+            mock_get_patch_ports, mock_ensure_mac, mock_remove_flows,
+            mock_del_exposed_ips, mock_del_ip_rules, mock_del_ip_routes):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.sb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -138,6 +139,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ensure_cr_port_exposed = mock.patch.object(
             self.bgp_driver, '_ensure_cr_lrp_associated_ports_exposed').start()
         mock_routing_bridge.return_value = ['fake-route']
+        mock_get_patch_ports.return_value = [1, 2]
 
         self.bgp_driver.sync()
 
@@ -153,20 +155,17 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ensure_vlan_network.assert_has_calls(expected_calls)
 
         expected_calls = [
-            mock.call(
-                'bridge0', {'bridge0': {'mac': mock.ANY, 'in_port': set()},
-                            'bridge1': {'mac': mock.ANY, 'in_port': set()}},
-                constants.OVS_RULE_COOKIE),
-            mock.call(
-                'bridge1', {'bridge0': {'mac': mock.ANY, 'in_port': set()},
-                            'bridge1': {'mac': mock.ANY, 'in_port': set()}},
-                constants.OVS_RULE_COOKIE)]
-        mock_flows_info.assert_has_calls(expected_calls)
+            mock.call('bridge0'), mock.call('bridge1')]
+        mock_get_patch_ports.assert_has_calls(expected_calls)
+        expected_calls = [
+            mock.call('bridge0', mock.ANY, [1, 2], constants.OVS_RULE_COOKIE),
+            mock.call('bridge1', mock.ANY, [1, 2], constants.OVS_RULE_COOKIE)]
+        mock_ensure_mac.assert_has_calls(expected_calls)
 
-        mock_remove_flows.assert_called_once_with({
-            'bridge0': {'mac': mock.ANY, 'in_port': set()},
-            'bridge1': {'mac': mock.ANY, 'in_port': set()}},
-            constants.OVS_RULE_COOKIE)
+        expected_calls = [
+            mock.call(mock.ANY, 'bridge0', constants.OVS_RULE_COOKIE),
+            mock.call(mock.ANY, 'bridge1', constants.OVS_RULE_COOKIE)]
+        mock_remove_flows.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call('fake-port0', ips, fake_ip_rules),
                           mock.call('fake-port1', ips, fake_ip_rules)]

@@ -75,34 +75,6 @@ class TestOVS(test_base.TestCase):
         self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
             'ovs-vsctl', ['get', 'Interface', port, 'ofport'])
 
-    @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
-    def test_get_ovs_flows_info(self, mock_ofport):
-        port = 'patch-provnet-fake-port'
-        port_iface = '1'
-        self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
-        mock_ofport.return_value = port_iface
-
-        ovs_utils.get_ovs_flows_info(
-            self.bridge, self.flows_info, self.cookie)
-
-        self.assertEqual({port_iface}, self.flows_info[self.bridge]['in_port'])
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['list-ports', self.bridge])
-        mock_ofport.assert_called_once_with(port)
-
-    def test_get_ovs_flows_info_no_ovs_ports(self):
-        self.mock_ovs_vsctl.ovs_cmd.return_value = ['']
-
-        ovs_utils.get_ovs_flows_info(self.bridge, self.flows_info, self.cookie)
-
-        expected_calls = [
-            mock.call('ovs-vsctl', ['list-ports', self.bridge]),
-            mock.call('ovs-ofctl', ['del-flows', self.bridge,
-                                    self.cookie_id])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
-        self.assertEqual(len(expected_calls),
-                         self.mock_ovs_vsctl.ovs_cmd.call_count)
-
     @mock.patch.object(ovs_utils, 'get_bridge_flows')
     def test_remove_extra_ovs_flows(self, mock_flows):
         port_iface = '1'
@@ -110,32 +82,25 @@ class TestOVS(test_base.TestCase):
         extra_mac = 'ff:ee:dd:cc:bb:aa'
         self.flows_info[self.bridge]['in_port'] = {port_iface}
         self.flows_info[self.bridge]['mac'] = self.mac
-        expected_flow = ("cookie={},priority=900,ip,in_port={},"
+        expected_flow = ("cookie={},priority=900,ip,in_port={} "
                          "actions=mod_dl_dst:{},NORMAL".format(
                              self.cookie, port_iface, self.mac))
-        expected_flow_v6 = ("cookie={},priority=900,ipv6,in_port={},"
+        expected_flow_v6 = ("cookie={},priority=900,ipv6,in_port={} "
                             "actions=mod_dl_dst:{},NORMAL".format(
                                 self.cookie, port_iface, self.mac))
-        extra_flow = ("cookie={},priority=900,ip,in_port={},"
+        extra_flow = ("cookie={},priority=900,ip,in_port={} "
                       "actions=mod_dl_dst:{},NORMAL".format(
                           self.cookie, extra_port_iface, extra_mac))
         mock_flows.return_value = [expected_flow, expected_flow_v6, extra_flow]
 
         # Invoke the method
-        ovs_utils.remove_extra_ovs_flows(self.flows_info, self.cookie)
+        ovs_utils.remove_extra_ovs_flows(self.flows_info, self.bridge,
+                                         self.cookie)
 
-        expected_del_flow = (
-            '%s,in_port=%s,actions=mod_dl_dst:%s,NORMAL' % (
-                self.cookie_id, extra_port_iface, extra_mac))
-        expected_calls = [
-            mock.call('ovs-ofctl', ['add-flow', self.bridge, expected_flow]),
-            mock.call('ovs-ofctl', ['add-flow', self.bridge,
-                                    expected_flow_v6]),
-            mock.call('ovs-ofctl', ['del-flows', self.bridge,
-                                    expected_del_flow])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
-        self.assertEqual(len(expected_calls),
-                         self.mock_ovs_vsctl.ovs_cmd.call_count)
+        expected_del_flow = ('%s,ip,in_port=%s' % (self.cookie_id,
+                                                   extra_port_iface))
+        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
+            'ovs-ofctl', ['del-flows', self.bridge, expected_del_flow])
         mock_flows.assert_called_once_with(self.bridge, self.cookie_id)
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
