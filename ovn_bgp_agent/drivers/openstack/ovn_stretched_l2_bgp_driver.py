@@ -124,6 +124,14 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
             ]
         )
 
+    @lockutils.synchronized('bgp')
+    def frr_sync(self):
+        LOG.debug("Ensuring VRF configuration for advertising routes")
+        # Base BGP configuration
+        # Ensure FRR is configured to leak the routes
+        bgp_utils.ensure_base_bgp_configuration(
+            template=frr.LEAK_VRF_KERNEL_TEMPLATE)
+
     @lockutils.synchronized("bgp")
     def sync(self):
         self.ovn_local_cr_lrps = {}
