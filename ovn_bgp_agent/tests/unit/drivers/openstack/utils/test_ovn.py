@@ -42,7 +42,7 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
 
     def test_get_network_vlan_tag_by_network_name(self):
         network_name = 'net0'
-        tag = 123
+        tag = [123]
         lsp = fakes.create_object({'name': 'port-0',
                                    'options': {'network_name': network_name},
                                    'tag': tag})
@@ -325,7 +325,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def _test_get_network_vlan_tag_by_network_name(self, match=True):
         network = 'public' if match else 'spongebob'
-        tag = 1001
+        tag = [1001]
         row = fakes.create_object({
             'options': {'network_name': 'public'},
             'tag': tag})
@@ -335,7 +335,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
         if match:
             self.assertEqual(tag, ret)
         else:
-            self.assertIsNone(ret)
+            self.assertEqual([], ret)
 
     def test_get_network_vlan_tag_by_network_name(self):
         self._test_get_network_vlan_tag_by_network_name()

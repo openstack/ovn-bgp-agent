@@ -157,12 +157,14 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         self.idl._session.reconnect.set_probe_interval(60000)
 
     def get_network_vlan_tag_by_network_name(self, network_name):
+        tags = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
         for row in cmd.execute(check_error=True):
             if (row.options and
                     row.options.get('network_name') == network_name):
-                return row.tag
+                tags.append(row.tag[0])
+        return tags
 
     def ls_has_virtual_ports(self, logical_switch):
         ls = self.lookup('Logical_Switch', logical_switch)
@@ -297,12 +299,14 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         return None, None
 
     def get_network_vlan_tag_by_network_name(self, network_name):
+        tags = []
         cmd = self.db_find_rows('Port_Binding', ('type', '=',
                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
         for row in cmd.execute(check_error=True):
             if (row.options and
                     row.options.get('network_name') == network_name):
-                return row.tag
+                tags.append(row.tag[0])
+        return tags
 
     def is_router_gateway_on_chassis(self, datapath, chassis):
         port_info = self.get_ports_on_datapath(
