@@ -161,7 +161,7 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
         for row in cmd.execute(check_error=True):
-            if (row.options and
+            if (row.tag and row.options and
                     row.options.get('network_name') == network_name):
                 tags.append(row.tag[0])
         return tags
@@ -303,7 +303,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
         cmd = self.db_find_rows('Port_Binding', ('type', '=',
                                 constants.OVN_LOCALNET_VIF_PORT_TYPE))
         for row in cmd.execute(check_error=True):
-            if (row.options and
+            if (row.tag and row.options and
                     row.options.get('network_name') == network_name):
                 tags.append(row.tag[0])
         return tags
