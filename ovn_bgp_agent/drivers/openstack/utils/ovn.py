@@ -17,8 +17,10 @@ from oslo_log import log as logging
 
 from ovs.stream import Stream
 from ovsdbapp.backend import ovs_idl
+from ovsdbapp.backend.ovs_idl import command
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
+from ovsdbapp.backend.ovs_idl import rowview
 from ovsdbapp import event
 from ovsdbapp.schema.ovn_northbound import impl_idl as nb_impl_idl
 from ovsdbapp.schema.ovn_southbound import impl_idl as sb_impl_idl
@@ -151,6 +153,29 @@ class Backend(ovs_idl.Backend):
         return self.idl.tables
 
 
+# FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0
+class LSGetLocalnetPortsCommand(command.ReadOnlyCommand):
+    def __init__(self, api, switch, if_exists=False):
+        super().__init__(api)
+        self.switch = switch
+        self.if_exists = if_exists
+
+    def localnet_port(self, row):
+        return row.type == constants.OVN_LOCALNET_VIF_PORT_TYPE
+
+    def run_idl(self, txn):
+        try:
+            lswitch = self.api.lookup('Logical_Switch', self.switch)
+            self.result = [rowview.RowView(p) for p in lswitch.ports
+                           if self.localnet_port(p)]
+        except idlutils.RowNotFound as e:
+            if self.if_exists:
+                self.result = []
+                return
+            msg = "Logical Switch %s does not exist" % self.switch
+            raise RuntimeError(msg) from e
+
+
 class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def __init__(self, connection):
         super(OvsdbNbOvnIdl, self).__init__(connection)
@@ -186,6 +211,11 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
                     row.options.get('requested-chassis') == chassis):
                 ports.append(row)
         return ports
+
+    # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0
+    def ls_get_localnet_ports(self, logical_switch, if_exists=True):
+        return LSGetLocalnetPortsCommand(self, logical_switch,
+                                         if_exists=if_exists)
 
 
 class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
