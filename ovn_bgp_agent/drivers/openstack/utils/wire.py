@@ -45,16 +45,15 @@ def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
 
         linux_net.ensure_routing_table_for_bridge(
             routing_tables, bridge, CONF.bgp_vrf_table_id)
-        vlan_tag = idl.get_network_vlan_tag_by_network_name(network)
+        vlan_tags = idl.get_network_vlan_tag_by_network_name(network)
 
-        if vlan_tag:
-            vlan_tag = vlan_tag[0]
+        for vlan_tag in vlan_tags:
             linux_net.ensure_vlan_device_for_network(bridge,
                                                      vlan_tag)
 
         linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
                                                     bridge_index,
-                                                    vlan_tag)
+                                                    vlan_tags)
         if not flows_info.get(bridge):
             with pyroute2.NDB() as ndb:
                 flows_info[bridge] = {
