@@ -16,14 +16,10 @@
 
 from unittest import mock
 
-from oslo_config import cfg
-
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import nb_bgp_watcher
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils
-
-CONF = cfg.CONF
 
 
 class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):

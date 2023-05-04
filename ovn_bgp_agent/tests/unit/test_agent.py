@@ -21,16 +21,18 @@ from ovn_bgp_agent.tests import base as test_base
 class TestAgent(test_base.TestCase):
 
     @mock.patch('oslo_service.service.launch')
+    @mock.patch('ovn_bgp_agent.config.register_opts')
     @mock.patch('ovn_bgp_agent.config.init')
     @mock.patch('ovn_bgp_agent.config.setup_logging')
     @mock.patch('ovn_bgp_agent.agent.BGPAgent')
-    def test_start(self, m_agent, m_setup_logging,
-                   m_config_init, m_oslo_launch):
+    def test_start(self, m_agent, m_setup_logging, m_config_init,
+                   m_register_opts, m_oslo_launch):
         m_launcher = mock.Mock()
         m_oslo_launch.return_value = m_launcher
 
         agent.start()
 
+        m_register_opts.assert_called()
         m_config_init.assert_called()
         m_setup_logging.assert_called()
         m_agent.assert_called()

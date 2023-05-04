@@ -17,6 +17,7 @@ from unittest import mock
 
 from oslo_config import cfg
 
+from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher
 from ovn_bgp_agent.tests import base as test_base
@@ -839,6 +840,7 @@ class TestOVNLBMemberCreateEvent(test_base.TestCase):
 
     def setUp(self):
         super(TestOVNLBMemberCreateEvent, self).setUp()
+        config.register_opts()
         self.chassis = '935f91fa-b8f8-47b9-8b1b-3a7a90ef7c26'
         self.agent = mock.Mock(chassis=self.chassis)
         self.agent.ovn_local_cr_lrps = {
