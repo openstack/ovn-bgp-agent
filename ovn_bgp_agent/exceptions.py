@@ -58,3 +58,12 @@ class DatapathNotFound(OVNBGPAgentException):
     """
 
     message = _("Datapath was not found: %(datapath)s.")
+
+
+class PatchPortNotFound(OVNBGPAgentException):
+    """Patch Port not found
+
+    :param localnet: The localnet name
+    """
+
+    message = _("Patch port not found for localnet: %(localnet)s.")

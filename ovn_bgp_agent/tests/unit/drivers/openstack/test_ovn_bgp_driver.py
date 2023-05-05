@@ -291,7 +291,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_get_bridge.return_value = (self.bridge, 10)
         self.bgp_driver._expose_provider_port(port_ips, provider_datapath)
 
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
@@ -330,15 +331,16 @@ class TestOVNBGPDriver(test_base.TestCase):
             self.bgp_driver, '_get_bridge_for_datapath').start()
         mock_get_bridge.return_value = (self.bridge, 10)
         mock_add_rule.side_effect = agent_exc.InvalidPortIP(ip=self.ipv4)
+        self.sb_idl.get_localnet_for_datapath.return_value = 'fake-localnet'
         ret = self.bgp_driver._expose_provider_port(port_ips,
                                                     provider_datapath)
 
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
         self.assertEqual(False, ret)
         mock_add_ips_dev.assert_not_called()
         mock_add_rule.assert_called_once_with(
             self.ipv4, 'fake-table')
         mock_add_route.assert_not_called()
+        mock_ensure_mac_tweak.assert_not_called()
 
     @mock.patch.object(wire_utils, '_ensure_updated_mac_tweak_flows')
     @mock.patch.object(linux_net, 'add_ips_to_dev')
@@ -354,7 +356,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_get_bridge.return_value = (self.bridge, 10)
         self.bgp_driver._expose_provider_port(port_ips, provider_datapath,
                                               lladdr='fake-mac')
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
@@ -963,7 +966,9 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_expose_provider_port.assert_called_once_with(
-            [self.ipv4], None, bridge_device=self.bridge, bridge_vlan=None)
+            [self.ipv4], self.bgp_driver.ovn_local_cr_lrps[self.cr_lrp0][
+                'provider_datapath'], bridge_device=self.bridge,
+            bridge_vlan=None)
 
     def test__expose_ovn_lb_on_provider_failure(self):
         mock_expose_provider_port = mock.patch.object(
@@ -974,7 +979,9 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         mock_expose_provider_port.assert_called_once_with(
-            [self.ipv4], None, bridge_device=self.bridge, bridge_vlan=None)
+            [self.ipv4], self.bgp_driver.ovn_local_cr_lrps[self.cr_lrp0][
+                'provider_datapath'], bridge_device=self.bridge,
+            bridge_vlan=None)
         self.assertEqual(False, ret)
 
     def test__expose_ovn_lb_on_provider_keyerror(self):
@@ -1052,7 +1059,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.bgp_driver.expose_ip(ips, row)
 
         # Assert that the add methods were called
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
@@ -1133,7 +1141,8 @@ class TestOVNBGPDriver(test_base.TestCase):
         ret = self.bgp_driver._expose_ip(ips, row)
 
         # Assert that the add methods were called
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         self.assertEqual(ips, ret)
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
@@ -1202,7 +1211,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         self.assertEqual([self.fip], ret)
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, [self.fip])
         mock_add_rule.assert_called_once_with(
@@ -1279,7 +1289,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         self.assertEqual(ips, ret)
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
@@ -1346,7 +1357,8 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         # Assert that the add methods were called
         self.assertEqual(ips, ret)
-        mock_ensure_mac_tweak.assert_called_once_with(self.bridge, {})
+        mock_ensure_mac_tweak.assert_called_once_with(mock.ANY, self.bridge,
+                                                      {})
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 

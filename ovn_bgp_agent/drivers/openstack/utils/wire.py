@@ -16,6 +16,7 @@ import pyroute2
 
 from oslo_config import cfg
 from oslo_log import log as logging
+import tenacity
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -113,13 +114,14 @@ def _cleanup_wiring_underlay(bridge_mappings, ovs_flows, exposed_ips,
 
 
 def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
-                       bridge_device, bridge_vlan, routing_table, proxy_cidrs,
-                       lladdr=None):
+                       bridge_device, bridge_vlan, localnet, routing_table,
+                       proxy_cidrs, lladdr=None):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _wire_provider_port_underlay(routing_tables_routes, ovs_flows,
                                             port_ips, bridge_device,
-                                            bridge_vlan, routing_table,
-                                            proxy_cidrs, lladdr=lladdr)
+                                            bridge_vlan, localnet,
+                                            routing_table, proxy_cidrs,
+                                            lladdr=lladdr)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # No need to wire anything
         return True
@@ -137,23 +139,29 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
         return True
 
 
-def _ensure_updated_mac_tweak_flows(bridge_device, ovs_flows):
-    current_in_ports = ovs.get_ovs_patch_ports_info(bridge_device)
-    if current_in_ports != ovs_flows[bridge_device]['in_port']:
-        ovs_flows[bridge_device]['in_port'] = current_in_ports
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(agent_exc.PatchPortNotFound),
+    wait=tenacity.wait_fixed(0.5),
+    stop=tenacity.stop_after_delay(5),
+    reraise=True)
+def _ensure_updated_mac_tweak_flows(localnet, bridge_device, ovs_flows):
+    current_in_ports = ovs.get_ovs_patch_port_info(bridge_device,
+                                                   patch=localnet)
+    if not current_in_ports:
+        raise agent_exc.PatchPortNotFound(localnet)
+    if current_in_ports not in ovs_flows[bridge_device]['in_port']:
+        ovs_flows[bridge_device]['in_port'].append(current_in_ports)
         ovs.ensure_mac_tweak_flows(bridge_device,
                                    ovs_flows[bridge_device]['mac'],
-                                   current_in_ports, constants.OVS_RULE_COOKIE)
+                                   [current_in_ports],
+                                   constants.OVS_RULE_COOKIE)
 
 
 def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
-                                 bridge_device, bridge_vlan, routing_table,
-                                 proxy_cidrs, lladdr=None):
+                                 bridge_device, bridge_vlan, localnet,
+                                 routing_table, proxy_cidrs, lladdr=None):
     if not bridge_device:
         return False
-    # NOTE(ltomasbo): This is needed as the patch ports are not created
-    # until the first VM/FIP in that provider network is created in a node
-    _ensure_updated_mac_tweak_flows(bridge_device, ovs_flows)
     for ip in port_ips:
         try:
             if lladdr:
@@ -176,6 +184,16 @@ def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
         for n_cidr in proxy_cidrs:
             if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
                 linux_net.add_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
+    # NOTE(ltomasbo): This is needed as the patch ports are not created
+    # until the first VM/FIP in that provider network is created in a node
+    try:
+        _ensure_updated_mac_tweak_flows(localnet, bridge_device, ovs_flows)
+    except agent_exc.PatchPortNotFound:
+        LOG.warning("Patch port %s for bridge % not found. Not possible to "
+                    "create the needed ovs flows for the outgoing traffic. "
+                    "It will be retried at the resync.", localnet,
+                    bridge_device)
+        return False
     return True
 
 

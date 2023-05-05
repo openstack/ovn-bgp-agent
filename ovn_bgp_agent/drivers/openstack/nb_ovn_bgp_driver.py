@@ -181,28 +181,30 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             bridge_device = bridge_info['bridge_device']
             bridge_vlan = bridge_info['bridge_vlan']
         else:
-            bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
                 logical_switch)
             if not bridge_device:
                 # This means it is not a provider network
                 self.ovn_tenant_ls[logical_switch] = True
                 return False
-            self.ovn_provider_ls[logical_switch] = {
-                'bridge_device': bridge_device,
-                'bridge_vlan': bridge_vlan}
+            if not self.ovn_provider_ls.get(logical_switch):
+                self.ovn_provider_ls[logical_switch] = {
+                    'bridge_device': bridge_device,
+                    'bridge_vlan': bridge_vlan,
+                    'localnet': localnet}
         ips = port.addresses[0].strip().split(' ')[1:]
         self._expose_ip(ips, logical_switch, bridge_device, bridge_vlan,
                         port.type, port.external_ids.get(
                             constants.OVN_CIDRS_EXT_ID_KEY))
 
     def _expose_provider_port(self, port_ips, logical_switch, bridge_device,
-                              bridge_vlan, proxy_cidrs=None):
+                              bridge_vlan, localnet, proxy_cidrs=None):
         # Connect to OVN
         try:
             if wire_utils.wire_provider_port(
                     self.ovn_routing_tables_routes, self.ovs_flows, port_ips,
-                    bridge_device, bridge_vlan, self.ovn_routing_tables,
-                    proxy_cidrs):
+                    bridge_device, bridge_vlan, localnet,
+                    self.ovn_routing_tables, proxy_cidrs):
                 # Expose the IP now that it is connected
                 bgp_utils.announce_ips(port_ips)
                 for ip in port_ips:
@@ -257,14 +259,17 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
         if not logical_switch:
             return False
-        bridge_device, bridge_vlan = self._get_ls_localnet_info(logical_switch)
+        localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            logical_switch)
         if not bridge_device:
             # This means it is not a provider network
             self.ovn_tenant_ls[logical_switch] = True
             return False
-        self.ovn_provider_ls[logical_switch] = {
-            'bridge_device': bridge_device,
-            'bridge_vlan': bridge_vlan}
+        if not self.ovn_provider_ls.get(logical_switch):
+            self.ovn_provider_ls[logical_switch] = {
+                'bridge_device': bridge_device,
+                'bridge_vlan': bridge_vlan,
+                'localnet': localnet}
         return self._expose_ip(ips, logical_switch, bridge_device, bridge_vlan,
                                port_type=row.type, cidr=row.external_ids.get(
                                    constants.OVN_CIDRS_EXT_ID_KEY))
@@ -272,16 +277,17 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_ip(self, ips, logical_switch, bridge_device, bridge_vlan,
                    port_type, cidr):
         LOG.debug("Adding BGP route for logical port with ip %s", ips)
+        localnet = self.ovn_provider_ls[logical_switch]['localnet']
 
         if cidr and port_type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
             # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
             # network, we need a NDP Proxy so that the traffic from the
             # amphora can properly be redirected back
             self._expose_provider_port(ips, logical_switch, bridge_device,
-                                       bridge_vlan, [cidr])
+                                       bridge_vlan, localnet, [cidr])
         else:
             self._expose_provider_port(ips, logical_switch, bridge_device,
-                                       bridge_vlan)
+                                       bridge_vlan, localnet)
 
         LOG.debug("Added BGP route for logical port with ip %s", ips)
         return ips
@@ -302,7 +308,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
         if not logical_switch:
             return
-        bridge_device, bridge_vlan = self._get_ls_localnet_info(logical_switch)
+        _, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            logical_switch)
         if not bridge_device:
             # This means it is not a provider network
             return
@@ -328,9 +335,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             logical_switch, if_exists=True).execute(check_error=True)
         if not localnet_ports:
             # means it is not a provider network, so no need to expose the IP
-            return None, None
+            return None, None, None
+        bridge_device, bridge_vlan = self._get_bridge_for_localnet_port(
+            localnet_ports[0])
         # NOTE: assuming only one localnet per LS exists
-        return self._get_bridge_for_localnet_port(localnet_ports[0])
+        return localnet_ports[0].name, bridge_device, bridge_vlan
 
     def get_port_external_ip_and_ls(self, port):
         nat_entry = self.nb_idl.get_nat_by_logical_port(port)
@@ -358,10 +367,16 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         return self._expose_fip(ip, logical_switch, row)
 
     def _expose_fip(self, ip, logical_switch, row):
-        bridge_device, bridge_vlan = self._get_ls_localnet_info(logical_switch)
+        localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            logical_switch)
         if not bridge_device:
             # This means it is not a provider network
             return False
+        if not self.ovn_provider_ls.get(logical_switch):
+            self.ovn_provider_ls[logical_switch] = {
+                'bridge_device': bridge_device,
+                'bridge_vlan': bridge_vlan,
+                'localnet': localnet}
         tenant_logical_switch = row.external_ids.get(
             constants.OVN_LS_NAME_EXT_ID_KEY)
         if not tenant_logical_switch:
@@ -369,7 +384,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_tenant_ls[tenant_logical_switch] = True
         LOG.debug("Adding BGP route for FIP with ip %s", ip)
         self._expose_provider_port([ip], tenant_logical_switch, bridge_device,
-                                   bridge_vlan)
+                                   bridge_vlan, localnet)
         LOG.debug("Added BGP route for FIP with ip %s", ip)
         return True
 

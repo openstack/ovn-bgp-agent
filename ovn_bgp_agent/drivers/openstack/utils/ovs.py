@@ -62,6 +62,16 @@ def get_ovs_patch_ports_info(bridge):
     return in_ports
 
 
+def get_ovs_patch_port_info(bridge, patch=None):
+    patch_name = "patch-{}".format(patch)
+    ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
+    for ovs_port in ovs_ports.split("\n"):
+        if ovs_port.startswith(patch_name):
+            ovs_ofport = get_device_port_at_ovs(ovs_port)
+            return ovs_ofport
+
+
 def ensure_mac_tweak_flows(bridge, mac, ports, cookie):
     cookie_id = "cookie={}/-1".format(cookie)
     current_flows = get_bridge_flows(bridge, cookie_id)

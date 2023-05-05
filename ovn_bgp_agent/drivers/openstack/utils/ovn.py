@@ -258,6 +258,18 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             # Datapath has been removed.
             raise exceptions.DatapathNotFound(datapath=datapath)
 
+    def get_localnet_for_datapath(self, datapath):
+        try:
+            cmd = self.db_find_rows('Port_Binding',
+                                    ('datapath', '=', datapath),
+                                    ('type', '=',
+                                     constants.OVN_LOCALNET_VIF_PORT_TYPE))
+            localnet_info = cmd.execute(check_error=True)
+            return localnet_info[0].name if localnet_info else []
+        except ValueError:
+            # Datapath has been removed.
+            raise exceptions.DatapathNotFound(datapath=datapath)
+
     def get_fip_associated(self, port):
         cmd = self.db_find_rows(
             'Port_Binding', ('type', '=', constants.OVN_PATCH_VIF_PORT_TYPE))

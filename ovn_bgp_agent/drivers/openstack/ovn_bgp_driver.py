@@ -56,6 +56,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self.ovn_routing_tables_routes = collections.defaultdict()
         # {ovn_lb: {'ips': [VIP1, VIP2], 'gateway_port': cr-lrpX}
         self.provider_ovn_lbs = collections.defaultdict()
+        # {datapath: localnet_port_name}
+        self.ovn_provider_datapath = {}
 
         self._sb_idl = None
         self._post_fork_event = threading.Event()
@@ -323,12 +325,29 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if not bridge_device:
                 return False
 
+        localnet = self.ovn_provider_datapath.get(provider_datapath)
+        if not localnet:
+            try:
+                localnet = self.sb_idl.get_localnet_for_datapath(
+                    provider_datapath)
+                if localnet:
+                    self.ovn_provider_datapath[provider_datapath] = localnet
+                else:
+                    LOG.warning("%s is not a provider network as it does not"
+                                "have a localnet port, no need to expose the"
+                                "ips %s", provider_datapath, port_ips)
+                    return False
+            except agent_exc.DatapathNotFound:
+                LOG.exception("Provider network not found, no need to expose "
+                              "ips %s", port_ips)
+                return False
+
         # Connect to OVN
         try:
             if wire_utils.wire_provider_port(
                     self.ovn_routing_tables_routes, self.ovs_flows, port_ips,
-                    bridge_device, bridge_vlan, self.ovn_routing_tables,
-                    proxy_cidrs, lladdr):
+                    bridge_device, bridge_vlan, localnet,
+                    self.ovn_routing_tables, proxy_cidrs, lladdr):
                 # Expose the IP now that it is connected
                 bgp_utils.announce_ips(port_ips)
                 return True
@@ -469,8 +488,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             self.provider_ovn_lbs[lb_name] = {'ips': [ip],
                                               'gateway_port': cr_lrp}
         if not self._expose_provider_port(
-                [ip], None, bridge_device=bridge_device,
-                bridge_vlan=bridge_vlan):
+                [ip], self.ovn_local_cr_lrps[cr_lrp]['provider_datapath'],
+                bridge_device=bridge_device, bridge_vlan=bridge_vlan):
             LOG.debug("Failure adding BGP route for loadbalancer VIP %s", ip)
             return False
         LOG.debug("Added BGP route for loadbalancer VIP %s", ip)
