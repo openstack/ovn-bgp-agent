@@ -283,12 +283,16 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
             # network, we need a NDP Proxy so that the traffic from the
             # amphora can properly be redirected back
-            self._expose_provider_port(ips, logical_switch, bridge_device,
-                                       bridge_vlan, localnet, [cidr])
-        else:
-            self._expose_provider_port(ips, logical_switch, bridge_device,
-                                       bridge_vlan, localnet)
+            if not self._expose_provider_port(ips, logical_switch,
+                                              bridge_device, bridge_vlan,
+                                              localnet, [cidr]):
+                return []
 
+        else:
+            if not self._expose_provider_port(ips, logical_switch,
+                                              bridge_device, bridge_vlan,
+                                              localnet):
+                return []
         LOG.debug("Added BGP route for logical port with ip %s", ips)
         return ips
 
@@ -383,8 +387,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return
         self.ovn_tenant_ls[tenant_logical_switch] = True
         LOG.debug("Adding BGP route for FIP with ip %s", ip)
-        self._expose_provider_port([ip], tenant_logical_switch, bridge_device,
-                                   bridge_vlan, localnet)
+        if not self._expose_provider_port([ip], tenant_logical_switch,
+                                          bridge_device, bridge_vlan,
+                                          localnet):
+            return False
         LOG.debug("Added BGP route for FIP with ip %s", ip)
         return True
 

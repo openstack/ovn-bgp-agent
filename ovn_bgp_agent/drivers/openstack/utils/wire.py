@@ -145,15 +145,15 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
     stop=tenacity.stop_after_delay(5),
     reraise=True)
 def _ensure_updated_mac_tweak_flows(localnet, bridge_device, ovs_flows):
-    current_in_ports = ovs.get_ovs_patch_port_info(bridge_device,
-                                                   patch=localnet)
-    if not current_in_ports:
-        raise agent_exc.PatchPortNotFound(localnet)
-    if current_in_ports not in ovs_flows[bridge_device]['in_port']:
-        ovs_flows[bridge_device]['in_port'].append(current_in_ports)
+    try:
+        ofport = ovs.get_ovs_patch_port_ofport(localnet)
+    except Exception:
+        raise agent_exc.PatchPortNotFound(localnet=localnet)
+    if ofport not in ovs_flows[bridge_device]['in_port']:
+        ovs_flows[bridge_device]['in_port'].append(ofport)
         ovs.ensure_mac_tweak_flows(bridge_device,
                                    ovs_flows[bridge_device]['mac'],
-                                   [current_in_ports],
+                                   [ofport],
                                    constants.OVS_RULE_COOKIE)
 
 
@@ -189,7 +189,7 @@ def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
     try:
         _ensure_updated_mac_tweak_flows(localnet, bridge_device, ovs_flows)
     except agent_exc.PatchPortNotFound:
-        LOG.warning("Patch port %s for bridge % not found. Not possible to "
+        LOG.warning("Patch port %s for bridge %s not found. Not possible to "
                     "create the needed ovs flows for the outgoing traffic. "
                     "It will be retried at the resync.", localnet,
                     bridge_device)
