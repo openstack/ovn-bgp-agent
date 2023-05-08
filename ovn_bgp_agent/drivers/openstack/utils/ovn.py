@@ -265,7 +265,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                                     ('type', '=',
                                      constants.OVN_LOCALNET_VIF_PORT_TYPE))
             localnet_info = cmd.execute(check_error=True)
-            return localnet_info[0].name if localnet_info else []
+            return localnet_info[0].logical_port if localnet_info else []
         except ValueError:
             # Datapath has been removed.
             raise exceptions.DatapathNotFound(datapath=datapath)
