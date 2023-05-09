@@ -24,6 +24,7 @@ from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
+from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests.unit import fakes
 from ovn_bgp_agent.utils import linux_net
@@ -357,6 +358,23 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
 
         mock__ensure_network_exposed.assert_not_called()
 
+    def test_expose_subnet_no_datapath(self):
+        mock__ensure_network_exposed = mock.patch.object(
+            self.bgp_driver, "_ensure_network_exposed"
+        ).start()
+        row = mock.Mock()
+        row.datapath = "fake-dp"
+        self.sb_idl.is_router_gateway_on_any_chassis.side_effect = (
+            agent_exc.DatapathNotFound(datapath=row.datapath))
+
+        self.bgp_driver.expose_subnet(None, row)
+
+        self.sb_idl.is_router_gateway_on_any_chassis.assert_called_once_with(
+            row.datapath
+        )
+
+        mock__ensure_network_exposed.assert_not_called()
+
     def test_update_subnet(self):
         mock__update_network = mock.patch.object(
             self.bgp_driver, "_update_network"
@@ -380,6 +398,31 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         mock__update_network.assert_called_once_with(
             row, self.cr_lrp0.logical_port, ["3.3.3.3/24"], ["1.1.1.1/24"]
         )
+
+    def test_update_subnet_no_datapath(self):
+        mock__update_network = mock.patch.object(
+            self.bgp_driver, "_update_network"
+        ).start()
+        self.sb_idl.is_router_gateway_on_any_chassis.return_value = (
+            self.cr_lrp0
+        )
+        old = mock.Mock()
+        old.mac = ["ff:ff:ff:ff:ff:01 1.1.1.1/24 2.2.2.2/24"]
+
+        row = mock.Mock()
+        row.datapath = "fake-dp"
+        row.mac = ["ff:ff:ff:ff:ff:01 2.2.2.2/24 3.3.3.3/24"]
+
+        self.sb_idl.is_router_gateway_on_any_chassis.side_effect = (
+            agent_exc.DatapathNotFound(datapath=row.datapath))
+
+        self.bgp_driver.update_subnet(old, row)
+
+        self.sb_idl.is_router_gateway_on_any_chassis.assert_called_once_with(
+            row.datapath
+        )
+
+        mock__update_network.assert_not_called()
 
     @mock.patch.object(linux_net, "get_exposed_routes_on_network")
     @mock.patch.object(linux_net, "del_ip_route")

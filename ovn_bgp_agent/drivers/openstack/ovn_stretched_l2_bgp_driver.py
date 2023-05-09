@@ -29,6 +29,7 @@ from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher as watcher
+from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -224,7 +225,12 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized("bgp")
     def expose_subnet(self, ip, row):
-        cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
+        try:
+            cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
+        except agent_exc.DatapathNotFound:
+            LOG.debug("Port %s not being exposed as its datapath %s was "
+                      "removed", row.logical_port, row.datapath)
+            return
         if not cr_lrp:
             return
 
@@ -232,7 +238,12 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized("bgp")
     def update_subnet(self, old, row):
-        cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
+        try:
+            cr_lrp = self.sb_idl.is_router_gateway_on_any_chassis(row.datapath)
+        except agent_exc.DatapathNotFound:
+            LOG.debug("Port %s not being updated as its datapath %s was "
+                      "removed", row.logical_port, row.datapath)
+            return
         if (not cr_lrp or not cr_lrp.mac or
                 len(cr_lrp.mac[0].strip().split(" ")) <= 1):
             return
