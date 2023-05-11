@@ -3,6 +3,6 @@
       - openstack-python3-zed-jobs
       - openstack-cover-jobs
       - release-notes-jobs-python3
-      - docs-on-readthedocs
+      - publish-openstack-docs-pti
     vars:
       rtd_webhook_id: '224878'
