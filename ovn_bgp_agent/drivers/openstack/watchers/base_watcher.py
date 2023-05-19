@@ -13,8 +13,10 @@
 # limitations under the License.
 
 from oslo_log import log as logging
-
 from ovsdbapp.backend.ovs_idl import event as row_event
+
+from ovn_bgp_agent import constants
+
 
 LOG = logging.getLogger(__name__)
 
@@ -59,3 +61,14 @@ class LSPChassisEvent(Event):
 
     def _check_ip_associated(self, mac):
         return len(mac.strip().split(' ')) > 1
+
+    def _get_chassis(self, row):
+        if (hasattr(row, 'external_ids') and
+                row.external_ids.get(constants.OVN_HOST_ID_EXT_ID_KEY)):
+            return (row.external_ids[constants.OVN_HOST_ID_EXT_ID_KEY],
+                    constants.OVN_CHASSIS_AT_EXT_IDS)
+        elif (hasattr(row, 'options') and
+                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
+            return (row.options[constants.OVN_REQUESTED_CHASSIS],
+                    constants.OVN_CHASSIS_AT_OPTIONS)
+        return None, None

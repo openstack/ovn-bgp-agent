@@ -36,12 +36,30 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
                                up=[True])
-        old = utils.create_row(options={}, up=True)
+        old = utils.create_row(options={}, up=[True])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_port_up(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               addresses=['mac 192.168.0.1'],
+                               options={'requested-chassis': self.chassis},
+                               up=[True])
+        old = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               addresses=['mac 192.168.0.1'],
+                               options={'requested-chassis': self.chassis},
+                               up=[False])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_external_id(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               addresses=['mac 192.168.0.1'],
+                               external_ids={'neutron:host_id': self.chassis},
+                               up=[True])
+        old = utils.create_row(external_ids={}, up=[True])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
-                               addresses=['mac 192.168.0.1'],
                                up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
@@ -112,9 +130,18 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
                                up=[True])
         self.assertTrue(self.event.match_fn(event, row, old))
 
-    def test_match_fn_exception(self):
+    def test_match_fn_update_chassis(self):
+        event = self.event.ROW_UPDATE
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
+                               external_ids={'neutron:host_id': 'chassis2'},
+                               up=[True])
+        old = utils.create_row(external_ids={'neutron:host_id': self.chassis},
+                               up=[True])
+        self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_exception(self):
+        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
@@ -177,6 +204,17 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
                                up=[True])
         old = utils.create_row(options={}, up=[True])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_chassis_change_external_ids(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            external_ids={
+                constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
+                constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
+            up=[True])
+        old = utils.create_row(external_ids={}, up=[True])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_status_change(self):
@@ -303,6 +341,45 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                up=[False])
         old = utils.create_row(up=[True])
         self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_update_external_id(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            external_ids={
+                constants.OVN_HOST_ID_EXT_ID_KEY: 'other-chassis',
+                constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
+            up=[True])
+        old = utils.create_row(external_ids={
+            constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
+            constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'})
+        self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_update_external_id_remove_fip(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            external_ids={
+                constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis},
+            up=[True])
+        old = utils.create_row(external_ids={
+            constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
+            constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'})
+        self.assertTrue(self.event.match_fn(event, row, old))
+
+    def test_match_fn_update_external_id_no_fip(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            external_ids={
+                constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis},
+            up=[True])
+        old = utils.create_row(external_ids={
+            constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis})
+        self.assertFalse(self.event.match_fn(event, row, old))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,

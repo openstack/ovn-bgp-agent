@@ -35,19 +35,28 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
+            current_chassis, chassis_location = self._get_chassis(row)
             if current_chassis != self.agent.chassis:
                 return False
             if not bool(row.up[0]):
                 return False
 
-            if hasattr(old, 'options'):
-                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-                if not old_chassis or current_chassis != old_chassis:
-                    return True
             if hasattr(old, 'up'):
                 if not bool(old.up[0]):
                     return True
+
+            # NOTE(ltomasbo): This can be updated/removed once neutron has
+            # chassis information on external ids
+            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
+                if hasattr(old, 'options'):
+                    old_chassis, _ = self._get_chassis(old)
+                    if not old_chassis or current_chassis != old_chassis:
+                        return True
+            else:
+                if hasattr(old, 'external_ids'):
+                    old_chassis, _ = self._get_chassis(old)
+                    if not old_chassis or current_chassis != old_chassis:
+                        return True
         except (IndexError, AttributeError):
             return False
 
@@ -72,24 +81,40 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
+            current_chassis, chassis_location = self._get_chassis(row)
             if event == self.ROW_DELETE:
-                return current_chassis == self.agent.chassis
+                return current_chassis == self.agent.chassis and row.up
 
             # ROW_UPDATE EVENT
-            if hasattr(old, 'options'):
-                # check chassis change
-                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-                if old_chassis != self.agent.chassis:
-                    return False
-                if not current_chassis or current_chassis != old_chassis:
-                    return True
-
             if hasattr(old, 'up'):
                 if not bool(old.up[0]):
                     return False
                 if not bool(row.up[0]):
                     return True
+            else:
+                # If there is no change on the status, and it was already down
+                # there is no need to remove it again
+                if not bool(row.up[0]):
+                    return False
+
+            # NOTE(ltomasbo): This can be updated/removed once neutron has
+            # chassis information on external ids
+            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
+                if hasattr(old, 'options'):
+                    # check chassis change
+                    old_chassis, _ = self._get_chassis(old)
+                    if old_chassis != self.agent.chassis:
+                        return False
+                    if not current_chassis or current_chassis != old_chassis:
+                        return True
+            else:
+                if hasattr(old, 'external_ids'):
+                    # check chassis change
+                    old_chassis, _ = self._get_chassis(old)
+                    if old_chassis != self.agent.chassis:
+                        return False
+                    if not current_chassis or current_chassis != old_chassis:
+                        return True
         except (IndexError, AttributeError):
             return False
 
@@ -114,28 +139,41 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
+            current_chassis, chassis_location = self._get_chassis(row)
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
             if (current_chassis != self.agent.chassis or not bool(row.up[0]) or
                     not current_port_fip):
                 return False
 
-            if hasattr(old, 'options'):
-                # check chassis change
-                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-                if not old_chassis or current_chassis != old_chassis:
-                    return True
-            if hasattr(old, 'external_ids'):
-                # check fips addition
-                old_port_fip = old.external_ids.get(
-                    constants.OVN_FIP_EXT_ID_KEY)
-                if not old_port_fip or current_port_fip != old_port_fip:
-                    return True
             if hasattr(old, 'up'):
                 # check port status change
                 if not bool(old.up[0]):
                     return True
+
+            # NOTE(ltomasbo): This can be updated/removed once neutron has
+            # chassis information on external ids
+            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
+                if hasattr(old, 'options'):
+                    old_chassis, _ = self._get_chassis(old)
+                    if not old_chassis or current_chassis != old_chassis:
+                        return True
+                if hasattr(old, 'external_ids'):
+                    # check fips addition
+                    old_port_fip = old.external_ids.get(
+                        constants.OVN_FIP_EXT_ID_KEY)
+                    if not old_port_fip or current_port_fip != old_port_fip:
+                        return True
+            else:  # by default expect the chassis information at external-ids
+                if hasattr(old, 'external_ids'):
+                    # note the whole extenal-ids are included, even if only
+                    # one field inside it is updated
+                    old_chassis, _ = self._get_chassis(old)
+                    old_port_fip = old.external_ids.get(
+                        constants.OVN_FIP_EXT_ID_KEY)
+                    if (current_chassis != old_chassis or
+                            current_port_fip != old_port_fip):
+                        return True
         except (IndexError, AttributeError):
             return False
         return False
@@ -164,7 +202,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
+            current_chassis, chassis_location = self._get_chassis(row)
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
             if event == self.ROW_DELETE:
@@ -173,31 +211,50 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                     return True
                 return False
 
-            if hasattr(old, 'options'):
-                # check chassis change
-                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-                if (not old_chassis or old_chassis != self.agent.chassis):
-                    return False
-                if current_chassis != old_chassis and current_port_fip:
-                    return True
-            # There was no change in chassis, so only progress if the
-            # chassis matches
-            if current_chassis != self.agent.chassis:
-                return False
-            if hasattr(old, 'external_ids'):
-                # check fips deletion
-                old_port_fip = old.external_ids.get(
-                    constants.OVN_FIP_EXT_ID_KEY)
-                if not old_port_fip:
-                    return False
-                if old_port_fip != current_port_fip:
-                    return True
             if hasattr(old, 'up'):
                 # check port status change
                 if not bool(old.up[0]):
                     return False
                 if not bool(row.up[0]) and current_port_fip:
                     return True
+
+            # NOTE(ltomasbo): This can be updated/removed once neutron has
+            # chassis information on external ids
+            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
+                if hasattr(old, 'options'):
+                    # check chassis change
+                    old_chassis, _ = self._get_chassis(old)
+                    if (not old_chassis or old_chassis != self.agent.chassis):
+                        return False
+                    if current_chassis != old_chassis and current_port_fip:
+                        return True
+                # There was no change in chassis, so only progress if the
+                # chassis matches
+                if current_chassis != self.agent.chassis:
+                    return False
+                if hasattr(old, 'external_ids'):
+                    # check fips deletion
+                    old_port_fip = old.external_ids.get(
+                        constants.OVN_FIP_EXT_ID_KEY)
+                    if not old_port_fip:
+                        return False
+                    if old_port_fip != current_port_fip:
+                        return True
+            else:  # by default expect the chassis information at external-ids
+                if hasattr(old, 'external_ids'):
+                    # check chassis change
+                    old_chassis, _ = self._get_chassis(old)
+                    if (not old_chassis or old_chassis != self.agent.chassis):
+                        return False
+                    if current_chassis != old_chassis and current_port_fip:
+                        return True
+                    # check fips deletion
+                    old_port_fip = old.external_ids.get(
+                        constants.OVN_FIP_EXT_ID_KEY)
+                    if not old_port_fip:
+                        return False
+                    if old_port_fip != current_port_fip:
+                        return True
         except (IndexError, AttributeError):
             return False
         return False

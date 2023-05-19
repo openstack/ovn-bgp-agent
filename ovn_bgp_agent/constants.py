@@ -67,6 +67,9 @@ EXPOSE = "expose"
 WITHDRAW = "withdraw"
 
 OVN_REQUESTED_CHASSIS = "requested-chassis"
+OVN_HOST_ID_EXT_ID_KEY = "neutron:host_id"
+OVN_CHASSIS_AT_OPTIONS = "options"
+OVN_CHASSIS_AT_EXT_IDS = "external-ids"
 
 # Exposing method names
 EXPOSE_METHOD_UNDERLAY = 'underlay'

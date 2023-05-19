@@ -216,8 +216,13 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         ports = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True))
         for row in cmd.execute(check_error=True):
-            if (row.options and
-                    row.options.get('requested-chassis') == chassis):
+            if (row.external_ids and
+                    row.external_ids.get(
+                        constants.OVN_HOST_ID_EXT_ID_KEY) == chassis):
+                ports.append(row)
+            elif (row.options and
+                    row.options.get(
+                        constants.OVN_REQUESTED_CHASSIS) == chassis):
                 ports.append(row)
         return ports
 

@@ -99,12 +99,31 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
             'NAT',
             ('logical_port', '=', logical_port))
 
-    def test_get_active_ports_on_chassis(self):
+    def test_get_active_ports_on_chassis_options(self):
         chassis = 'local_chassis'
         row1 = fakes.create_object({
-            'options': {'requested-chassis': chassis}})
+            'options': {'requested-chassis': chassis},
+            'external_ids': {}})
         row2 = fakes.create_object({
-            'options': {'requested-chassis': 'other_chassis'}})
+            'options': {'requested-chassis': 'other_chassis'},
+            'external_ids': {}})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            row1, row2]
+        ret = self.nb_idl.get_active_ports_on_chassis(chassis)
+
+        self.assertEqual([row1], ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Logical_Switch_Port',
+            ('up', '=', True))
+
+    def test_get_active_ports_on_chassis_external_ids(self):
+        chassis = 'local_chassis'
+        row1 = fakes.create_object({
+            'options': {},
+            'external_ids': {'neutron:host_id': chassis}})
+        row2 = fakes.create_object({
+            'options': {},
+            'external_ids': {'neutron:host_id': 'other_chassis'}})
         self.nb_idl.db_find_rows.return_value.execute.return_value = [
             row1, row2]
         ret = self.nb_idl.get_active_ports_on_chassis(chassis)
