@@ -141,8 +141,8 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
 
 @tenacity.retry(
     retry=tenacity.retry_if_exception_type(agent_exc.PatchPortNotFound),
-    wait=tenacity.wait_fixed(0.5),
-    stop=tenacity.stop_after_delay(5),
+    wait=tenacity.wait_fixed(1),
+    stop=tenacity.stop_after_delay(10),
     reraise=True)
 def _ensure_updated_mac_tweak_flows(localnet, bridge_device, ovs_flows):
     try:
