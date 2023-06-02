@@ -47,7 +47,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
@@ -89,7 +89,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
@@ -136,7 +136,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             return False
         return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
@@ -198,7 +198,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             return False
         return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
@@ -222,6 +222,6 @@ class LocalnetCreateDeleteEvent(base_watcher.LSPChassisEvent):
             return True
         return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.sync()

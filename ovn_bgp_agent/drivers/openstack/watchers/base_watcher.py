@@ -12,10 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from oslo_log import log as logging
+
 from ovsdbapp.backend.ovs_idl import event as row_event
 
+LOG = logging.getLogger(__name__)
 
-class PortBindingChassisEvent(row_event.RowEvent):
+
+class Event(row_event.RowEvent):
+    def run(self, *args, **kwargs):
+        try:
+            self._run(*args, **kwargs)
+        except Exception:
+            LOG.exception("Unexpected exception while running the event "
+                          "action")
+
+
+class PortBindingChassisEvent(Event):
     def __init__(self, bgp_agent, events):
         self.agent = bgp_agent
         table = 'Port_Binding'
@@ -27,7 +40,7 @@ class PortBindingChassisEvent(row_event.RowEvent):
         return len(mac.strip().split(' ')) > 1
 
 
-class OVNLBMemberEvent(row_event.RowEvent):
+class OVNLBMemberEvent(Event):
     def __init__(self, bgp_agent, events):
         self.agent = bgp_agent
         table = 'Load_Balancer'
@@ -36,7 +49,7 @@ class OVNLBMemberEvent(row_event.RowEvent):
         self.event_name = self.__class__.__name__
 
 
-class LSPChassisEvent(row_event.RowEvent):
+class LSPChassisEvent(Event):
     def __init__(self, bgp_agent, events):
         self.agent = bgp_agent
         table = 'Logical_Switch_Port'

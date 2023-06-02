@@ -14,7 +14,6 @@
 
 from oslo_concurrency import lockutils
 from oslo_log import log as logging
-from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
@@ -43,7 +42,7 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
@@ -71,7 +70,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
@@ -103,7 +102,7 @@ class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError, KeyError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
@@ -138,7 +137,7 @@ class SubnetRouterDetachedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError, KeyError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type != constants.OVN_PATCH_VIF_PORT_TYPE:
             return
         with _SYNC_STATE_LOCK.read_lock():
@@ -164,7 +163,7 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in (constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
@@ -192,7 +191,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
         except (IndexError, AttributeError):
             return False
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if row.type not in (constants.OVN_VM_VIF_PORT_TYPE,
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE):
             return
@@ -210,12 +209,12 @@ class LocalnetCreateDeleteEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         return row.type == constants.OVN_LOCALNET_VIF_PORT_TYPE
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.sync()
 
 
-class ChassisCreateEventBase(row_event.RowEvent):
+class ChassisCreateEventBase(base_watcher.Event):
     table = None
 
     def __init__(self, bgp_agent):
@@ -226,7 +225,7 @@ class ChassisCreateEventBase(row_event.RowEvent):
             events, self.table, (('name', '=', self.agent.chassis),))
         self.event_name = self.__class__.__name__
 
-    def run(self, event, row, old):
+    def _run(self, event, row, old):
         if self.first_time:
             self.first_time = False
         else:
