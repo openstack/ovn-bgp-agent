@@ -284,6 +284,12 @@ def del_ndp_proxy(ip, dev, vlan=None):
         raise
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_to_dev(ip, nic):
     try:
@@ -297,6 +303,12 @@ def add_ip_to_dev(ip, nic):
         LOG.debug("IP %s already added to interface %s.", address, nic)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_from_dev(ip, nic):
     try:
