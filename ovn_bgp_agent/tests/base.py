@@ -19,6 +19,8 @@ from unittest import mock
 
 from oslotest import base
 
+from ovn_bgp_agent import privileged
+
 
 class TestCase(base.BaseTestCase):
 
@@ -26,4 +28,13 @@ class TestCase(base.BaseTestCase):
 
     def setUp(self):
         super(TestCase, self).setUp()
+        privileged.default.client_mode = False
+        privileged.ovs_vsctl_cmd.client_mode = False
+        privileged.vtysh_cmd.client_mode = False
+        self.addCleanup(self._clean_up)
         self.addCleanup(mock.patch.stopall)
+
+    def _clean_up(self):
+        privileged.default.client_mode = True
+        privileged.ovs_vsctl_cmd.client_mode = True
+        privileged.vtysh_cmd.client_mode = True

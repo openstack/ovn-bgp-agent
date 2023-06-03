@@ -85,14 +85,6 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.ensure_veth('fake-veth', 'fake-veth-peer')
         mock_ensure_veth.assert_called_once_with('fake-veth', 'fake-veth-peer')
 
-    def test_set_master_for_device(self):
-        dev = mock.MagicMock()
-        self.fake_ndb.interfaces = {
-            'fake-dev': dev, 'fake-master': {'index': 5}}
-        linux_net.set_master_for_device('fake-dev', 'fake-master')
-
-        dev.__enter__().set.assert_called_once_with('master', 5)
-
     def test_set_master_for_device_already_set(self):
         dev = mock.MagicMock()
         dev.get.return_value = 5

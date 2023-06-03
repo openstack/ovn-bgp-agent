@@ -6,3 +6,6 @@
       - publish-openstack-docs-pti
     vars:
       rtd_webhook_id: '224878'
+    check:
+      jobs:
+        - openstack-tox-functional-with-sudo

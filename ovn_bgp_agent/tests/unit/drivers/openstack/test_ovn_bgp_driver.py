@@ -79,8 +79,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.mock_ndb = mock.patch.object(linux_net.pyroute2, 'NDB').start()
         self.fake_ndb = self.mock_ndb().__enter__()
 
+    @mock.patch.object(linux_net, 'ensure_ovn_device')
+    @mock.patch.object(linux_net, 'ensure_vrf')
     @mock.patch.object(frr, 'vrf_leak')
-    def test_start(self, mock_vrf):
+    def test_start(self, mock_vrf, *args):
         self.bgp_driver.start()
 
         mock_vrf.assert_called_once_with(

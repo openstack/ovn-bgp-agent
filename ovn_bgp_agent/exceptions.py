@@ -67,3 +67,11 @@ class PatchPortNotFound(OVNBGPAgentException):
     """
 
     message = _("Patch port not found for localnet: %(localnet)s.")
+
+
+class IpAddressAlreadyExists(RuntimeError):
+    message = _("IP address %(ip)s already configured on %(device)s.")
+
+    def __init__(self, message=None, ip=None, device=None):
+        message = message or self.message % {'ip': ip, 'device': device}
+        super(IpAddressAlreadyExists, self).__init__(message)

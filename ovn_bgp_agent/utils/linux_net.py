@@ -99,6 +99,8 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
     ipv6 = constants.NDP_IPV6_PREFIX + "%x" % offset
     try:
         ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv4, bridge)
+    except agent_exc.IpAddressAlreadyExists:
+        LOG.debug("IP %s already added on bridge %s", ipv4, bridge)
     except KeyError as e:
         if "object exists" not in str(e):
             LOG.error("Unable to add IP on bridge %s to enable arp/ndp. "
@@ -106,6 +108,8 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
             raise
     try:
         ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ipv6, bridge)
+    except agent_exc.IpAddressAlreadyExists:
+        LOG.debug("IP %s already added on bridge %s", ipv6, bridge)
     except KeyError as e:
         if "object exists" not in str(e):
             LOG.error("Unable to add IP on bridge %s to enable arp/ndp. "
@@ -528,7 +532,7 @@ def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
     for ip in ips:
         try:
             ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ip, nic)
-        except KeyError:
+        except agent_exc.IpAddressAlreadyExists:
             # NDB raises KeyError: 'object exists'
             # if the ip is already added
             already_added_ips.append(ip)

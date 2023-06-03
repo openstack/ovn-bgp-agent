@@ -137,10 +137,12 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         self.mock_ndb = mock.patch.object(linux_net.pyroute2, "NDB").start()
         self.fake_ndb = self.mock_ndb().__enter__()
 
+    @mock.patch.object(linux_net, "ensure_vrf")
     @mock.patch.object(linux_net, "ensure_ovn_device")
     @mock.patch.object(linux_net, "delete_routes_from_table")
     @mock.patch.object(frr, "vrf_leak")
-    def test_start(self, mock_vrf, mock_delete_routes, mock_ensure_ovn_device):
+    def test_start(self, mock_vrf, mock_delete_routes, mock_ensure_ovn_device,
+                   *args):
         CONF.set_override("clear_vrf_routes_on_startup", True)
 
         self.bgp_driver.start()
@@ -160,11 +162,12 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         mock_ensure_ovn_device.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
 
+    @mock.patch.object(linux_net, "ensure_vrf")
     @mock.patch.object(linux_net, "ensure_ovn_device")
     @mock.patch.object(linux_net, "delete_routes_from_table")
     @mock.patch.object(frr, "vrf_leak")
     def test_start_clear_routes(
-        self, mock_vrf, mock_delete_routes, mock_ensure_ovn_device):
+        self, mock_vrf, mock_delete_routes, mock_ensure_ovn_device, *args):
         CONF.set_override("clear_vrf_routes_on_startup", False)
 
         self.bgp_driver.start()
