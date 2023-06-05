@@ -38,12 +38,16 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
             if current_chassis != self.agent.chassis:
                 return False
-            if not row.up:
+            if not bool(row.up[0]):
                 return False
-            old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
-            if (not old_chassis or current_chassis != old_chassis or
-                    not old.up):
-                return True
+
+            if hasattr(old, 'options'):
+                old_chassis = old.options.get(constants.OVN_REQUESTED_CHASSIS)
+                if not old_chassis or current_chassis != old_chassis:
+                    return True
+            if hasattr(old, 'up'):
+                if not bool(old.up[0]):
+                    return True
         except (IndexError, AttributeError):
             return False
 
@@ -82,9 +86,9 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
                     return True
 
             if hasattr(old, 'up'):
-                if not old.up:
+                if not bool(old.up[0]):
                     return False
-                if not row.up:
+                if not bool(row.up[0]):
                     return True
         except (IndexError, AttributeError):
             return False
@@ -113,7 +117,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             current_chassis = row.options.get(constants.OVN_REQUESTED_CHASSIS)
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
-            if (current_chassis != self.agent.chassis or not row.up or
+            if (current_chassis != self.agent.chassis or not bool(row.up[0]) or
                     not current_port_fip):
                 return False
 
@@ -130,7 +134,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
                     return True
             if hasattr(old, 'up'):
                 # check port status change
-                if not old.up:
+                if not bool(old.up[0]):
                     return True
         except (IndexError, AttributeError):
             return False
@@ -164,8 +168,8 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
             if event == self.ROW_DELETE:
-                if (current_chassis == self.agent.chassis and row.up and
-                        current_port_fip):
+                if (current_chassis == self.agent.chassis and
+                        bool(row.up[0]) and current_port_fip):
                     return True
                 return False
 
@@ -190,9 +194,9 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                     return True
             if hasattr(old, 'up'):
                 # check port status change
-                if not old.up:
+                if not bool(old.up[0]):
                     return False
-                if not row.up and current_port_fip:
+                if not bool(row.up[0]) and current_port_fip:
                     return True
         except (IndexError, AttributeError):
             return False

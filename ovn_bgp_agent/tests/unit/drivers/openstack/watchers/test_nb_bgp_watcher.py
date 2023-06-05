@@ -35,43 +35,43 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={}, up=True)
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_not_up(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_invalid_address(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac '],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_wrong_chassis(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': 'fake_chassis'},
-                               up=True)
-        old = utils.create_row(options={}, up=True)
+                               up=[True])
+        old = utils.create_row(options={}, up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_run(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.expose_ip.assert_called_once_with(['192.168.0.1'], row)
 
@@ -80,7 +80,7 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
             type=constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE,
             addresses=['mac 192.168.0.1'],
             options={'requested-chassis': self.chassis},
-            up=True)
+            up=[True])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.expose_ip.assert_not_called()
 
@@ -99,7 +99,7 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_update(self):
@@ -107,38 +107,38 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         old = utils.create_row(options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.assertTrue(self.event.match_fn(event, row, old))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_not_up(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         old = utils.create_row(options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_invalid_address(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac '],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_wrong_chassis(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={'requested-chassis': 'other_chassis'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
@@ -146,7 +146,7 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_ip.assert_called_once_with(['192.168.0.1'], row)
 
@@ -155,7 +155,7 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
             type=constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE,
             addresses=['mac 192.168.0.1'],
             options={'requested-chassis': self.chassis},
-            up=True)
+            up=[True])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_ip.assert_not_called()
 
@@ -175,8 +175,8 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
-        old = utils.create_row(options={}, up=True)
+                               up=[True])
+        old = utils.create_row(options={}, up=[True])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_status_change(self):
@@ -185,11 +185,11 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=False)
+                               up=[False])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_fip_addition(self):
@@ -198,10 +198,10 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={'requested-chassis': self.chassis},
                                external_ids={},
-                               up=True)
+                               up=[True])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_no_fip(self):
@@ -209,7 +209,7 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
                                external_ids={},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_wrong_chassis(self):
@@ -218,7 +218,7 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': 'wrong_chassis'},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_port_down(self):
@@ -227,7 +227,7 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_wrong_address(self):
@@ -236,14 +236,14 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_run(self):
@@ -290,7 +290,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_update(self):
@@ -300,14 +300,14 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=False)
-        old = utils.create_row(up=True)
+                               up=[False])
+        old = utils.create_row(up=[True])
         self.assertTrue(self.event.match_fn(event, row, old))
 
     def test_match_fn_exception(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_not_up(self):
@@ -316,16 +316,16 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=False)
+                               up=[False])
         old = utils.create_row(options={'requested-chassis': self.chassis},
-                               up=False)
+                               up=[False])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_invalid_address(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac '],
                                options={'requested-chassis': self.chassis},
-                               up=True)
+                               up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_match_fn_wrong_chassis(self):
@@ -334,7 +334,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={'requested-chassis': 'other_chassis'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
@@ -344,7 +344,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': 'other_chassis'},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         old = utils.create_row(options={'requested-chassis': self.chassis})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
@@ -354,7 +354,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
                                options={'requested-chassis': self.chassis},
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'new-fip-ip'},
-                               up=True)
+                               up=[True])
         old = utils.create_row(
             external_ids={constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
@@ -363,7 +363,7 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                external_ids={
                                    constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
-                               up=True)
+                               up=[True])
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.withdraw_fip.assert_called_once_with('fip-ip', row)
 
