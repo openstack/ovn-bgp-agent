@@ -292,12 +292,12 @@ def del_ndp_proxy(ip, dev, vlan=None):
     reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_to_dev(ip, nic):
+    address = '{}/32'.format(ip)
+    if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
+        address = '{}/128'.format(ip)
     try:
         with pyroute2.NDB() as ndb:
             with ndb.interfaces[nic] as iface:
-                address = '{}/32'.format(ip)
-                if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
-                    address = '{}/128'.format(ip)
                 iface.add_ip(address)
     except KeyError:  # Already exists
         LOG.debug("IP %s already added to interface %s.", address, nic)
@@ -311,12 +311,12 @@ def add_ip_to_dev(ip, nic):
     reraise=True)
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_from_dev(ip, nic):
+    address = '{}/32'.format(ip)
+    if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
+        address = '{}/128'.format(ip)
     try:
         with pyroute2.NDB() as ndb:
             with ndb.interfaces[nic] as iface:
-                address = '{}/32'.format(ip)
-                if l_net.get_ip_version(ip) == constants.IP_VERSION_6:
-                    address = '{}/128'.format(ip)
                 iface.del_ip(address)
     except KeyError:  # Already deleted
         LOG.debug("IP %s already deleted from interface %s.", address, nic)
@@ -329,16 +329,21 @@ def add_ip_nei(ip, lladdr, dev):
         # This is doing something like:
         # sudo ip nei replace 172.24.4.69
         # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-        network_bridge_if = iproute.link_lookup(ifname=dev)[0]
+        try:
+            network_bridge_if = iproute.link_lookup(ifname=dev)[0]
+        except IndexError:
+            LOG.debug("No need to add nei for dev %s as it does not exists",
+                      dev)
+            return
         if ip_version == constants.IP_VERSION_6:
-            iproute.neigh('set',
+            iproute.neigh('replace',
                           dst=ip,
                           lladdr=lladdr,
                           family=AF_INET6,
                           ifindex=network_bridge_if,
                           state=ndmsg.states['permanent'])
         else:
-            iproute.neigh('set',
+            iproute.neigh('replace',
                           dst=ip,
                           lladdr=lladdr,
                           ifindex=network_bridge_if,
@@ -357,8 +362,8 @@ def del_ip_nei(ip, lladdr, dev):
                 ifname=dev)[0]
         except IndexError:
             # Neigbhbor device does not exists, continuing
-            LOG.debug("No need to remove nei for dev %s as it does not "
-                      "exists", dev)
+            LOG.debug("No need to remove nei for dev %s as it does not exists",
+                      dev)
             return
         if ip_version == constants.IP_VERSION_6:
             iproute.neigh('del',

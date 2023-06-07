@@ -334,7 +334,7 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
 
         self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
         self.fake_iproute.neigh.assert_called_once_with(
-            'set', dst=self.ip, lladdr=self.mac,
+            'replace', dst=self.ip, lladdr=self.mac,
             ifindex=mock.ANY, state=mock.ANY)
 
     def test_add_ip_nei_ipv6(self):
@@ -342,7 +342,7 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
 
         self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
         self.fake_iproute.neigh.assert_called_once_with(
-            'set', dst=self.ipv6, family=AF_INET6,
+            'replace', dst=self.ipv6, family=AF_INET6,
             lladdr=self.mac, ifindex=mock.ANY, state=mock.ANY)
 
     def test_del_ip_nei(self):
