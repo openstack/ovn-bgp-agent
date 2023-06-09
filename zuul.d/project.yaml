@@ -1,6 +1,6 @@
 - project:
     templates:
-      - openstack-python3-zed-jobs
+      - openstack-python3-jobs-neutron
       - openstack-cover-jobs
       - release-notes-jobs-python3
       - publish-openstack-docs-pti
@@ -9,3 +9,10 @@
     check:
       jobs:
         - openstack-tox-functional-with-sudo
+    experimental:
+      jobs:
+        - openstack-tox-py310-with-oslo-master
+    periodic-weekly:
+      jobs:
+        - openstack-tox-py310
+        - openstack-tox-py310-with-oslo-master
