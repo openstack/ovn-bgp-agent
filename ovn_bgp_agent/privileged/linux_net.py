@@ -216,57 +216,22 @@ def delete_exposed_ips(ips, nic):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def rule_create(rule):
-    with pyroute2.NDB() as ndb:
-        try:
-            ndb.rules[rule]
-        except KeyError:
-            LOG.debug("Creating ip rule with: %s", rule)
-            try:
-                ndb.rules.create(rule).commit()
-            except ValueError:
-                # FIXME: There is an issue with NDB and ip rules
-                # Remove try/except once the next is fixed:
-                # https://github.com/svinota/pyroute2/issues/967
-                pass
+    _run_iproute_rule('add', **rule)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def rule_delete(rule):
-    with pyroute2.NDB() as ndb:
-        try:
-            ndb.rules[rule].remove().commit()
-            LOG.debug("Deleting ip rule with: %s", rule)
-        except KeyError:
-            LOG.debug("Rule already deleted: %s", rule)
-        except ValueError:
-            # FIXME: There is an issue with NDB and ip rules
-            # Remove except once the next is fixed:
-            # https://github.com/svinota/pyroute2/issues/967
-            # fixed on pyroute2 0.7.2 version, remove it when that version
-            # is the minimal one supported
-            pass
+    _run_iproute_rule('del', **rule)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_ip_rules(ip_rules):
-    with pyroute2.NDB() as ndb:
-        for rule_ip, rule_info in ip_rules.items():
-            rule = {'dst': rule_ip.split("/")[0],
-                    'dst_len': rule_ip.split("/")[1],
-                    'table': rule_info['table'],
-                    'family': rule_info['family']}
-            try:
-                with ndb.rules[rule] as r:
-                    r.remove()
-            except KeyError:
-                LOG.debug("Rule {} already deleted".format(rule))
-            except pyroute_netlink.exceptions.NetlinkError:
-                # FIXME: There is a issue with NDB and ip rules deletion:
-                # https://github.com/svinota/pyroute2/issues/771
-                # fixed on pyroute2 0.7.2 version, remove it when that version
-                # is the minimal one supported
-                LOG.debug("This should not happen, skipping: NetlinkError "
-                          "deleting rule %s", rule)
+    for rule_ip, rule_info in ip_rules.items():
+        rule = {'dst': rule_ip.split("/")[0],
+                'dst_len': int(rule_ip.split("/")[1]),
+                'table': int(rule_info['table']),
+                'family': rule_info['family']}
+        _run_iproute_rule('del', **rule)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
@@ -429,6 +394,16 @@ def _translate_ip_route_exception(e, kwargs):
     raise e
 
 
+def _translate_ip_rule_exception(e, kwargs):
+    if e.code == errno.EEXIST:  # Already exists
+        LOG.debug("Rule %s already exists.", kwargs)
+        return
+    if e.code == errno.ENOENT:  # Not found
+        LOG.debug("Rule already deleted: %s", kwargs)
+        return
+    raise e
+
+
 def get_attr(pyroute2_obj, attr_name):
     """Get an attribute in a pyroute object
 
@@ -543,6 +518,14 @@ def _run_iproute_route(command, **kwargs):
         _translate_ip_route_exception(e, kwargs)
 
 
+def _run_iproute_rule(command, **kwargs):
+    try:
+        with iproute.IPRoute() as ip:
+            ip.rule(command, **kwargs)
+    except netlink_exceptions.NetlinkError as e:
+        _translate_ip_rule_exception(e, kwargs)
+
+
 @ovn_bgp_agent.privileged.default.entrypoint
 def create_interface(ifname, kind, **kwargs):
     ifname = ifname[:15]
@@ -620,3 +603,11 @@ def list_ip_routes(ip_version, device=None, table=None, **kwargs):
         kwargs['table'] = int(table)
     with iproute.IPRoute() as ip:
         return make_serializable(ip.route('show', **kwargs))
+
+
+@ovn_bgp_agent.privileged.default.entrypoint
+def list_ip_rules(ip_version, **kwargs):
+    """List all IP rules"""
+    with iproute.IPRoute() as ip:
+        return make_serializable(ip.get_rules(
+            family=_IP_VERSION_FAMILY_MAP[ip_version], **kwargs))

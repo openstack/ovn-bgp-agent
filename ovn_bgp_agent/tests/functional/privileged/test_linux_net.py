@@ -14,6 +14,7 @@
 
 import functools
 import random
+import socket
 
 import netaddr
 from neutron_lib import constants as n_const
@@ -36,6 +37,7 @@ IP_ADDRESS_SCOPE = {rtnl.rtscopes['RT_SCOPE_UNIVERSE']: 'global',
                     rtnl.rtscopes['RT_SCOPE_SITE']: 'site',
                     rtnl.rtscopes['RT_SCOPE_LINK']: 'link',
                     rtnl.rtscopes['RT_SCOPE_HOST']: 'host'}
+_IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 
 
 def set_up(ifname):
@@ -523,3 +525,41 @@ class IpRouteTestCase(_LinuxNetTestCase):
             self.assertEqual(rtnl.rtypes['RTN_UNREACHABLE'], routes[0]['type'])
             self.assertEqual(4278198272,
                              linux_net.get_attr(routes[0], 'RTA_PRIORITY'))
+
+
+class IpRuleTestCase(_LinuxNetTestCase):
+
+    def _test_add_and_delete_ip_rule(self, ip_version, cidrs):
+        table = random.randint(10, 250)
+        rules_added = []
+        for cidr in cidrs:
+            _ip = netaddr.IPNetwork(cidr)
+            rule = {'dst': str(_ip.ip),
+                    'dst_len': _ip.netmask.netmask_bits(),
+                    'table': table,
+                    'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+            rules_added.append(rule)
+            linux_net.rule_create(rule)
+            # recreate the last rule, to ensure recreation does not fail
+            linux_net.rule_create(rule)
+        rules = linux_net.list_ip_rules(ip_version, table=table)
+        self.assertEqual(len(cidrs), len(rules))
+        for idx, rule in enumerate(rules):
+            _ip = netaddr.IPNetwork(cidrs[idx])
+            self.assertEqual(str(_ip.ip), linux_net.get_attr(rule, 'FRA_DST'))
+            self.assertEqual(_ip.netmask.netmask_bits(), rule['dst_len'])
+
+        for rule in rules_added:
+            linux_net.rule_delete(rule)
+            # remove again the last rule to ensure it does not fail
+            linux_net.rule_delete(rule)
+        rules = linux_net.list_ip_rules(ip_version, table=table)
+        self.assertEqual(0, len(rules))
+
+    def test_add_and_delete_ip_rule_v4(self):
+        cidrs = ['192.168.0.0/24', '172.90.0.0/16', '10.0.0.0/8']
+        self._test_add_and_delete_ip_rule(n_const.IP_VERSION_4, cidrs)
+
+    def test_add_and_delete_ip_rule_v6(self):
+        cidrs = ['2001:db8::/64', 'fe80::/10']
+        self._test_add_and_delete_ip_rule(n_const.IP_VERSION_6, cidrs)

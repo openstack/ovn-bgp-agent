@@ -47,31 +47,6 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.dev = 'ethfake'
         self.mac = 'aa:bb:cc:dd:ee:ff'
 
-    def test_rule_create(self):
-        fake_rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.side_effect = KeyError
-        priv_linux_net.rule_create(fake_rule)
-        self.fake_ndb.rules.create.assert_called_once_with(fake_rule)
-
-    def test_rule_create_existing(self):
-        fake_rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.return_value = fake_rule
-        priv_linux_net.rule_create(fake_rule)
-        self.fake_ndb.rules.create.assert_not_called()
-
-    def test_rule_delete(self):
-        fake_rule = mock.MagicMock()
-        rules_dict = {'fake-rule': fake_rule}
-        self.fake_ndb.rules = rules_dict
-        priv_linux_net.rule_delete('fake-rule')
-        fake_rule.remove.assert_called_once()
-
-    def test_rule_delete_keyerror(self):
-        fake_rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.side_effect = KeyError
-        priv_linux_net.rule_delete(fake_rule)
-        fake_rule.__enter__().remove.assert_not_called()
-
     def test_set_kernel_flag(self):
         priv_linux_net.set_kernel_flag('net.ipv6.conf.fake', 1)
         self.mock_exc.assert_called_once_with(
