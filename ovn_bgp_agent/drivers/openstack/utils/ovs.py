@@ -17,7 +17,6 @@ from ovs.db import idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
-import pyroute2
 import tenacity
 
 from ovn_bgp_agent import constants
@@ -144,21 +143,19 @@ def ensure_evpn_ovs_flow(bridge, cookie, mac, output_port, port_dst, net,
 
     strip_vlan_opt = 'strip_vlan,' if strip_vlan else ''
     ip_version = linux_net.get_ip_version(net)
-    with pyroute2.NDB() as ndb:
-        if ip_version == constants.IP_VERSION_6:
-            flow = (
-                "cookie={},priority=1000,ipv6,in_port={},dl_src:{},"
-                "ipv6_src={} actions=mod_dl_dst:{},{}output={}".format(
-                    cookie, ovs_ofport, mac, net,
-                    ndb.interfaces[port_dst]['address'], strip_vlan_opt,
-                    vrf_ofport))
-        else:
-            flow = (
-                "cookie={},priority=1000,ip,in_port={},dl_src:{},nw_src={}"
-                "actions=mod_dl_dst:{},{}output={}".format(
-                    cookie, ovs_ofport, mac, net,
-                    ndb.interfaces[port_dst]['address'], strip_vlan_opt,
-                    vrf_ofport))
+    port_dst_mac = linux_net.get_interface_address(port_dst)
+    if ip_version == constants.IP_VERSION_6:
+        flow = (
+            "cookie={},priority=1000,ipv6,in_port={},dl_src:{},"
+            "ipv6_src={} actions=mod_dl_dst:{},{}output={}".format(
+                cookie, ovs_ofport, mac, net, port_dst_mac, strip_vlan_opt,
+                vrf_ofport))
+    else:
+        flow = (
+            "cookie={},priority=1000,ip,in_port={},dl_src:{},nw_src={}"
+            "actions=mod_dl_dst:{},{}output={}".format(
+                cookie, ovs_ofport, mac, net, port_dst_mac, strip_vlan_opt,
+                vrf_ofport))
     ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-ofctl', ['add-flow', bridge, flow])
 

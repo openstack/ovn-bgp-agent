@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pyroute2
-
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -55,13 +53,11 @@ def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
                                                     bridge_index,
                                                     vlan_tags)
         if not flows_info.get(bridge):
-            with pyroute2.NDB() as ndb:
-                flows_info[bridge] = {
-                    'mac': ndb.interfaces[bridge]['address'],
-                    'in_port': set([])}
+            mac = linux_net.get_interface_address(bridge)
+            flows_info[bridge] = {'mac': mac, 'in_port': set([])}
             flows_info[bridge]['in_port'] = ovs.get_ovs_patch_ports_info(
                 bridge)
-            ovs.ensure_mac_tweak_flows(bridge, flows_info[bridge]['mac'],
+            ovs.ensure_mac_tweak_flows(bridge, mac,
                                        flows_info[bridge]['in_port'],
                                        constants.OVS_RULE_COOKIE)
     return ovn_bridge_mappings, flows_info

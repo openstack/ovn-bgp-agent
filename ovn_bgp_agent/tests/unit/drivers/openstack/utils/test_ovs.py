@@ -36,9 +36,6 @@ class TestOVS(test_base.TestCase):
         self.cookie = 'fake-cookie'
         self.cookie_id = 'cookie=%s/-1' % self.cookie
         self.mac = 'aa:bb:cc:dd:ee:ff'
-        self.fake_ndb = mock.Mock(interfaces={})
-        mock_ndb = mock.patch('pyroute2.NDB').start()
-        mock_ndb.return_value.__enter__.return_value = self.fake_ndb
 
     def _test_get_bridge_flows(self, has_filter=False):
         port_iface = '1'
@@ -104,14 +101,15 @@ class TestOVS(test_base.TestCase):
         mock_flows.assert_called_once_with(self.bridge, self.cookie_id)
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
+    @mock.patch.object(linux_net, 'get_interface_address')
     @mock.patch.object(linux_net, 'get_ip_version')
-    def _test_ensure_evpn_ovs_flow(self, mock_ip_version, mock_ofport,
-                                   ip_version, strip_vlan=False):
+    def _test_ensure_evpn_ovs_flow(self, mock_ip_version, mock_nic_address,
+                                   mock_ofport, ip_version, strip_vlan=False):
         address = '00:00:00:00:00:00'
         mock_ip_version.return_value = ip_version
+        mock_nic_address.return_value = address
         port = 'fake-port'
         port_dst = 'fake-port-dst'
-        self.fake_ndb.interfaces[port_dst] = {'address': address}
         ovs_port = constants.OVS_PATCH_PROVNET_PORT_PREFIX + 'fake-port'
         port_iface = '1'
         ovs_port_iface = '2'

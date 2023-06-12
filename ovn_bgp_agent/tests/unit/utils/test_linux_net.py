@@ -33,6 +33,11 @@ class TestLinuxNet(test_base.TestCase):
         self.mock_ndb = mock.patch.object(linux_net.pyroute2, 'NDB').start()
         self.fake_ndb = self.mock_ndb().__enter__()
 
+        # Mock pyroute2.IPRoute context manager object
+        self.mock_ipr = mock.patch.object(linux_net.pyroute2,
+                                          'IPRoute').start()
+        self.fake_ipr = self.mock_ipr().__enter__()
+
         # Helper variables used accross many tests
         self.ip = '10.10.1.16'
         self.ipv6 = '2002::1234:abcd:ffff:c0a8:101'
@@ -64,6 +69,21 @@ class TestLinuxNet(test_base.TestCase):
         self.fake_ndb.interfaces = {'fake-nic': {'index': 7}}
         ret = linux_net.get_interface_index('fake-nic')
         self.assertEqual(7, ret)
+
+    def test_get_interface_address(self):
+        device_idx = 7
+        self.fake_ipr.link_lookup.return_value = [device_idx]
+        fake_link = mock.MagicMock()
+        fake_link.get_attr.return_value = self.mac
+        self.fake_ipr.get_links.return_value = [fake_link]
+
+        ret = linux_net.get_interface_address('fake-nic')
+        self.assertEqual(self.mac, ret)
+
+    def test_get_interface_address_index_error(self):
+        self.fake_ipr.link_lookup.return_value = ''
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
+                          linux_net.get_interface_address, 'fake-nic')
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.ensure_vrf')
     def test_ensure_vrf(self, mock_ensure_vrf):

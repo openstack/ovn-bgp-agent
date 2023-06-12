@@ -14,7 +14,6 @@
 
 import collections
 import ipaddress
-import pyroute2
 import threading
 
 from oslo_concurrency import lockutils
@@ -168,44 +167,46 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
         # 2) Get macs for bridge mappings
         extra_routes = {}
-        with pyroute2.NDB() as ndb:
-            for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
-                network = bridge_mapping.split(":")[0]
-                bridge = bridge_mapping.split(":")[1]
-                self.ovn_bridge_mappings[network] = bridge
 
-                if not extra_routes.get(bridge):
-                    extra_routes[bridge] = (
-                        linux_net.ensure_routing_table_for_bridge(
-                            self.ovn_routing_tables, bridge,
-                            CONF.bgp_vrf_table_id))
-                vlan_tags = self.sb_idl.get_network_vlan_tag_by_network_name(
-                    network)
+        for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
+            network = bridge_mapping.split(":")[0]
+            bridge = bridge_mapping.split(":")[1]
+            self.ovn_bridge_mappings[network] = bridge
 
-                for vlan_tag in vlan_tags:
-                    linux_net.ensure_vlan_device_for_network(bridge,
-                                                             vlan_tag)
+            if not extra_routes.get(bridge):
+                extra_routes[bridge] = (
+                    linux_net.ensure_routing_table_for_bridge(
+                        self.ovn_routing_tables, bridge,
+                        CONF.bgp_vrf_table_id))
+            vlan_tags = self.sb_idl.get_network_vlan_tag_by_network_name(
+                network)
 
-                linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
-                                                            bridge_index,
-                                                            vlan_tags)
+            for vlan_tag in vlan_tags:
+                linux_net.ensure_vlan_device_for_network(bridge,
+                                                         vlan_tag)
 
-                if self.ovs_flows.get(bridge):
-                    continue
-                self.ovs_flows[bridge] = {
-                    'mac': ndb.interfaces[bridge]['address'],
-                    'in_port': set([])}
-                # 3) Get in_port for bridge mappings (br-ex, br-ex2)
-                self.ovs_flows[bridge]['in_port'] = (
-                    ovs.get_ovs_patch_ports_info(bridge))
+            linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
+                                                        bridge_index,
+                                                        vlan_tags)
 
-                # 4) Add/Remove flows for each bridge mappings
-                ovs.ensure_mac_tweak_flows(bridge,
-                                           self.ovs_flows[bridge]['mac'],
-                                           self.ovs_flows[bridge]['in_port'],
-                                           constants.OVS_RULE_COOKIE)
-                ovs.remove_extra_ovs_flows(self.ovs_flows, bridge,
-                                           constants.OVS_RULE_COOKIE)
+            if self.ovs_flows.get(bridge):
+                continue
+
+            mac = linux_net.get_interface_address(bridge)
+            self.ovs_flows[bridge] = {
+                'mac': mac,
+                'in_port': set([])}
+            # 3) Get in_port for bridge mappings (br-ex, br-ex2)
+            self.ovs_flows[bridge]['in_port'] = (
+                ovs.get_ovs_patch_ports_info(bridge))
+
+            # 4) Add/Remove flows for each bridge mappings
+            ovs.ensure_mac_tweak_flows(bridge,
+                                       self.ovs_flows[bridge]['mac'],
+                                       self.ovs_flows[bridge]['in_port'],
+                                       constants.OVS_RULE_COOKIE)
+            ovs.remove_extra_ovs_flows(self.ovs_flows, bridge,
+                                       constants.OVS_RULE_COOKIE)
 
         LOG.debug("Syncing current routes.")
         exposed_ips = linux_net.get_exposed_ips(CONF.bgp_nic)

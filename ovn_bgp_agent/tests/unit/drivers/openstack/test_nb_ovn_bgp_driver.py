@@ -64,10 +64,6 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self.conf_ovsdb_connection = 'tcp:127.0.0.1:6642'
 
-        # Mock pyroute2.NDB context manager object
-        self.mock_ndb = mock.patch.object(linux_net.pyroute2, 'NDB').start()
-        self.fake_ndb = self.mock_ndb().__enter__()
-
     @mock.patch.object(linux_net, 'ensure_vrf')
     @mock.patch.object(frr, 'vrf_leak')
     @mock.patch.object(linux_net, 'ensure_ovn_device')
@@ -123,14 +119,15 @@ class TestNBOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(ovs, 'remove_extra_ovs_flows')
     @mock.patch.object(ovs, 'ensure_mac_tweak_flows')
     @mock.patch.object(ovs, 'get_ovs_patch_ports_info')
+    @mock.patch.object(linux_net, 'get_interface_address')
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
     def test_sync(self, mock_routing_bridge, mock_ensure_vlan_network,
-                  mock_ensure_arp, mock_get_patch_ports, mock_ensure_mac,
-                  mock_remove_flows, mock_exposed_ips, mock_get_ip_rules,
-                  mock_del_exposed_ips, mock_del_ip_rules, mock_del_ip_routes,
-                  mock_get_extra_route):
+                  mock_ensure_arp, mock_nic_address, mock_get_patch_ports,
+                  mock_ensure_mac, mock_remove_flows, mock_exposed_ips,
+                  mock_get_ip_rules, mock_del_exposed_ips, mock_del_ip_rules,
+                  mock_del_ip_routes, mock_get_extra_route):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.nb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -151,6 +148,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_ensure_port_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_port_exposed').start()
         mock_routing_bridge.return_value = ['fake-route']
+        mock_nic_address.return_value = self.mac
         mock_get_patch_ports.return_value = [1, 2]
 
         self.nb_bgp_driver.sync()

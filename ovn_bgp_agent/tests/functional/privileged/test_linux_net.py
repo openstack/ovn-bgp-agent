@@ -396,11 +396,11 @@ class IpAddressTestCase(_LinuxNetTestCase):
             linux_net.delete_ip_address(ip_address, self.dev_name)
 
     def test_add_ip_address_no_device(self):
-        self.assertRaises(linux_net.NetworkInterfaceNotFound,
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
                           linux_net.add_ip_address, '240.0.0.1', self.dev_name)
 
     def test_delete_ip_address_no_device(self):
-        self.assertRaises(linux_net.NetworkInterfaceNotFound,
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
                           linux_net.delete_ip_address, '240.0.0.1',
                           self.dev_name)
 

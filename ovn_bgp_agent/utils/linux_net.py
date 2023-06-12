@@ -59,6 +59,22 @@ def get_interface_index(nic):
         return ndb.interfaces[nic]['index']
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+def get_interface_address(nic):
+    try:
+        with pyroute2.IPRoute() as ipr:
+            idx = ipr.link_lookup(ifname=nic)[0]
+            mac = ipr.get_links(idx)[0].get_attr('IFLA_ADDRESS')
+            return mac
+    except IndexError:
+        raise agent_exc.NetworkInterfaceNotFound(device=nic)
+
+
 def ensure_vrf(vrf_name, vrf_table):
     ovn_bgp_agent.privileged.linux_net.ensure_vrf(vrf_name, vrf_table)
 

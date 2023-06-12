@@ -75,3 +75,11 @@ class IpAddressAlreadyExists(RuntimeError):
     def __init__(self, message=None, ip=None, device=None):
         message = message or self.message % {'ip': ip, 'device': device}
         super(IpAddressAlreadyExists, self).__init__(message)
+
+
+class NetworkInterfaceNotFound(RuntimeError):
+    message = _("Network interface %(device)s not found")
+
+    def __init__(self, message=None, device=None):
+        message = message or self.message % {'device': device}
+        super(NetworkInterfaceNotFound, self).__init__(message)

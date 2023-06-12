@@ -31,21 +31,12 @@ import tenacity
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
-from ovn_bgp_agent.utils import linux_net as l_net
-
 import ovn_bgp_agent.privileged.linux_net
+from ovn_bgp_agent.utils import linux_net as l_net
 
 LOG = logging.getLogger(__name__)
 
 _IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
-
-
-class NetworkInterfaceNotFound(RuntimeError):
-    message = 'Network interface %(device)s not found'
-
-    def __init__(self, message=None, device=None):
-        message = message or self.message % {'device': device}
-        super(NetworkInterfaceNotFound, self).__init__(message)
 
 
 class InterfaceAlreadyExists(RuntimeError):
@@ -90,7 +81,7 @@ def set_device_state(device, state):
 def ensure_vrf(vrf_name, vrf_table):
     try:
         set_device_state(vrf_name, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         create_interface(vrf_name, 'vrf', vrf_table=vrf_table,
                          state=constants.LINK_UP)
 
@@ -99,7 +90,7 @@ def ensure_vrf(vrf_name, vrf_table):
 def ensure_bridge(bridge_name):
     try:
         set_device_state(bridge_name, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         create_interface(bridge_name, 'bridge', br_stp_state=0,
                          state=constants.LINK_UP)
 
@@ -108,7 +99,7 @@ def ensure_bridge(bridge_name):
 def ensure_vxlan(vxlan_name, vni, local_ip, dstport):
     try:
         set_device_state(vxlan_name, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         # FIXME: Perhaps we need to set neigh_suppress on
         create_interface(vxlan_name, 'vxlan',
                          vxlan_id=vni,
@@ -122,7 +113,7 @@ def ensure_vxlan(vxlan_name, vni, local_ip, dstport):
 def ensure_veth(veth_name, veth_peer):
     try:
         set_device_state(veth_name, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         create_interface(veth_name, 'veth', peer=veth_peer,
                          state=constants.LINK_UP)
     set_device_state(veth_peer, constants.LINK_UP)
@@ -132,7 +123,7 @@ def ensure_veth(veth_name, veth_peer):
 def ensure_dummy_device(device):
     try:
         set_device_state(device, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         create_interface(device, 'dummy', state=constants.LINK_UP)
 
 
@@ -141,7 +132,7 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
     vlan_device_name = '{}.{}'.format(bridge, vlan_tag)
     try:
         set_device_state(vlan_device_name, constants.LINK_UP)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         create_interface(vlan_device_name, 'vlan',
                          physical_interface=bridge,
                          vlan_id=vlan_tag,
@@ -174,7 +165,7 @@ def set_master_for_device(device, master):
 def delete_device(device):
     try:
         delete_interface(device)
-    except NetworkInterfaceNotFound:
+    except agent_exc.NetworkInterfaceNotFound:
         LOG.debug("Interfaces %s already deleted.", device)
 
 
@@ -364,7 +355,7 @@ def create_routing_table_for_bridge(table_number, bridge):
 
 def _translate_ip_device_exception(e, device):
     if e.code == errno.ENODEV:
-        raise NetworkInterfaceNotFound(device=device)
+        raise agent_exc.NetworkInterfaceNotFound(device=device)
     if e.code == errno.EOPNOTSUPP:
         raise InterfaceOperationNotSupported(device=device)
     if e.code == errno.EINVAL:
@@ -450,7 +441,7 @@ def _get_link_id(ifname, raise_exception=True):
         link_id = ip.link_lookup(ifname=ifname)
     if not link_id or len(link_id) < 1:
         if raise_exception:
-            raise NetworkInterfaceNotFound(device=ifname)
+            raise agent_exc.NetworkInterfaceNotFound(device=ifname)
         LOG.debug('Interface %(dev)s not found', {'dev': ifname})
         return None
     return link_id[0]
@@ -540,6 +531,7 @@ def create_interface(ifname, kind, **kwargs):
         _translate_ip_device_exception(e, ifname)
 
 
+@ovn_bgp_agent.privileged.default.entrypoint
 def delete_interface(ifname, **kwargs):
     _run_iproute_link('del', ifname, **kwargs)
 
