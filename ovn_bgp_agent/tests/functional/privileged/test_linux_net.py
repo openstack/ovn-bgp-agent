@@ -16,7 +16,9 @@ import functools
 import random
 
 import netaddr
+from neutron_lib import constants as n_const
 from oslo_utils import uuidutils
+from pyroute2.iproute import linux as iproute_linux
 from pyroute2.netlink import rtnl
 from pyroute2.netlink.rtnl import ifaddrmsg
 
@@ -144,7 +146,7 @@ def get_devices_info(**kwargs):
     return retval
 
 
-class LinuxNetTestCase(base_functional.BaseFunctionalTestCase):
+class _LinuxNetTestCase(base_functional.BaseFunctionalTestCase):
 
     def setUp(self):
         super().setUp()
@@ -182,6 +184,9 @@ class LinuxNetTestCase(base_functional.BaseFunctionalTestCase):
         fn = functools.partial(self._assert_state, device_name,
                                constants.LINK_UP)
         test_utils.wait_until_true(fn, timeout=5)
+
+
+class IpLinkTestCase(_LinuxNetTestCase):
 
     def test_create_interface_dummy(self):
         linux_net.create_interface(self.dev_name, 'dummy')
@@ -243,56 +248,6 @@ class LinuxNetTestCase(base_functional.BaseFunctionalTestCase):
         self.assertEqual('vrf', device['kind'])
         self.assertEqual(vrf_table, device['vrf_table'])
         self._check_status(self.dev_name)
-
-    def test_add_and_delete_ip_address(self):
-        def check_ip_address(ip_address, device_name, present=True):
-            ip_addresses = get_ip_addresses(self.dev_name)
-            if l_net.get_ip_version(ip_address) == constants.IP_VERSION_6:
-                address = '{}/128'.format(ip_address)
-            else:
-                address = '{}/32'.format(ip_address)
-            for _ip in ip_addresses:
-                if _ip['cidr'] == address:
-                    if present:
-                        return
-                    else:
-                        self.fail('IP address %s present in device %s' %
-                                  (ip_address, device_name))
-
-            if present:
-                self.fail('IP address %s not found in device %s' %
-                          (ip_address, device_name))
-
-        ip_addresses = ('240.0.0.1', 'fd00::1')
-        linux_net.create_interface(self.dev_name, 'dummy')
-        for ip_address in ip_addresses:
-            linux_net.add_ip_address(ip_address, self.dev_name)
-            check_ip_address(ip_address, self.dev_name)
-            # ensure nothing breaks if same IP gets added
-            # It should raise exception that is handled in the utils
-            self.assertRaises(agent_exc.IpAddressAlreadyExists,
-                              linux_net.add_ip_address, ip_address,
-                              self.dev_name)
-
-        for ip_address in ip_addresses:
-            linux_net.delete_ip_address(ip_address, self.dev_name)
-            check_ip_address(ip_address, self.dev_name, present=False)
-            # ensure removing a missing IP is ok
-            linux_net.delete_ip_address(ip_address, self.dev_name)
-
-    def test_add_ip_address_no_device(self):
-        self.assertRaises(linux_net.NetworkInterfaceNotFound,
-                          linux_net.add_ip_address, '240.0.0.1', self.dev_name)
-
-    def test_delete_ip_address_no_device(self):
-        self.assertRaises(linux_net.NetworkInterfaceNotFound,
-                          linux_net.delete_ip_address, '240.0.0.1',
-                          self.dev_name)
-
-    def test_delete_ip_address_no_ip_on_device(self):
-        linux_net.create_interface(self.dev_name, 'dummy')
-        # No exception is raised.
-        linux_net.delete_ip_address('192.168.0.1', self.dev_name)
 
     def _check_device_master_vrf(self, device, master=None):
         device_info = self._get_device(device)
@@ -398,3 +353,173 @@ class LinuxNetTestCase(base_functional.BaseFunctionalTestCase):
             fn = functools.partial(self._assert_state, self.dev_name,
                                    constants.LINK_UP)
             test_utils.wait_until_true(fn, timeout=5)
+
+
+class IpAddressTestCase(_LinuxNetTestCase):
+
+    def test_add_and_delete_ip_address(self):
+        def check_ip_address(ip_address, device_name, present=True):
+            ip_addresses = get_ip_addresses(self.dev_name)
+            if l_net.get_ip_version(ip_address) == constants.IP_VERSION_6:
+                address = '{}/128'.format(ip_address)
+            else:
+                address = '{}/32'.format(ip_address)
+            for _ip in ip_addresses:
+                if _ip['cidr'] == address:
+                    if present:
+                        return
+                    else:
+                        self.fail('IP address %s present in device %s' %
+                                  (ip_address, device_name))
+
+            if present:
+                self.fail('IP address %s not found in device %s' %
+                          (ip_address, device_name))
+
+        ip_addresses = ('240.0.0.1', 'fd00::1')
+        linux_net.create_interface(self.dev_name, 'dummy')
+        for ip_address in ip_addresses:
+            linux_net.add_ip_address(ip_address, self.dev_name)
+            check_ip_address(ip_address, self.dev_name)
+            # ensure nothing breaks if same IP gets added,
+            # it should raise exception that is handled in the utils
+            self.assertRaises(agent_exc.IpAddressAlreadyExists,
+                              linux_net.add_ip_address, ip_address,
+                              self.dev_name)
+
+        for ip_address in ip_addresses:
+            linux_net.delete_ip_address(ip_address, self.dev_name)
+            check_ip_address(ip_address, self.dev_name, present=False)
+            # ensure removing a missing IP is ok
+            linux_net.delete_ip_address(ip_address, self.dev_name)
+
+    def test_add_ip_address_no_device(self):
+        self.assertRaises(linux_net.NetworkInterfaceNotFound,
+                          linux_net.add_ip_address, '240.0.0.1', self.dev_name)
+
+    def test_delete_ip_address_no_device(self):
+        self.assertRaises(linux_net.NetworkInterfaceNotFound,
+                          linux_net.delete_ip_address, '240.0.0.1',
+                          self.dev_name)
+
+    def test_delete_ip_address_no_ip_on_device(self):
+        linux_net.create_interface(self.dev_name, 'dummy')
+        # No exception is raised.
+        linux_net.delete_ip_address('192.168.0.1', self.dev_name)
+
+
+class IpRouteTestCase(_LinuxNetTestCase):
+
+    def setUp(self):
+        super().setUp()
+        linux_net.create_interface(self.dev_name, 'dummy',
+                                   state=constants.LINK_UP)
+        self.device = self._get_device(self.dev_name)
+
+    def _check_routes(self, cidrs, device_name, table=None, scope='link',
+                      proto='static', route_present=True):
+        table = table or iproute_linux.DEFAULT_TABLE
+        cidr = None
+        for cidr in cidrs:
+            ip_version = l_net.get_ip_version(cidr)
+            if ip_version == n_const.IP_VERSION_6:
+                scope = 0
+            if isinstance(scope, int):
+                scope = linux_net.get_scope_name(scope)
+            routes = linux_net.list_ip_routes(ip_version, device=device_name)
+            for route in routes:
+                ip = linux_net.get_attr(route, 'RTA_DST')
+                mask = route['dst_len']
+                if not (ip == str(netaddr.IPNetwork(cidr).ip) and
+                        mask == netaddr.IPNetwork(cidr).cidr.prefixlen):
+                    continue
+                self.assertEqual(table, route['table'])
+                self.assertEqual(
+                    linux_net._IP_VERSION_FAMILY_MAP[ip_version],
+                    route['family'])
+                ret_scope = linux_net.get_scope_name(route['scope'])
+                self.assertEqual(scope, ret_scope)
+                self.assertEqual(rtnl.rt_proto[proto], route['proto'])
+                break
+            else:
+                if route_present:
+                    self.fail('CIDR %s not found in the list of routes' % cidr)
+                else:
+                    return
+        if not route_present:
+            self.fail('CIDR %s found in the list of routes' % cidr)
+
+    def _add_route_device_and_check(self, cidrs, table=None, scope='link',
+                                    proto='static'):
+        for cidr in cidrs:
+            ip_version = l_net.get_ip_version(cidr)
+            family = linux_net._IP_VERSION_FAMILY_MAP[ip_version]
+            route = {'dst': cidr,
+                     'oif': self.device['index'],
+                     'table': table,
+                     'family': family,
+                     'scope': scope,
+                     'proto': proto}
+            linux_net.route_create(route)
+            # recreate route to ensure it does not break anything
+            linux_net.route_create(route)
+        self._check_routes(cidrs, self.dev_name, table=table, scope=scope,
+                           proto=proto)
+        for cidr in cidrs:
+            ip_version = l_net.get_ip_version(cidr)
+            family = linux_net._IP_VERSION_FAMILY_MAP[ip_version]
+            route = {'dst': cidr,
+                     'oif': self.device['index'],
+                     'table': table,
+                     'family': family,
+                     'scope': scope,
+                     'proto': proto}
+            linux_net.route_delete(route)
+            # redelete route to ensure it does not break anything
+            linux_net.route_delete(route)
+        self._check_routes(cidrs, self.dev_name, table=table, scope=scope,
+                           proto=proto, route_present=False)
+
+    def test_add_route_device(self):
+        cidrs = ['192.168.1.0/24', '2001:db1::/64']
+        self._add_route_device_and_check(cidrs=cidrs, table=None)
+
+    def test_add_route_device_table(self):
+        cidrs = ['192.168.2.0/24', '2001:db2::/64']
+        self._add_route_device_and_check(cidrs=cidrs, table=100)
+
+    def test_add_route_device_scope_site(self):
+        cidrs = ['192.168.3.0/24', '2003:db3::/64']
+        self._add_route_device_and_check(cidrs=cidrs, scope='site')
+
+    def test_add_route_device_scope_host(self):
+        cidrs = ['192.168.4.0/24', '2003:db4::/64']
+        self._add_route_device_and_check(cidrs=cidrs, scope='host')
+
+    def test_add_route_device_proto_static(self):
+        cidrs = ['192.168.5.0/24', '2003:db5::/64']
+        self._add_route_device_and_check(cidrs=cidrs, proto='static')
+
+    def test_add_route_device_proto_redirect(self):
+        cidrs = ['192.168.6.0/24', '2003:db6::/64']
+        self._add_route_device_and_check(cidrs=cidrs, proto='redirect')
+
+    def test_add_route_device_proto_kernel(self):
+        cidrs = ['192.168.7.0/24', '2003:db7::/64']
+        self._add_route_device_and_check(cidrs=cidrs, proto='kernel')
+
+    def test_add_route_device_proto_boot(self):
+        cidrs = ['192.168.8.0/24', '2003:db8::/64']
+        self._add_route_device_and_check(cidrs=cidrs, proto='boot')
+
+    def test_add_unreachable_route(self):
+        vrf_table = random.randint(10, 2000)
+        linux_net.create_interface(self.dev_name2, 'vrf', vrf_table=vrf_table)
+        linux_net.add_unreachable_route(self.dev_name2)
+        for ip_version in (n_const.IP_VERSION_4, n_const.IP_VERSION_6):
+            routes = linux_net.list_ip_routes(ip_version, table=vrf_table)
+            self.assertEqual(1, len(routes))
+            self.assertEqual(rtnl.rt_proto['boot'], routes[0]['proto'])
+            self.assertEqual(rtnl.rtypes['RTN_UNREACHABLE'], routes[0]['type'])
+            self.assertEqual(4278198272,
+                             linux_net.get_attr(routes[0], 'RTA_PRIORITY'))

@@ -47,27 +47,6 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.dev = 'ethfake'
         self.mac = 'aa:bb:cc:dd:ee:ff'
 
-    def test_route_create(self):
-        fake_route = {'dst': 'default',
-                      'oif': 1,
-                      'table': 10,
-                      'scope': 253,
-                      'proto': 3}
-        priv_linux_net.route_create(fake_route)
-        self.fake_ndb.routes.create.assert_called_once_with(fake_route)
-
-    def test_route_delete(self):
-        fake_route = mock.MagicMock()
-        self.fake_ndb.routes.__getitem__.return_value = fake_route
-        priv_linux_net.route_delete(fake_route)
-        fake_route.__enter__().remove.assert_called_once_with()
-
-    def test_route_delete_keyerror(self):
-        fake_route = mock.MagicMock()
-        self.fake_ndb.routes.__getitem__.side_effect = KeyError
-        priv_linux_net.route_delete(fake_route)
-        fake_route.__enter__().remove.assert_not_called()
-
     def test_rule_create(self):
         fake_rule = mock.MagicMock()
         self.fake_ndb.rules.__getitem__.side_effect = KeyError
@@ -183,28 +162,6 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
 
         self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
         self.fake_iproute.neigh.assert_not_called()
-
-    def test_add_unreachable_route(self):
-        priv_linux_net.add_unreachable_route('fake-vrf')
-        calls = [mock.call('ip', -4, 'route', 'add', 'vrf', 'fake-vrf',
-                           'unreachable', 'default', 'metric', '4278198272',
-                           env_variables=mock.ANY),
-                 mock.call('ip', -6, 'route', 'add', 'vrf', 'fake-vrf',
-                           'unreachable', 'default', 'metric', '4278198272',
-                           env_variables=mock.ANY)]
-        self.mock_exc.assert_has_calls(calls)
-
-    def test_add_unreachable_route_exception(self):
-        self.mock_exc.side_effect = FakeException()
-        self.assertRaises(
-            FakeException,
-            priv_linux_net.add_unreachable_route, 'fake-vrf')
-
-    def test_add_unreachable_route_exception_file_exists(self):
-        exp = FakeException()
-        exp.stderr = 'RTNETLINK answers: File exists'
-        self.mock_exc.side_effect = exp
-        self.assertIsNone(priv_linux_net.add_unreachable_route('fake-vrf'))
 
     @mock.patch('builtins.open', new_callable=mock.mock_open())
     def test_create_routing_table_for_bridge(self, mock_o):

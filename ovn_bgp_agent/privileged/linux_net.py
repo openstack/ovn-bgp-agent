@@ -18,7 +18,6 @@ import os
 import socket
 
 import netaddr
-from socket import AF_INET6
 
 from oslo_concurrency import processutils
 from oslo_log import log as logging
@@ -26,6 +25,7 @@ import pyroute2
 from pyroute2 import iproute
 from pyroute2 import netlink as pyroute_netlink
 from pyroute2.netlink import exceptions as netlink_exceptions
+from pyroute2.netlink import rtnl
 from pyroute2.netlink.rtnl import ndmsg
 import tenacity
 
@@ -70,6 +70,16 @@ class InvalidArgument(RuntimeError):
     def __init__(self, message=None, device=None):
         message = message or self.message % {'device': device}
         super(InvalidArgument, self).__init__(message)
+
+
+def get_scope_name(scope):
+    """Return the name of the scope or the scope number if the name is unknown.
+
+    For backward compatibility (with "ip" tool) "global" scope is converted to
+    "universe" before converting to number
+    """
+    scope = 'universe' if scope == 'global' else scope
+    return rtnl.rt_scope.get(scope, scope)
 
 
 def set_device_state(device, state):
@@ -170,21 +180,22 @@ def delete_device(device):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def route_create(route):
-    try:
-        with pyroute2.NDB() as ndb:
-            ndb.routes.create(route).commit()
-    except KeyError:  # Already exists
-        LOG.debug("Route %s already exists.", route)
+    scope = 'link' if 'scope' not in route else route.pop('scope')
+    if scope is not None:
+        route['scope'] = get_scope_name(scope)
+    if 'family' not in route:
+        route['family'] = socket.AF_INET
+    _run_iproute_route('replace', **route)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def route_delete(route):
-    with pyroute2.NDB() as ndb:
-        try:
-            with ndb.routes[route] as r:
-                r.remove()
-        except (KeyError, ValueError):
-            LOG.debug("Route already deleted: {}".format(route))
+    scope = 'link' if 'scope' not in route else route.pop('scope')
+    if scope is not None:
+        route['scope'] = get_scope_name(scope)
+    if 'family' not in route:
+        route['family'] = socket.AF_INET
+    _run_iproute_route('del', **route)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
@@ -322,7 +333,7 @@ def add_ip_nei(ip, lladdr, dev):
             iproute.neigh('replace',
                           dst=ip,
                           lladdr=lladdr,
-                          family=AF_INET6,
+                          family=socket.AF_INET6,
                           ifindex=network_bridge_if,
                           state=ndmsg.states['permanent'])
         else:
@@ -352,7 +363,7 @@ def del_ip_nei(ip, lladdr, dev):
             iproute.neigh('del',
                           dst=ip.split("/")[0],
                           lladdr=lladdr,
-                          family=AF_INET6,
+                          family=socket.AF_INET6,
                           ifindex=network_bridge_if,
                           state=ndmsg.states['permanent'])
         else:
@@ -363,22 +374,21 @@ def del_ip_nei(ip, lladdr, dev):
                           state=ndmsg.states['permanent'])
 
 
-@ovn_bgp_agent.privileged.default.entrypoint
 def add_unreachable_route(vrf_name):
-    # FIXME: This should use pyroute instead but I didn't find
-    # out how
-    env = dict(os.environ)
-    env['LC_ALL'] = 'C'
-    for ip_version in [-4, -6]:
-        command = ["ip", ip_version, "route", "add", "vrf", vrf_name,
-                   "unreachable", "default", "metric", "4278198272"]
-        try:
-            processutils.execute(*command, env_variables=env)
-        except Exception as e:
-            if "RTNETLINK answers: File exists" in e.stderr:
-                continue
-            LOG.error("Unable to execute %s. Exception: %s", command, e)
-            raise
+    # Find vrf table.
+    device = get_link_device(vrf_name)
+    ifla_linkinfo = get_attr(device, 'IFLA_LINKINFO')
+    ifla_data = get_attr(ifla_linkinfo, 'IFLA_INFO_DATA')
+    vrf_table = get_attr(ifla_data, 'IFLA_VRF_TABLE')
+    for ip_version in (socket.AF_INET, socket.AF_INET6):
+        kwargs = {'dst': 'default',
+                  'family': ip_version,
+                  'table': vrf_table,
+                  'type': 'unreachable',
+                  'scope': None,
+                  'proto': 'boot',
+                  'priority': 4278198272}
+        route_create(kwargs)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
@@ -405,6 +415,16 @@ def _translate_ip_addr_exception(e, ip, device):
     if e.code == errno.EADDRNOTAVAIL:
         LOG.debug('No need to delete IP address %s on dev %s as it does '
                   'not exist', ip, device)
+        return
+    raise e
+
+
+def _translate_ip_route_exception(e, kwargs):
+    if e.code == errno.EEXIST:  # Already exists
+        LOG.debug("Route %s already exists.", kwargs)
+        return
+    if e.code == errno.ENOENT or e.code == errno.ESRCH:  # Not found
+        LOG.debug("Route already deleted: %s", kwargs)
         return
     raise e
 
@@ -515,6 +535,14 @@ def _run_iproute_addr(command, device, **kwargs):
         _translate_ip_addr_exception(e, ip=kwargs['address'], device=device)
 
 
+def _run_iproute_route(command, **kwargs):
+    try:
+        with iproute.IPRoute() as ip:
+            ip.route(command, **kwargs)
+    except netlink_exceptions.NetlinkError as e:
+        _translate_ip_route_exception(e, kwargs)
+
+
 @ovn_bgp_agent.privileged.default.entrypoint
 def create_interface(ifname, kind, **kwargs):
     ifname = ifname[:15]
@@ -574,3 +602,21 @@ def get_ip_addresses(**kwargs):
     """
     with iproute.IPRoute() as ip:
         return make_serializable(ip.get_addr(**kwargs))
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+@ovn_bgp_agent.privileged.default.entrypoint
+def list_ip_routes(ip_version, device=None, table=None, **kwargs):
+    """List IP routes"""
+    kwargs['family'] = _IP_VERSION_FAMILY_MAP[ip_version]
+    if device:
+        kwargs['oif'] = _get_link_id(device)
+    if table:
+        kwargs['table'] = int(table)
+    with iproute.IPRoute() as ip:
+        return make_serializable(ip.route('show', **kwargs))
