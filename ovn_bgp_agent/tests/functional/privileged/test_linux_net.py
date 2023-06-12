@@ -563,3 +563,52 @@ class IpRuleTestCase(_LinuxNetTestCase):
     def test_add_and_delete_ip_rule_v6(self):
         cidrs = ['2001:db8::/64', 'fe80::/10']
         self._test_add_and_delete_ip_rule(n_const.IP_VERSION_6, cidrs)
+
+
+class IpNeighTestCase(_LinuxNetTestCase):
+
+    def setUp(self):
+        super().setUp()
+        linux_net.create_interface(self.dev_name, 'dummy',
+                                   state=constants.LINK_UP)
+        self.device = self._get_device(self.dev_name)
+
+    def test_add_and_delete_neigh(self):
+        # Initial check, nothing in the ARP table.
+        neigh4 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_4)
+        neigh6 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_6)
+        self.assertEqual([], neigh4)
+        self.assertEqual([], neigh6)
+
+        # Add a set of IP/MAC addresses.
+        ip_and_mac = [('10.0.0.1', 'ca:fe:ca:fe:00:01'),
+                      ('10.0.0.2', 'ca:fe:ca:fe:00:02'),
+                      ('2001:db8::3', 'ca:fe:ca:fe:00:03'),
+                      ('2001:db8::4', 'ca:fe:ca:fe:00:04')]
+        for ip, mac in ip_and_mac:
+            linux_net.add_ip_nei(ip, mac, self.dev_name)
+        neigh4 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_4)
+        neigh6 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_6)
+        self.assertEqual(2, len(neigh4))
+        self.assertEqual(2, len(neigh6))
+        for neigh in neigh4 + neigh6:
+            for ip, mac in ip_and_mac:
+                if ip == neigh['dst'] and mac == neigh['lladdr']:
+                    break
+            else:
+                self.fail('IP/MAC %s/%s is not present in the ip-neigh table' %
+                          (neigh['dst'], neigh['lladdr']))
+
+        # Delete the entries.
+        for ip, mac in ip_and_mac:
+            linux_net.del_ip_nei(ip, mac, self.dev_name)
+        neigh4 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_4)
+        neigh6 = linux_net.get_neigh_entries(self.dev_name,
+                                             constants.IP_VERSION_6)
+        self.assertEqual(0, len(neigh4))
+        self.assertEqual(0, len(neigh6))

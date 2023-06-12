@@ -13,7 +13,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from socket import AF_INET6
 from unittest import mock
 
 from oslo_concurrency import processutils
@@ -98,45 +97,6 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         exp.stderr = 'No such file or directory'
         self.mock_exc.side_effect = exp
         self.assertIsNone(priv_linux_net.del_ndp_proxy(self.ipv6, self.dev))
-
-    def test_add_ip_nei(self):
-        priv_linux_net.add_ip_nei(self.ip, self.mac, self.dev)
-
-        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
-        self.fake_iproute.neigh.assert_called_once_with(
-            'replace', dst=self.ip, lladdr=self.mac,
-            ifindex=mock.ANY, state=mock.ANY)
-
-    def test_add_ip_nei_ipv6(self):
-        priv_linux_net.add_ip_nei(self.ipv6, self.mac, self.dev)
-
-        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
-        self.fake_iproute.neigh.assert_called_once_with(
-            'replace', dst=self.ipv6, family=AF_INET6,
-            lladdr=self.mac, ifindex=mock.ANY, state=mock.ANY)
-
-    def test_del_ip_nei(self):
-        priv_linux_net.del_ip_nei(self.ip, self.mac, self.dev)
-
-        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
-        self.fake_iproute.neigh.assert_called_once_with(
-            'del', dst=self.ip, lladdr=self.mac,
-            ifindex=mock.ANY, state=mock.ANY)
-
-    def test_del_ip_nei_ipv6(self):
-        priv_linux_net.del_ip_nei(self.ipv6, self.mac, self.dev)
-
-        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
-        self.fake_iproute.neigh.assert_called_once_with(
-            'del', dst=self.ipv6, family=AF_INET6,
-            lladdr=self.mac, ifindex=mock.ANY, state=mock.ANY)
-
-    def test_del_ip_nei_index_error(self):
-        self.fake_iproute.link_lookup.side_effect = IndexError
-        priv_linux_net.del_ip_nei(self.ip, self.mac, self.dev)
-
-        self.fake_iproute.link_lookup.assert_called_once_with(ifname=self.dev)
-        self.fake_iproute.neigh.assert_not_called()
 
     @mock.patch('builtins.open', new_callable=mock.mock_open())
     def test_create_routing_table_for_bridge(self, mock_o):
