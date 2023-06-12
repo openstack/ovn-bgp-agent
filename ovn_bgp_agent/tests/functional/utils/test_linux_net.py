@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import socket
+
+import netaddr
 from oslo_utils import uuidutils
 
 from ovn_bgp_agent import exceptions as agent_exc
@@ -22,7 +25,10 @@ from ovn_bgp_agent.tests.functional.privileged import test_linux_net as \
 from ovn_bgp_agent.utils import linux_net
 
 
-class GetInterfaceAddressTestCase(base_functional.BaseFunctionalTestCase):
+_IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
+
+
+class GetInterfaceTestCase(base_functional.BaseFunctionalTestCase):
 
     def _delete_interfaces(self, dev_names):
         for dev_name in dev_names:
@@ -37,6 +43,25 @@ class GetInterfaceAddressTestCase(base_functional.BaseFunctionalTestCase):
             if device['name'] == device_name:
                 return device
 
+    def test_get_interfaces(self):
+        dev_names = list(map(lambda x: uuidutils.generate_uuid()[:15],
+                             range(3)))
+        self.addCleanup(self._delete_interfaces, dev_names)
+        for dev_name in dev_names:
+            priv_linux_net.create_interface(dev_name, 'dummy')
+        ret = linux_net.get_interfaces()
+        for dev in dev_names:
+            self.assertIn(dev, ret)
+
+    def test_get_interface_index(self):
+        dev_name = uuidutils.generate_uuid()[:15]
+        self.addCleanup(self._delete_interfaces, [dev_name])
+        priv_linux_net.create_interface(dev_name, 'dummy')
+        device = self._get_device(dev_name)
+
+        ret = linux_net.get_interface_index(dev_name)
+        self.assertEqual(device['index'], ret)
+
     def test_get_interface_address(self):
         dev_names = list(map(lambda x: uuidutils.generate_uuid()[:15],
                              range(5)))
@@ -50,3 +75,59 @@ class GetInterfaceAddressTestCase(base_functional.BaseFunctionalTestCase):
     def test_get_interface_address_no_interface(self):
         self.assertRaises(agent_exc.NetworkInterfaceNotFound,
                           linux_net.get_interface_address, 'no_interface_name')
+
+    def test_get_exposed_ips(self):
+        ips = ['240.0.0.1', 'fd00::1']
+        dev_name = uuidutils.generate_uuid()[:15]
+        self.addCleanup(self._delete_interfaces, [dev_name])
+        priv_linux_net.create_interface(dev_name, 'dummy')
+        for ip in ips:
+            priv_linux_net.add_ip_address(ip, dev_name)
+
+        ret = linux_net.get_exposed_ips(dev_name)
+        self.assertEqual(ips, ret)
+
+    def test_get_nic_ip(self):
+        ips = ['240.0.0.1', 'fd00::1']
+        dev_name = uuidutils.generate_uuid()[:15]
+        self.addCleanup(self._delete_interfaces, [dev_name])
+        priv_linux_net.create_interface(dev_name, 'dummy')
+        for ip in ips:
+            priv_linux_net.add_ip_address(ip, dev_name)
+
+        ret = linux_net.get_nic_ip(dev_name)
+        self.assertEqual(ips, ret)
+
+
+class GetRulesTestCase(base_functional.BaseFunctionalTestCase):
+
+    def _delete_rules(self, rules):
+        for rule in rules:
+            try:
+                priv_linux_net.rule_delete(rule)
+            except Exception:
+                pass
+
+    def test_get_ovn_ip_rules(self):
+        cidrs = ['192.168.0.0/24', '172.90.0.0/16', 'fd00::1/128']
+        table = 100
+        expected_rules = {}
+        rules_added = []
+        for cidr in cidrs:
+            _ip = netaddr.IPNetwork(cidr)
+            ip_version = linux_net.get_ip_version(cidr)
+            rule = {'dst': str(_ip.ip),
+                    'dst_len': _ip.netmask.netmask_bits(),
+                    'table': table,
+                    'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+            dst = "{}/{}".format(str(_ip.ip), _ip.netmask.netmask_bits())
+            rules_added.append(rule)
+            expected_rules[dst] = {
+                'table': table,
+                'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+        self.addCleanup(self._delete_rules, rules_added)
+        for rule in rules_added:
+            priv_linux_net.rule_create(rule)
+
+        ret = linux_net.get_ovn_ip_rules([table])
+        self.assertEqual(expected_rules, ret)

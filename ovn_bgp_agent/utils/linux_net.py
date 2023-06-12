@@ -43,9 +43,9 @@ def get_ip_version(ip):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def get_interfaces(filter_out=[]):
-    with pyroute2.NDB() as ndb:
-        return [iface.ifname for iface in ndb.interfaces
-                if iface.ifname not in filter_out]
+    with pyroute2.IPRoute() as ipr:
+        return [iface.get_attr('IFLA_IFNAME') for iface in ipr.get_links()
+                if iface.get_attr('IFLA_IFNAME') not in filter_out]
 
 
 @tenacity.retry(
@@ -55,8 +55,11 @@ def get_interfaces(filter_out=[]):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def get_interface_index(nic):
-    with pyroute2.NDB() as ndb:
-        return ndb.interfaces[nic]['index']
+    try:
+        with pyroute2.IPRoute() as ipr:
+            return ipr.link_lookup(ifname=nic)[0]
+    except IndexError:
+        raise agent_exc.NetworkInterfaceNotFound(device=nic)
 
 
 @tenacity.retry(
@@ -69,8 +72,7 @@ def get_interface_address(nic):
     try:
         with pyroute2.IPRoute() as ipr:
             idx = ipr.link_lookup(ifname=nic)[0]
-            mac = ipr.get_links(idx)[0].get_attr('IFLA_ADDRESS')
-            return mac
+            return ipr.get_links(idx)[0].get_attr('IFLA_ADDRESS')
     except IndexError:
         raise agent_exc.NetworkInterfaceNotFound(device=nic)
 
@@ -186,24 +188,23 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
 def _ensure_routing_table_routes(ovn_routing_tables, bridge):
     # add default route on that table if it does not exist
     extra_routes = []
+    bridge_idx = get_interface_index(bridge)
 
-    with pyroute2.NDB() as ndb:
+    with pyroute2.IPRoute() as ip:
         table_route_dsts = set(
             [
-                (r.dst, r.dst_len)
-                for r in ndb.routes.summary().filter(
-                    table=ovn_routing_tables[bridge]
-                )
+                (r.get_attr('RTA_DST'), r['dst_len'])
+                for r in ip.get_routes(table=ovn_routing_tables[bridge])
             ]
         )
 
         if not table_route_dsts:
-            r1 = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
+            r1 = {'dst': 'default', 'oif': bridge_idx,
                   'table': ovn_routing_tables[bridge], 'scope': 253,
                   'proto': 3}
             ovn_bgp_agent.privileged.linux_net.route_create(r1)
 
-            r2 = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
+            r2 = {'dst': 'default', 'oif': bridge_idx,
                   'table': ovn_routing_tables[bridge], 'family': AF_INET6,
                   'proto': 3}
             ovn_bgp_agent.privileged.linux_net.route_create(r2)
@@ -213,54 +214,52 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
             for (dst, dst_len) in table_route_dsts:
                 if not dst:  # default route
                     try:
-                        route = ndb.routes[
-                            {'table': ovn_routing_tables[bridge],
-                             'dst': '',
-                             'family': AF_INET}]
-                        if (bridge ==
-                                ndb.interfaces[{'index': route['oif']}][
-                                    'ifname']):
+                        route = [
+                            r for r in ip.get_routes(
+                                table=ovn_routing_tables[bridge],
+                                family=AF_INET)
+                            if not r.get_attr('RTA_DST')][0]
+                        if bridge_idx == route.get_attr('RTA_OIF'):
                             route_missing = False
                         else:
                             extra_routes.append(route)
-                    except KeyError:
+                    except IndexError:
                         pass  # no ipv4 default rule
                     try:
-                        route_6 = ndb.routes[
-                            {'table': ovn_routing_tables[bridge],
-                             'dst': '',
-                             'family': AF_INET6}]
-                        if (bridge ==
-                                ndb.interfaces[{'index': route_6['oif']}][
-                                    'ifname']):
+                        route_6 = [
+                            r for r in ip.get_routes(
+                                table=ovn_routing_tables[bridge],
+                                family=AF_INET6)
+                            if not r.get_attr('RTA_DST')][0]
+                        if bridge_idx == route_6.get_attr('RTA_OIF'):
                             route6_missing = False
                         else:
                             extra_routes.append(route_6)
-                    except KeyError:
+                    except IndexError:
                         pass  # no ipv6 default rule
                 else:
                     if get_ip_version(dst) == constants.IP_VERSION_6:
                         extra_routes.append(
-                            ndb.routes[{'table': ovn_routing_tables[bridge],
-                                        'dst': dst,
-                                        'dst_len': dst_len,
-                                        'family': AF_INET6}]
-                        )
+                            ip.get_routes(
+                                table=ovn_routing_tables[bridge],
+                                dst=dst,
+                                dst_len=dst_len,
+                                family=AF_INET6)[0])
                     else:
                         extra_routes.append(
-                            ndb.routes[{'table': ovn_routing_tables[bridge],
-                                        'dst': dst,
-                                        'dst_len': dst_len,
-                                        'family': AF_INET}]
-                        )
+                            ip.get_routes(
+                                table=ovn_routing_tables[bridge],
+                                dst=dst,
+                                dst_len=dst_len,
+                                family=AF_INET)[0])
 
             if route_missing:
-                r = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
+                r = {'dst': 'default', 'oif': bridge_idx,
                      'table': ovn_routing_tables[bridge], 'scope': 253,
                      'proto': 3}
                 ovn_bgp_agent.privileged.linux_net.route_create(r)
             if route6_missing:
-                r = {'dst': 'default', 'oif': ndb.interfaces[bridge]['index'],
+                r = {'dst': 'default', 'oif': bridge_idx,
                      'table': ovn_routing_tables[bridge], 'family': AF_INET6,
                      'proto': 3}
                 ovn_bgp_agent.privileged.linux_net.route_create(r)
@@ -275,14 +274,12 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
     reraise=True)
 def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
     extra_routes = []
-
-    with pyroute2.NDB() as ndb:
+    bridge_idx = get_interface_index(bridge)
+    with pyroute2.IPRoute() as ip:
         table_route_dsts = set(
             [
-                (r.dst, r.dst_len)
-                for r in ndb.routes.summary().filter(
-                    table=ovn_routing_tables[bridge]
-                )
+                (r.get_attr('RTA_DST'), r['dst_len'])
+                for r in ip.get_routes(table=ovn_routing_tables[bridge])
             ]
         )
 
@@ -292,40 +289,40 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
         for (dst, dst_len) in table_route_dsts:
             if not dst:  # default route
                 try:
-                    route = ndb.routes[
-                        {'table': ovn_routing_tables[bridge],
-                         'dst': '',
-                         'family': AF_INET}]
-                    if (bridge != ndb.interfaces[{'index': route['oif']}][
-                            'ifname']):
+                    route = [
+                        r for r in ip.get_routes(
+                            table=ovn_routing_tables[bridge],
+                            family=AF_INET)
+                        if not r.get_attr('RTA_DST')][0]
+                    if bridge_idx != route.get_attr('RTA_OIF'):
                         extra_routes.append(route)
-                except KeyError:
-                    pass  # no ipv4 default rule
+                except IndexError:
+                    pass  # no IPv4 default rule
                 try:
-                    route_6 = ndb.routes[
-                        {'table': ovn_routing_tables[bridge],
-                         'dst': '',
-                         'family': AF_INET6}]
-                    if (bridge != ndb.interfaces[{'index': route_6['oif']}][
-                            'ifname']):
+                    route_6 = [
+                        r for r in ip.get_routes(
+                            table=ovn_routing_tables[bridge],
+                            family=AF_INET6)
+                        if not r.get_attr('RTA_DST')][0]
+                    if bridge_idx != route_6.get_attr('RTA_OIF'):
                         extra_routes.append(route_6)
-                except KeyError:
-                    pass  # no ipv6 default rule
+                except IndexError:
+                    pass  # no IPv6 default rule
             else:
                 if get_ip_version(dst) == constants.IP_VERSION_6:
                     extra_routes.append(
-                        ndb.routes[{'table': ovn_routing_tables[bridge],
-                                    'dst': dst,
-                                    'dst_len': dst_len,
-                                    'family': AF_INET6}]
-                    )
+                        ip.get_routes(
+                            table=ovn_routing_tables[bridge],
+                            dst=dst,
+                            dst_len=dst_len,
+                            family=AF_INET6)[0])
                 else:
                     extra_routes.append(
-                        ndb.routes[{'table': ovn_routing_tables[bridge],
-                                    'dst': dst,
-                                    'dst_len': dst_len,
-                                    'family': AF_INET}]
-                    )
+                        ip.get_routes(
+                            table=ovn_routing_tables[bridge],
+                            dst=dst,
+                            dst_len=dst_len,
+                            family=AF_INET)[0])
     return extra_routes
 
 
@@ -359,12 +356,17 @@ def enable_proxy_arp(device):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def get_exposed_ips(nic):
-    exposed_ips = []
-    with pyroute2.NDB() as ndb:
-        exposed_ips = [ip.address
-                       for ip in ndb.interfaces[nic].ipaddr.summary()
-                       if ip.prefixlen == 32 or ip.prefixlen == 128]
-    return exposed_ips
+    nic_idx = get_interface_index(nic)
+    try:
+        with pyroute2.IPRoute() as ipr:
+            return [ip.get_attr('IFA_ADDRESS')
+                    for ip in ipr.get_addr(index=nic_idx)
+                    if ip['prefixlen'] in (32, 128)]
+    except pyroute2.netlink.exceptions.NetlinkError:
+        # Nic does not exist
+        LOG.debug("NIC %s does not yet exist, so it does not have exposed IPs",
+                  nic)
+        return []
 
 
 @tenacity.retry(
@@ -374,38 +376,24 @@ def get_exposed_ips(nic):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def get_nic_ip(nic, prefixlen_filter=None):
-    exposed_ips = []
-    with pyroute2.NDB() as ndb:
+    nic_idx = get_interface_index(nic)
+    with pyroute2.IPRoute() as ipr:
         if prefixlen_filter:
-            exposed_ips = [ip.address
-                           for ip in ndb.interfaces[nic].ipaddr.summary(
-                               ).filter(prefixlen=prefixlen_filter)]
+            return [
+                ip.get_attr('IFA_ADDRESS')
+                for ip in ipr.get_addr(index=nic_idx,
+                                       prefixlen=prefixlen_filter)
+            ]
         else:
-            exposed_ips = [ip.address
-                           for ip in ndb.interfaces[nic].ipaddr.summary()]
+            return [
+                ip.get_attr('IFA_ADDRESS')
+                for ip in ipr.get_addr(index=nic_idx)
+            ]
 
-    return exposed_ips
 
-
-@tenacity.retry(
-    retry=tenacity.retry_if_exception_type(
-        netlink_exceptions.NetlinkDumpInterrupted),
-    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
-    stop=tenacity.stop_after_delay(8),
-    reraise=True)
 def get_exposed_ips_on_network(nic, network):
-    exposed_ips = []
-    with pyroute2.NDB() as ndb:
-        try:
-            exposed_ips = [ip.address
-                           for ip in ndb.interfaces[nic].ipaddr.summary()
-                           if ((ip.prefixlen == 32 or ip.prefixlen == 128) and
-                               ipaddress.ip_address(ip.address) in network)]
-        except KeyError:
-            # Nic does not exists
-            LOG.debug("Nic %s does not yet exists, so it does not have "
-                      "exposed IPs", nic)
-    return exposed_ips
+    exposed_ips = get_exposed_ips(nic)
+    return [ip for ip in exposed_ips if ipaddress.ip_address(ip) in network]
 
 
 @tenacity.retry(
@@ -434,14 +422,17 @@ def get_exposed_routes_on_network(table_ids, network):
     wait=tenacity.wait_exponential(multiplier=0.02, max=1),
     stop=tenacity.stop_after_delay(8),
     reraise=True)
-def get_ovn_ip_rules(routing_table):
-    # get the rules pointing to ovn bridges
+def get_ovn_ip_rules(routing_tables):
     ovn_ip_rules = {}
-    with pyroute2.NDB() as ndb:
-        rules_info = [(rule.table,
-                       "{}/{}".format(rule.dst, rule.dst_len),
-                       rule.family) for rule in ndb.rules.dump()
-                      if rule.table in routing_table]
+    with pyroute2.IPRoute() as ipr:
+        rules_info = [
+            (rule.get_attr('FRA_TABLE'),
+             "{}/{}".format(rule.get_attr('FRA_DST'), rule['dst_len']),
+             rule['family'])
+            for rule in (
+                ipr.get_rules(family=AF_INET) + ipr.get_rules(family=AF_INET6))
+            if rule.get_attr('FRA_TABLE') in routing_tables
+        ]
         for table, dst, family in rules_info:
             ovn_ip_rules[dst] = {'table': table, 'family': family}
     return ovn_ip_rules
@@ -457,39 +448,40 @@ def delete_ip_rules(ip_rules):
 
 def delete_bridge_ip_routes(routing_tables, routing_tables_routes,
                             extra_routes):
-    with pyroute2.NDB() as ndb:
-        for device, routes_info in routing_tables_routes.items():
-            if not extra_routes.get(device):
-                continue
-            for route_info in routes_info:
-                oif = ndb.interfaces[device]['index']
-                if route_info['vlan']:
-                    vlan_device_name = '{}.{}'.format(device,
-                                                      route_info['vlan'])
-                    oif = ndb.interfaces[vlan_device_name]['index']
-                if 'gateway' in route_info['route'].keys():  # subnet route
-                    possible_matchings = [
-                        r for r in extra_routes[device]
-                        if (r['dst'] == route_info['route']['dst'] and
-                            r['dst_len'] == route_info['route']['dst_len'] and
-                            r['gateway'] == route_info['route']['gateway'])]
-                else:  # cr-lrp
-                    possible_matchings = [
-                        r for r in extra_routes[device]
-                        if (r['dst'] == route_info['route']['dst'] and
-                            r['dst_len'] == route_info['route']['dst_len'] and
-                            r['oif'] == oif)]
-                for r in possible_matchings:
-                    extra_routes[device].remove(r)
+    for device, routes_info in routing_tables_routes.items():
+        if not extra_routes.get(device):
+            continue
+        for route_info in routes_info:
+            oif = get_interface_index(device)
+            if route_info['vlan']:
+                vlan_device_name = '{}.{}'.format(device,
+                                                  route_info['vlan'])
+                oif = get_interface_index(vlan_device_name)
+            if 'gateway' in route_info['route'].keys():  # subnet route
+                possible_matchings = [
+                    r for r in extra_routes[device]
+                    if (r.get_attr('RTA_DST') == route_info['route']['dst'] and
+                        r['dst_len'] == route_info['route']['dst_len'] and
+                        r.get_attr('RTA_GATEWAY') == route_info['route'][
+                            'gateway'])]
+            else:  # cr-lrp
+                possible_matchings = [
+                    r for r in extra_routes[device]
+                    if (r.get_attr('RTA_DST') == route_info['route']['dst'] and
+                        r['dst_len'] == route_info['route']['dst_len'] and
+                        r.get_attr('RTA_OIF') == oif)]
+            for r in possible_matchings:
+                extra_routes[device].remove(r)
 
     for bridge, routes in extra_routes.items():
         for route in routes:
-            r_info = {'dst': route['dst'],
+            r_info = {'dst': route.get_attr('RTA_DST'),
                       'dst_len': route['dst_len'],
                       'family': route['family'],
-                      'oif': route['oif'],
-                      'gateway': route['gateway'],
+                      'oif': route.get_attr('RTA_OIF'),
                       'table': routing_tables[bridge]}
+            if route.get_attr('RTA_GATEWAY'):
+                r_info['gateway'] = route.get_attr('RTA_GATEWAY')
             ovn_bgp_agent.privileged.linux_net.route_delete(r_info)
 
 
@@ -505,10 +497,11 @@ def delete_routes_from_table(table):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def _get_table_routes(table):
-    with pyroute2.NDB() as ndb:
-        # FIXME: problem in pyroute2 removing routes with local (254) scope
-        return [r for r in ndb.routes.dump().filter(table=table)
-                if r.scope != 254 and r.proto != 186]
+    with pyroute2.IPRoute() as ipr:
+        return [
+            r for r in ipr.get_routes(table=table)
+            if r['scope'] != 254 and r['proto'] != 186
+        ]
 
 
 @tenacity.retry(
@@ -518,10 +511,15 @@ def _get_table_routes(table):
     stop=tenacity.stop_after_delay(8),
     reraise=True)
 def get_routes_on_tables(table_ids):
-    with pyroute2.NDB() as ndb:
-        # NOTE: skip bgp routes (proto 186)
-        return [r for r in ndb.routes.dump()
-                if r.table in table_ids and r.dst != '' and r.proto != 186]
+    routes = []
+    with pyroute2.IPRoute() as ipr:
+        for table_id in table_ids:
+            table_routes = [
+                r for r in ipr.get_routes(table=table_id)
+                if r.get_attr('RTA_DST') and r['proto'] != 186
+            ]
+            routes.extend(table_routes)
+    return routes
 
 
 def delete_ip_routes(routes):
@@ -549,22 +547,19 @@ def add_ips_to_dev(nic, ips, clear_local_route_at_table=False):
         try:
             ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ip, nic)
         except agent_exc.IpAddressAlreadyExists:
-            # NDB raises KeyError: 'object exists'
-            # if the ip is already added
             already_added_ips.append(ip)
 
     if clear_local_route_at_table:
         for ip in ips:
             if ip in already_added_ips:
                 continue
-            with pyroute2.NDB() as ndb:
-                oif = ndb.interfaces[nic]['index']
-                route = {'table': clear_local_route_at_table,
-                         'proto': 2,
-                         'scope': 254,
-                         'dst': ip,
-                         'oif': oif}
-                ovn_bgp_agent.privileged.linux_net.route_delete(route)
+            oif = get_interface_index(nic)
+            route = {'table': clear_local_route_at_table,
+                     'proto': 2,
+                     'scope': 254,
+                     'dst': ip,
+                     'oif': oif}
+            ovn_bgp_agent.privileged.linux_net.route_delete(route)
 
 
 def del_ips_from_dev(nic, ips):
@@ -601,8 +596,6 @@ def add_ip_nei(ip, lladdr, dev):
     param lladdr: link layer address of the neighbor to associate to that IP
     param dev: the interface to which the neighbor is attached
     """
-    # FIXME: There is no support for creating neighbours in NDB
-    # So we are using iproute here
     ovn_bgp_agent.privileged.linux_net.add_ip_nei(ip, lladdr, dev)
 
 
@@ -635,8 +628,6 @@ def del_ip_nei(ip, lladdr, dev):
     param lladdr: link layer address of the neighbor to disassociate
     param dev: the interface to which the neighbor is attached
     """
-    # FIXME: There is no support for deleting neighbours in NDB
-    # So we are using iproute here
     ovn_bgp_agent.privileged.linux_net.del_ip_nei(ip, lladdr, dev)
 
 
@@ -644,6 +635,12 @@ def add_unreachable_route(vrf_name):
     ovn_bgp_agent.privileged.linux_net.add_unreachable_route(vrf_name)
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
 def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
                  vlan=None, mask=None, via=None):
     net_ip = ip_address
@@ -661,20 +658,19 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
             net_ip = '{}'.format(ipaddress.IPv4Network(
                 ip, strict=False).network_address)
 
-    with pyroute2.NDB() as ndb:
-        if vlan:
-            oif_name = '{}.{}'.format(dev, vlan)
-            try:
-                oif = ndb.interfaces[oif_name]['index']
-            except KeyError:
-                # Most provider network was recently created an
-                # there has not been a sync since then, therefore
-                # the vlan device has not yet been created
-                # Trying to create the device and retrying
-                ensure_vlan_device_for_network(dev, vlan)
-                oif = ndb.interfaces[oif_name]['index']
-        else:
-            oif = ndb.interfaces[dev]['index']
+    if vlan:
+        oif_name = '{}.{}'.format(dev, vlan)
+        try:
+            oif = get_interface_index(oif_name)
+        except agent_exc.NetworkInterfaceNotFound:
+            # Most provider network was recently created an
+            # there has not been a sync since then, therefore
+            # the vlan device has not yet been created
+            # Trying to create the device and retrying
+            ensure_vlan_device_for_network(dev, vlan)
+            oif = get_interface_index(oif_name)
+    else:
+        oif = get_interface_index(dev)
 
     route = {'dst': net_ip, 'dst_len': int(mask), 'oif': oif,
              'table': int(route_table), 'proto': 3}
@@ -687,14 +683,13 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
         route['family'] = AF_INET6
         del route['scope']
 
-    with pyroute2.NDB() as ndb:
-        try:
-            with ndb.routes[route]:
-                LOG.debug("Route already existing: %s", route)
-        except KeyError:
+    with pyroute2.IPRoute() as ipr:
+        if not ipr.route('show', **route):
             LOG.debug("Creating route at table %s: %s", route_table, route)
             ovn_bgp_agent.privileged.linux_net.route_create(route)
             LOG.debug("Route created at table %s: %s", route_table, route)
+        else:
+            LOG.debug("Route already existing: %s", route)
     route_info = {'vlan': vlan, 'route': route}
     ovn_routing_tables_routes.setdefault(dev, []).append(route_info)
 
@@ -716,18 +711,17 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
             net_ip = '{}'.format(ipaddress.IPv4Network(
                 ip, strict=False).network_address)
 
-    with pyroute2.NDB() as ndb:
-        try:
-            if vlan:
-                oif_name = '{}.{}'.format(dev, vlan)
-                oif = ndb.interfaces[oif_name]['index']
-            else:
-                oif = ndb.interfaces[dev]['index']
-        except KeyError:
-            LOG.debug("Device %s does not exists, so the associated "
-                      "routes should have been automatically deleted.", dev)
-            ovn_routing_tables_routes.pop(dev, None)
-            return
+    try:
+        if vlan:
+            oif_name = '{}.{}'.format(dev, vlan)
+            oif = get_interface_index(oif_name)
+        else:
+            oif = get_interface_index(dev)
+    except agent_exc.NetworkInterfaceNotFound:
+        LOG.debug("Device %s does not exists, so the associated "
+                  "routes should have been automatically deleted.", dev)
+        ovn_routing_tables_routes.pop(dev, None)
+        return
 
     route = {'dst': net_ip, 'dst_len': int(mask), 'oif': oif,
              'table': int(route_table), 'proto': 3}

@@ -25,6 +25,14 @@ from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
 
 
+class IPRouteDict(dict):
+    def get_attr(self, attr_name):
+        for attr in self['attrs']:
+            if attr[0] == attr_name:
+                return attr[1]
+        return None
+
+
 class TestLinuxNet(test_base.TestCase):
 
     def setUp(self):
@@ -57,18 +65,23 @@ class TestLinuxNet(test_base.TestCase):
         self.assertEqual(6, linux_net.get_ip_version(self.ipv6))
 
     def test_get_interfaces(self):
-        iface0 = mock.Mock(ifname='ethfake0')
-        iface1 = mock.Mock(ifname='ethfake1')
-        iface2 = mock.Mock(ifname='ethfake2')
-        self.fake_ndb.interfaces = [iface0, iface1, iface2]
+        iface0 = IPRouteDict({'attrs': [('IFLA_IFNAME', 'ethfake0')]})
+        iface1 = IPRouteDict({'attrs': [('IFLA_IFNAME', 'ethfake1')]})
+        iface2 = IPRouteDict({'attrs': [('IFLA_IFNAME', 'ethfake2')]})
+        self.fake_ipr.get_links.return_value = [iface0, iface1, iface2]
 
         ret = linux_net.get_interfaces(filter_out='ethfake1')
         self.assertEqual(['ethfake0', 'ethfake2'], ret)
 
     def test_get_interface_index(self):
-        self.fake_ndb.interfaces = {'fake-nic': {'index': 7}}
+        self.fake_ipr.link_lookup.return_value = [7]
         ret = linux_net.get_interface_index('fake-nic')
         self.assertEqual(7, ret)
+
+    def test_get_interface_index_error(self):
+        self.fake_ipr.link_lookup.return_value = ''
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
+                          linux_net.get_interface_index, 'fake-nic')
 
     def test_get_interface_address(self):
         device_idx = 7
@@ -104,16 +117,6 @@ class TestLinuxNet(test_base.TestCase):
     def test_ensure_veth(self, mock_ensure_veth):
         linux_net.ensure_veth('fake-veth', 'fake-veth-peer')
         mock_ensure_veth.assert_called_once_with('fake-veth', 'fake-veth-peer')
-
-    def test_set_master_for_device_already_set(self):
-        dev = mock.MagicMock()
-        dev.get.return_value = 5
-
-        self.fake_ndb.interfaces = {
-            'fake-dev': dev, 'fake-master': {'index': 5}}
-        linux_net.set_master_for_device('fake-dev', 'fake-master')
-        # Both values were the same, assert set() is not called
-        self.assertFalse(dev.__enter__().set.called)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.ensure_dummy_device')
     def test_ensure_dummy_device(self, mock_ensure_dummy_device):
@@ -202,13 +205,16 @@ class TestLinuxNet(test_base.TestCase):
         mock_flag.assert_called_once_with(expected_flag, 1)
 
     def test_get_exposed_ips(self):
-        ip0 = mock.Mock(address=self.ip, prefixlen=32)
-        ip1 = mock.Mock(address=self.ipv6, prefixlen=128)
-        ip2 = mock.Mock(address='10.10.1.18', prefixlen=24)
-        ip3 = mock.Mock(address='2001:0DB8:0000:000b::', prefixlen=64)
-        iface = mock.Mock()
-        iface.ipaddr.summary.return_value = [ip0, ip1, ip2, ip3]
-        self.fake_ndb.interfaces = {self.dev: iface}
+        ip0 = IPRouteDict({'prefixlen': 32,
+                           'attrs': [('IFA_ADDRESS', self.ip)]})
+        ip1 = IPRouteDict({'prefixlen': 128,
+                           'attrs': [('IFA_ADDRESS', self.ipv6)]})
+        ip2 = IPRouteDict({'prefixlen': 24,
+                           'attrs': [('IFA_ADDRESS', '10.10.1.18')]})
+        ip3 = IPRouteDict(
+            {'prefixlen': 64,
+             'attrs': [('IFA_ADDRESS', '2001:0DB8:0000:000b::')]})
+        self.fake_ipr.get_addr.return_value = [ip0, ip1, ip2, ip3]
 
         ips = linux_net.get_exposed_ips(self.dev)
 
@@ -216,36 +222,28 @@ class TestLinuxNet(test_base.TestCase):
         self.assertEqual(expected_ips, ips)
 
     def test_get_nic_ip(self):
-        ip0 = mock.Mock(address='10.10.1.16')
-        ip1 = mock.Mock(address='10.10.1.17')
-        iface = mock.Mock()
-        iface.ipaddr.summary.return_value = [ip0, ip1]
-        self.fake_ndb.interfaces = {self.dev: iface}
+        ip0 = IPRouteDict({'attrs': [('IFA_ADDRESS', '10.10.1.16')]})
+        ip1 = IPRouteDict({'attrs': [('IFA_ADDRESS', '10.10.1.17')]})
+        self.fake_ipr.get_addr.return_value = [ip0, ip1]
 
         ips = linux_net.get_nic_ip(self.dev)
 
         expected_ips = ['10.10.1.16', '10.10.1.17']
         self.assertEqual(expected_ips, ips)
 
-    def test_get_nic_ip_prefixlen(self):
-        ip = mock.Mock(address=self.ip, prefixlen=32)
-        iface = mock.Mock()
-        iface.ipaddr.summary.return_value.filter.return_value = [ip]
-        self.fake_ndb.interfaces = {self.dev: iface}
-
-        linux_net.get_nic_ip(self.dev, prefixlen_filter=32)
-        iface.ipaddr.summary.return_value.filter.assert_called_once_with(
-            prefixlen=32)
-
     def test_get_exposed_ips_on_network(self):
-        ip0 = mock.Mock(address=self.ip, prefixlen=32)
-        ip1 = mock.Mock(address='10.10.1.17', prefixlen=128)
-        ip2 = mock.Mock(address=self.ipv6, prefixlen=128)
-        ip3 = mock.Mock(
-            address='2001:db8:3333:4444:5555:6666:7777:8888', prefixlen=128)
-        iface = mock.Mock()
-        iface.ipaddr.summary.return_value = [ip0, ip1, ip2, ip3]
-        self.fake_ndb.interfaces = {self.dev: iface}
+        ip0 = IPRouteDict({'prefixlen': 32,
+                           'attrs': [('IFA_ADDRESS', self.ip)]})
+        ip1 = IPRouteDict({'prefixlen': 128,
+                           'attrs': [('IFA_ADDRESS', '10.10.1.17')]})
+        ip2 = IPRouteDict({'prefixlen': 128,
+                           'attrs': [('IFA_ADDRESS', self.ipv6)]})
+        ip3 = IPRouteDict({
+            'prefixlen': 128,
+            'attrs': [('IFA_ADDRESS', '2001:db8:3333:4444:5555:6666:7777:8888')
+                      ]})
+
+        self.fake_ipr.get_addr.return_value = [ip0, ip1, ip2, ip3]
 
         network_ips = [ipaddress.ip_address(self.ip),
                        ipaddress.ip_address(self.ipv6)]
@@ -314,16 +312,24 @@ class TestLinuxNet(test_base.TestCase):
         self.assertEqual([route1], ret)
 
     def test_get_ovn_ip_rules(self):
-        rule0 = mock.Mock(table=7, dst=10, dst_len=128, family='fake')
-        rule1 = mock.Mock(table=7, dst=11, dst_len=32, family='fake')
-        rule2 = mock.Mock(table=9, dst=5, dst_len=24, family='fake')
-        rule3 = mock.Mock(table=10, dst=6, dst_len=128, family='fake')
-        self.fake_ndb.rules.dump.return_value = [rule0, rule1, rule2, rule3]
+        rule0 = IPRouteDict({'dst_len': 128, 'family': 10,
+                             'attrs': [('FRA_TABLE', 7),
+                                       ('FRA_DST', 10)]})
+        rule1 = IPRouteDict({'dst_len': 32, 'family': 2,
+                             'attrs': [('FRA_TABLE', 7),
+                                       ('FRA_DST', 11)]})
+        rule2 = IPRouteDict({'dst_len': 24, 'family': 2,
+                             'attrs': [('FRA_TABLE', 9),
+                                       ('FRA_DST', 5)]})
+        rule3 = IPRouteDict({'dst_len': 128, 'family': 10,
+                             'attrs': [('FRA_TABLE', 10),
+                                       ('FRA_DST', 6)]})
+        self.fake_ipr.get_rules.side_effect = [[rule1, rule2], [rule0, rule3]]
 
         ret = linux_net.get_ovn_ip_rules([7, 10])
-        expected_ret = {'10/128': {'table': 7, 'family': 'fake'},
-                        '11/32': {'table': 7, 'family': 'fake'},
-                        '6/128': {'table': 10, 'family': 'fake'}}
+        expected_ret = {'10/128': {'table': 7, 'family': 10},
+                        '11/32': {'table': 7, 'family': 2},
+                        '6/128': {'table': 10, 'family': 10}}
         self.assertEqual(expected_ret, ret)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.delete_exposed_ips')
@@ -338,15 +344,13 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.delete_ip_rules(ip_rules)
         mock_delete_ip_rules.assert_called_once_with(ip_rules)
 
-    def _test_delete_bridge_ip_routes(self, mock_route_delete, is_vlan=False,
-                                      has_gateway=False):
+    @mock.patch.object(linux_net, 'get_interface_index')
+    def _test_delete_bridge_ip_routes(self, mock_route_delete, mock_get_index,
+                                      is_vlan=False, has_gateway=False):
         gateway = '1.1.1.1'
         oif = 11
         vlan = 30 if is_vlan else None
-        vlan_dev = '%s.%s' % (self.bridge, vlan) if is_vlan else None
-        self.fake_ndb.interfaces = {self.bridge: {'index': oif}}
-        if is_vlan:
-            self.fake_ndb.interfaces.update({vlan_dev: {'index': oif}})
+        mock_get_index.return_value = oif
 
         route = {'route': {'dst': self.ip,
                            'dst_len': 32,
@@ -358,19 +362,28 @@ class TestLinuxNet(test_base.TestCase):
         routing_tables = {self.bridge: 20}
         routing_tables_routes = {self.bridge: [route]}
         # extra_route0 matches with the route
-        extra_route0 = {'dst': self.ip, 'dst_len': 32,
-                        'family': AF_INET, 'oif': oif,
-                        'gateway': gateway, 'table': 20}
+        extra_route0 = IPRouteDict({
+            'dst_len': 32, 'family': AF_INET, 'table': 20,
+            'attrs': [('RTA_DST', self.ip),
+                      ('RTA_OIF', oif),
+                      ('RTA_GATEWAY', gateway)]})
         # extra_route1 does not match with route and should be removed
-        extra_route1 = copy.deepcopy(extra_route0)
-        extra_route1['dst'] = '10.10.1.17'
+        extra_route1 = IPRouteDict({
+            'dst_len': 32, 'family': AF_INET, 'table': 20,
+            'attrs': [('RTA_DST', '10.10.1.17'),
+                      ('RTA_OIF', oif),
+                      ('RTA_GATEWAY', gateway)]})
         extra_routes = {self.bridge: [extra_route0, extra_route1]}
 
         linux_net.delete_bridge_ip_routes(
             routing_tables, routing_tables_routes, extra_routes)
 
         # Assert extra_route1 has been removed
-        mock_route_delete.assert_called_once_with(extra_route1)
+        expected_route = {'dst': '10.10.1.17', 'dst_len': 32,
+                          'family': AF_INET, 'oif': oif,
+                          'gateway': gateway, 'table': 20}
+
+        mock_route_delete.assert_called_once_with(expected_route)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     def test_delete_bridge_ip_routes(self, mock_route_delete):
@@ -386,30 +399,33 @@ class TestLinuxNet(test_base.TestCase):
 
     @mock.patch('ovn_bgp_agent.utils.linux_net.delete_ip_routes')
     def test_delete_routes_from_table(self, mock_delete_ip_routes):
-        route0 = mock.MagicMock(scope=1, proto=11)
-        route1 = mock.MagicMock(scope=2, proto=22)
-        route2 = mock.MagicMock(scope=254, proto=186)
-        self.fake_ndb.routes.dump().filter.return_value = [
+        route0 = {'scope': 1, 'proto': 11}
+        route1 = {'scope': 2, 'proto': 22}
+        route2 = {'scope': 254, 'proto': 186}
+        self.fake_ipr.get_routes.return_value = [
             route0, route1, route2]
-
-        self.fake_ndb.routes.__getitem__.side_effect = (
-            route0, route1)
 
         linux_net.delete_routes_from_table('fake-table')
 
         mock_delete_ip_routes.assert_called_once_with([route0, route1])
 
     def test_get_routes_on_tables(self):
-        route0 = mock.MagicMock(table=10, dst='10.10.10.10', proto=10)
+        route0 = IPRouteDict({
+            'proto': 10, 'table': 10,
+            'attrs': [('RTA_DST', '10.10.10.10')]})
         # Route1 has proto 186, should be ignored
-        route1 = mock.MagicMock(table=11, dst='11.11.11.11', proto=186)
-        route2 = mock.MagicMock(table=11, dst='12.12.12.12', proto=12)
-        # Route3 is not in the table list, should be ignored
-        route3 = mock.MagicMock(table=99, dst='14.14.14.14', proto=14)
-        # Route4 is in the list but dst is empty
-        route4 = mock.MagicMock(table=22, dst='', proto=10)
-        self.fake_ndb.routes.dump.return_value = [
-            route0, route1, route2, route3, route4]
+        route1 = IPRouteDict({
+            'proto': 186, 'table': 11,
+            'attrs': [('RTA_DST', '11.11.11.11')]})
+        route2 = IPRouteDict({
+            'proto': 12, 'table': 11,
+            'attrs': [('RTA_DST', '12.12.12.12')]})
+        # Route3 is in the list but dst is empty
+        route3 = IPRouteDict({
+            'proto': 10, 'table': 22,
+            'attrs': [('RTA_DST', '')]})
+        self.fake_ipr.get_routes.side_effect = [
+            [route0], [route1, route2], [route3]]
 
         ret = linux_net.get_routes_on_tables([10, 11, 22])
 
@@ -424,7 +440,6 @@ class TestLinuxNet(test_base.TestCase):
             table=11, dst='11.11.11.11', proto=11, dst_len=64,
             oif='ethout', family='fake', gateway='2.2.2.2')
         routes = [route0, route1]
-        self.fake_ndb.routes.__getitem__.side_effect = routes
 
         linux_net.delete_ip_routes(routes)
 
@@ -443,9 +458,6 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ip_to_dev')
     def test_add_ips_to_dev(self, mock_add_ip_to_dev, mock_route_delete):
-        iface = mock.MagicMock(index=7)
-        self.fake_ndb.interfaces = {self.dev: iface}
-
         ips = [self.ip, self.ipv6]
         linux_net.add_ips_to_dev(
             self.dev, ips, clear_local_route_at_table=123)
@@ -464,9 +476,6 @@ class TestLinuxNet(test_base.TestCase):
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.del_ip_from_dev')
     def test_del_ips_from_dev(self, mock_del_ip_from_dev):
-        iface = mock.MagicMock()
-        self.fake_ndb.interfaces = {self.dev: iface}
-
         ips = [self.ip, self.ipv6]
         linux_net.del_ips_from_dev(self.dev, ips)
 
@@ -508,9 +517,6 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ip_nei')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.rule_delete')
     def test_del_ip_rule(self, mock_rule_delete, mock_del_ip_nei):
-        rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.return_value = rule
-
         linux_net.del_ip_rule(self.ip, 7, dev=self.dev, lladdr=self.mac)
 
         expected_args = {'dst': self.ip, 'table': 7, 'dst_len': 32}
@@ -520,9 +526,6 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ip_nei')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.rule_delete')
     def test_del_ip_rule_ipv6(self, mock_rule_delete, mock_del_ip_nei):
-        rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.return_value = rule
-
         linux_net.del_ip_rule(self.ipv6, 7, dev=self.dev, lladdr=self.mac)
 
         expected_args = {'dst': self.ipv6, 'table': 7,
@@ -533,9 +536,6 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch.object(linux_net, 'del_ip_nei')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.rule_delete')
     def test_del_ip_rule_invalid_ip(self, mock_rule_delete, mock_del_ip_nei):
-        rule = mock.MagicMock()
-        self.fake_ndb.rules.__getitem__.return_value = rule
-
         self.assertRaises(agent_exc.InvalidPortIP,
                           linux_net.del_ip_rule, '10.10.1.6/30/128', 7)
 
@@ -565,7 +565,6 @@ class TestLinuxNet(test_base.TestCase):
                                   'table': 7},
                         'vlan': None}]}
         self.assertEqual(expected_routes, routes)
-        self.assertFalse(self.fake_ndb.routes.create.called)
         mock_route_create.assert_not_called()
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_create')
@@ -614,14 +613,15 @@ class TestLinuxNet(test_base.TestCase):
         self.assertEqual(expected_routes, routes)
         mock_route_create.assert_not_called()
 
+    @mock.patch.object(linux_net, 'get_interface_index')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_create')
     def test_add_ip_route_vlan_keyerror(self, mock_route_create,
-                                        mock_ensure_vlan_device):
+                                        mock_ensure_vlan_device,
+                                        mock_get_index):
         routes = {}
         oif = '5'
-        self.fake_ndb.interfaces.__getitem__.side_effect = (
-            KeyError('No index'), {'index': oif})
+        mock_get_index.side_effect = [agent_exc.NetworkInterfaceNotFound, oif]
         linux_net.add_ip_route(routes, self.ip, 7, self.dev, vlan=10)
         expected_routes = {
             self.dev: [{'route': {'dst': self.ip,
@@ -651,8 +651,8 @@ class TestLinuxNet(test_base.TestCase):
         mock_route_create.assert_not_called()
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_create')
-    def test_add_ip_route_keyerror(self, mock_route_create):
-        self.fake_ndb.routes.__getitem__.side_effect = KeyError('Nite Expo')
+    def test_add_ip_route_no_route(self, mock_route_create):
+        self.fake_ipr.route.return_value = ()
         routes = {}
         linux_net.add_ip_route(routes, self.ip, 7, self.dev)
         expected_routes = {
