@@ -18,8 +18,10 @@ from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
 import pyroute2
+import tenacity
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent import exceptions as agent_exc
 import ovn_bgp_agent.privileged.ovs_vsctl
 from ovn_bgp_agent.utils import linux_net
 
@@ -62,10 +64,24 @@ def get_ovs_patch_ports_info(bridge):
     return in_ports
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(agent_exc.PatchPortNotFound),
+    wait=tenacity.wait_fixed(1),
+    stop=tenacity.stop_after_delay(5),
+    reraise=True)
 def get_ovs_patch_port_ofport(patch):
     patch_name = "patch-{}-to-br-int".format(patch)
-    ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-        'ovs-vsctl', ['get', 'Interface', patch_name, 'ofport'])[0].rstrip()
+    try:
+        ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['get', 'Interface', patch_name, 'ofport']
+            )[0].rstrip()
+    except Exception:
+        raise agent_exc.PatchPortNotFound(localnet=patch)
+    if ofport == '[]':
+        # NOTE(ltomasbo): there is a chance the patch port interface was
+        # created but not yet added to ovs bridge, therefore it exists but
+        # has an empty ofport. We should retry in this case
+        raise agent_exc.PatchPortNotFound(localnet=patch)
     return ofport
 
 
