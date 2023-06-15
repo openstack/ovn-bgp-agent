@@ -35,8 +35,17 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_ip_associated(row.mac[0]):
                 return False
-            return (row.chassis[0].name == self.agent.chassis and
-                    (not old.chassis or row.chassis != old.chassis))
+            if not bool(row.up[0]):
+                return False
+
+            if row.chassis[0].name != self.agent.chassis:
+                return False
+            if hasattr(old, 'chassis'):
+                if not old.chassis or row.chassis != old.chassis:
+                    return True
+            if hasattr(old, 'up'):
+                if not bool(old.up[0]):
+                    return True
         except (IndexError, AttributeError):
             return False
 
@@ -59,11 +68,16 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
             # single and dual-stack format
             if not self._check_ip_associated(row.mac[0]):
                 return False
-            if event == self.ROW_UPDATE:
-                return (old.chassis[0].name == self.agent.chassis and
-                        (not row.chassis or row.chassis != old.chassis))
-            else:
+            if event == self.ROW_DELETE:
                 return row.chassis[0].name == self.agent.chassis
+
+            if hasattr(old, 'chassis'):
+                if (old.chassis[0].name == self.agent.chassis and
+                        (not row.chassis or row.chassis != old.chassis)):
+                    return True
+            if hasattr(old, 'up'):
+                if bool(old.up[0]) and not bool(row.up[0]):
+                    return True
         except (IndexError, AttributeError):
             return False
 
