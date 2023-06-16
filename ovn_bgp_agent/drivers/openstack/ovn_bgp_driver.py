@@ -907,6 +907,15 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             return False
         LOG.debug("Added BGP route for CR-LRP Port %s", ips)
 
+        # Expose FIPS
+        # This is needed in case the router get disabled and enabled
+        # In that case there may be FIPs already associated to VMs
+        fips, patch_port_row = self.sb_idl.get_cr_lrp_nat_addresses_info(
+            cr_lrp_port, self.chassis, self.sb_idl)
+        fips = [ip for ip in fips if ip not in ips_without_mask]
+        if fips:
+            self._expose_ip(fips, patch_port_row, associated_port=cr_lrp_port)
+
         # Check if there are networks attached to the router,
         # and if so, add the needed routes/rules
         lrp_ports = self.sb_idl.get_lrp_ports_for_router(router_datapath)
