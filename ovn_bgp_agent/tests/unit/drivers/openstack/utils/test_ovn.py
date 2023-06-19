@@ -20,7 +20,6 @@ from ovs.stream import Stream
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
 
-from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovn as ovn_utils
 from ovn_bgp_agent import exceptions
@@ -640,7 +639,6 @@ class TestOvnNbIdl(test_base.TestCase):
 
     def setUp(self):
         super(TestOvnNbIdl, self).setUp()
-        config.register_opts()
         mock.patch.object(idlutils, 'get_schema_helper').start()
         mock.patch.object(ovn_utils.OvnIdl, '__init__').start()
         self.nb_idl = ovn_utils.OvnNbIdl('tcp:127.0.0.1:6640')
@@ -677,7 +675,6 @@ class TestOvnSbIdl(test_base.TestCase):
 
     def setUp(self):
         super(TestOvnSbIdl, self).setUp()
-        config.register_opts()
         mock.patch.object(idlutils, 'get_schema_helper').start()
         mock.patch.object(ovn_utils.OvnIdl, '__init__').start()
         self.sb_idl = ovn_utils.OvnSbIdl('tcp:127.0.0.1:6640')

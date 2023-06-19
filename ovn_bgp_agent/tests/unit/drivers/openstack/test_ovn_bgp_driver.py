@@ -17,7 +17,6 @@ from unittest import mock
 
 from oslo_config import cfg
 
-from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import ovn_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
@@ -38,7 +37,6 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     def setUp(self):
         super(TestOVNBGPDriver, self).setUp()
-        config.register_opts()
         CONF.set_override('expose_tenant_networks', True)
         self.bridge = 'fake-bridge'
         self.bgp_driver = ovn_bgp_driver.OVNBGPDriver()

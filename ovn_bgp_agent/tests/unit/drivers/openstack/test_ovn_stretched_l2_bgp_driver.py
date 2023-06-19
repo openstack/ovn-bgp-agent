@@ -17,7 +17,6 @@ from unittest import mock
 
 from oslo_config import cfg
 
-from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import ovn_stretched_l2_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
@@ -56,7 +55,6 @@ class TestHashedRoute(test_base.TestCase):
 class TestOVNBGPStretchedL2Driver(test_base.TestCase):
     def setUp(self):
         super(TestOVNBGPStretchedL2Driver, self).setUp()
-        config.register_opts()
         CONF.set_override(
             "address_scopes",
             "11111111-1111-1111-1111-11111111,22222222-2222-2222-2222-22222222",  # NOQA E501

@@ -17,7 +17,6 @@ from unittest import mock
 
 from oslo_config import cfg
 
-from ovn_bgp_agent import config
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import nb_ovn_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
@@ -36,7 +35,6 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
     def setUp(self):
         super(TestNBOVNBGPDriver, self).setUp()
-        config.register_opts()
         self.bridge = 'fake-bridge'
         self.nb_bgp_driver = nb_ovn_bgp_driver.NBOVNBGPDriver()
         self.nb_bgp_driver._post_start_event = mock.Mock()
