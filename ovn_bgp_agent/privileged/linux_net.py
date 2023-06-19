@@ -39,30 +39,6 @@ LOG = logging.getLogger(__name__)
 _IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 
 
-class InterfaceAlreadyExists(RuntimeError):
-    message = "Interface %(device)s already exists."
-
-    def __init__(self, message=None, device=None):
-        message = message or self.message % {'device': device}
-        super(InterfaceAlreadyExists, self).__init__(message)
-
-
-class InterfaceOperationNotSupported(RuntimeError):
-    message = "Operation not supported on interface %(device)s."
-
-    def __init__(self, message=None, device=None):
-        message = message or self.message % {'device': device}
-        super(InterfaceOperationNotSupported, self).__init__(message)
-
-
-class InvalidArgument(RuntimeError):
-    message = "Invalid parameter/value used on interface %(device)s."
-
-    def __init__(self, message=None, device=None):
-        message = message or self.message % {'device': device}
-        super(InvalidArgument, self).__init__(message)
-
-
 def get_scope_name(scope):
     """Return the name of the scope or the scope number if the name is unknown.
 
@@ -171,9 +147,8 @@ def delete_device(device):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def route_create(route):
-    scope = 'link' if 'scope' not in route else route.pop('scope')
-    if scope is not None:
-        route['scope'] = get_scope_name(scope)
+    scope = route.pop('scope', 'link')
+    route['scope'] = get_scope_name(scope)
     if 'family' not in route:
         route['family'] = socket.AF_INET
     _run_iproute_route('replace', **route)
@@ -181,9 +156,8 @@ def route_create(route):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def route_delete(route):
-    scope = 'link' if 'scope' not in route else route.pop('scope')
-    if scope is not None:
-        route['scope'] = get_scope_name(scope)
+    scope = route.pop('scope', 'link')
+    route['scope'] = get_scope_name(scope)
     if 'family' not in route:
         route['family'] = socket.AF_INET
     _run_iproute_route('del', **route)
@@ -331,6 +305,9 @@ def del_ip_nei(ip, lladdr, dev):
 
 
 def add_unreachable_route(vrf_name):
+    # NOTE(ltomasbo): This method is to set the default route for the table
+    # (and hence default route for the VRF)
+    # ip route add table 10 unreachable default metric 4278198272
     # Find vrf table.
     device = get_link_device(vrf_name)
     ifla_linkinfo = get_attr(device, 'IFLA_LINKINFO')
@@ -357,11 +334,11 @@ def _translate_ip_device_exception(e, device):
     if e.code == errno.ENODEV:
         raise agent_exc.NetworkInterfaceNotFound(device=device)
     if e.code == errno.EOPNOTSUPP:
-        raise InterfaceOperationNotSupported(device=device)
+        raise agent_exc.InterfaceOperationNotSupported(device=device)
     if e.code == errno.EINVAL:
-        raise InvalidArgument(device=device)
+        raise agent_exc.InvalidArgument(device=device)
     if e.code == errno.EEXIST:
-        raise InterfaceAlreadyExists(device=device)
+        raise agent_exc.InterfaceAlreadyExists(device=device)
     raise e
 
 
@@ -443,7 +420,7 @@ def _get_link_id(ifname, raise_exception=True):
         if raise_exception:
             raise agent_exc.NetworkInterfaceNotFound(device=ifname)
         LOG.debug('Interface %(dev)s not found', {'dev': ifname})
-        return None
+        return
     return link_id[0]
 
 

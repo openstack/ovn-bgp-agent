@@ -83,3 +83,27 @@ class NetworkInterfaceNotFound(RuntimeError):
     def __init__(self, message=None, device=None):
         message = message or self.message % {'device': device}
         super(NetworkInterfaceNotFound, self).__init__(message)
+
+
+class InterfaceAlreadyExists(RuntimeError):
+    message = _("Interface %(device)s already exists.")
+
+    def __init__(self, message=None, device=None):
+        message = message or self.message % {'device': device}
+        super(InterfaceAlreadyExists, self).__init__(message)
+
+
+class InterfaceOperationNotSupported(RuntimeError):
+    message = _("Operation not supported on interface %(device)s.")
+
+    def __init__(self, message=None, device=None):
+        message = message or self.message % {'device': device}
+        super(InterfaceOperationNotSupported, self).__init__(message)
+
+
+class InvalidArgument(RuntimeError):
+    message = _("Invalid parameter/value used on interface %(device)s.")
+
+    def __init__(self, message=None, device=None):
+        message = message or self.message % {'device': device}
+        super(InvalidArgument, self).__init__(message)

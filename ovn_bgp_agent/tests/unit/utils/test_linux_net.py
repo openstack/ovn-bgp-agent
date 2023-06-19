@@ -30,7 +30,7 @@ class IPRouteDict(dict):
         for attr in self['attrs']:
             if attr[0] == attr_name:
                 return attr[1]
-        return None
+        return
 
 
 class TestLinuxNet(test_base.TestCase):
