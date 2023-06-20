@@ -1333,6 +1333,9 @@ class TestOVNBGPDriver(test_base.TestCase):
 
         self.sb_idl.get_port_datapath.return_value = 'fake-lrp-dp'
 
+        self.sb_idl.get_cr_lrp_nat_addresses_info.return_value = (
+            [], self.cr_lrp0)
+
         mock_process_lrp_port = mock.patch.object(
             self.bgp_driver, '_process_lrp_port').start()
 
@@ -1817,11 +1820,14 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.sb_idl.get_provider_ovn_lbs_on_cr_lrp.return_value = (
             ovn_lbs)
 
+        ips_without_mask = [ip.split("/")[0] for ip in ips]
+        self.sb_idl.get_cr_lrp_nat_addresses_info.return_value = (
+            [ips_without_mask[0]], self.cr_lrp0)
+
         self.bgp_driver._expose_cr_lrp_port(
             ips, self.mac, self.bridge, None, router_datapath='fake-router-dp',
             provider_datapath='fake-provider-dp', cr_lrp_port=self.cr_lrp0)
 
-        ips_without_mask = [ip.split("/")[0] for ip in ips]
         mock_expose_provider_port.assert_called_once_with(
             ips_without_mask, 'fake-provider-dp', self.bridge, None,
             lladdr=self.mac, proxy_cidrs=ips)
