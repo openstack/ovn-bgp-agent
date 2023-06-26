@@ -29,14 +29,15 @@ from pyroute2.netlink import rtnl
 from pyroute2.netlink.rtnl import ndmsg
 import tenacity
 
+import ovn_bgp_agent
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
-import ovn_bgp_agent.privileged.linux_net
 from ovn_bgp_agent.utils import linux_net as l_net
 
 LOG = logging.getLogger(__name__)
 
 _IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
+NUD_STATES = {state[1]: state[0] for state in ndmsg.states.items()}
 
 
 def get_scope_name(scope):
@@ -249,59 +250,57 @@ def del_ip_from_dev(ip, nic):
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_nei(ip, lladdr, dev):
     ip_version = l_net.get_ip_version(ip)
-    with pyroute2.IPRoute() as iproute:
-        # This is doing something like:
-        # sudo ip nei replace 172.24.4.69
-        # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-        try:
-            network_bridge_if = iproute.link_lookup(ifname=dev)[0]
-        except IndexError:
-            LOG.debug("No need to add nei for dev %s as it does not exists",
-                      dev)
-            return
-        if ip_version == constants.IP_VERSION_6:
-            iproute.neigh('replace',
-                          dst=ip,
-                          lladdr=lladdr,
-                          family=socket.AF_INET6,
-                          ifindex=network_bridge_if,
-                          state=ndmsg.states['permanent'])
-        else:
-            iproute.neigh('replace',
-                          dst=ip,
-                          lladdr=lladdr,
-                          ifindex=network_bridge_if,
-                          state=ndmsg.states['permanent'])
+    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    _run_iproute_neigh('replace',
+                       dev,
+                       dst=ip,
+                       lladdr=lladdr,
+                       family=family,
+                       state=ndmsg.states['permanent'])
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_nei(ip, lladdr, dev):
     ip_version = l_net.get_ip_version(ip)
-    with pyroute2.IPRoute() as iproute:
-        # This is doing something like:
-        # sudo ip nei del 172.24.4.69
-        # lladdr fa:16:3e:d3:5d:7b dev br-ex nud permanent
-        try:
-            network_bridge_if = iproute.link_lookup(
-                ifname=dev)[0]
-        except IndexError:
-            # Neigbhbor device does not exists, continuing
-            LOG.debug("No need to remove nei for dev %s as it does not exists",
-                      dev)
-            return
-        if ip_version == constants.IP_VERSION_6:
-            iproute.neigh('del',
-                          dst=ip.split("/")[0],
-                          lladdr=lladdr,
-                          family=socket.AF_INET6,
-                          ifindex=network_bridge_if,
-                          state=ndmsg.states['permanent'])
-        else:
-            iproute.neigh('del',
-                          dst=ip.split("/")[0],
-                          lladdr=lladdr,
-                          ifindex=network_bridge_if,
-                          state=ndmsg.states['permanent'])
+    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    _run_iproute_neigh('del',
+                       dev,
+                       dst=ip.split("/")[0],
+                       lladdr=lladdr,
+                       family=family,
+                       state=ndmsg.states['permanent'])
+
+
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(
+        netlink_exceptions.NetlinkDumpInterrupted),
+    wait=tenacity.wait_exponential(multiplier=0.02, max=1),
+    stop=tenacity.stop_after_delay(8),
+    reraise=True)
+def get_neigh_entries(device, ip_version, **kwargs):
+    """Dump all neighbour entries.
+
+    :param ip_version: IP version of entries to show (4 or 6)
+    :param device: Device name to use in dumping entries
+    :param kwargs: Callers add any filters they use as kwargs
+    :return: a list of dictionaries, each representing a neighbour.
+    The dictionary format is: {'dst': ip_address,
+                               'lladdr': mac_address,
+                               'device': device_name}
+    """
+    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    dump = _run_iproute_neigh('dump',
+                              device,
+                              family=family,
+                              **kwargs)
+    entries = []
+    for entry in dump:
+        attrs = dict(entry['attrs'])
+        entries.append({'dst': attrs['NDA_DST'],
+                        'lladdr': attrs.get('NDA_LLADDR'),
+                        'device': device,
+                        'state': NUD_STATES[entry['state']]})
+    return entries
 
 
 def add_unreachable_route(vrf_name):
@@ -492,6 +491,16 @@ def _run_iproute_rule(command, **kwargs):
             ip.rule(command, **kwargs)
     except netlink_exceptions.NetlinkError as e:
         _translate_ip_rule_exception(e, kwargs)
+
+
+def _run_iproute_neigh(command, device, **kwargs):
+    try:
+        with iproute.IPRoute() as ip:
+            idx = _get_link_id(device)
+            return ip.neigh(command, ifindex=idx, **kwargs)
+    except agent_exc.NetworkInterfaceNotFound:
+        LOG.debug("No need to %s nei for dev %s as it does not exists",
+                  command, device)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
