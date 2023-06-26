@@ -18,6 +18,7 @@ from oslo_log import log as logging
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent import exceptions as agent_exc
+from ovn_bgp_agent.utils import helpers
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -37,8 +38,9 @@ def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
     ovn_bridge_mappings = {}
     flows_info = {}
     for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
-        network = bridge_mapping.split(":")[0]
-        bridge = bridge_mapping.split(":")[1]
+        network, bridge = helpers.parse_bridge_mapping(bridge_mapping)
+        if not network:
+            continue
         ovn_bridge_mappings[network] = bridge
 
         linux_net.ensure_routing_table_for_bridge(

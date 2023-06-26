@@ -29,6 +29,7 @@ from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher as watcher
 from ovn_bgp_agent import exceptions as agent_exc
+from ovn_bgp_agent.utils import helpers
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -169,8 +170,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         extra_routes = {}
 
         for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
-            network = bridge_mapping.split(":")[0]
-            bridge = bridge_mapping.split(":")[1]
+            network, bridge = helpers.parse_bridge_mapping(bridge_mapping)
+            if not network:
+                continue
             self.ovn_bridge_mappings[network] = bridge
 
             if not extra_routes.get(bridge):
@@ -323,8 +325,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         if not bridge_device and not bridge_vlan:
             bridge_device, bridge_vlan = self._get_bridge_for_datapath(
                 provider_datapath)
-            if not bridge_device:
-                return False
+        if (not bridge_device or
+                bridge_device not in self.ovn_bridge_mappings.values()):
+            return False
 
         localnet = self.ovn_provider_datapath.get(provider_datapath)
         if not localnet:
