@@ -181,6 +181,15 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         super(OvsdbNbOvnIdl, self).__init__(connection)
         self.idl._session.reconnect.set_probe_interval(60000)
 
+    def get_network_vlan_tags(self):
+        tags = []
+        cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
+                                constants.OVN_LOCALNET_VIF_PORT_TYPE))
+        for row in cmd.execute(check_error=True):
+            if row.tag:
+                tags.append(row.tag[0])
+        return tags
+
     def get_network_vlan_tag_by_network_name(self, network_name):
         tags = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
@@ -339,6 +348,15 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
                     row.options.get('network_name') in bridge_mappings):
                 return row.options.get('network_name'), row.tag
         return None, None
+
+    def get_network_vlan_tags(self):
+        tags = []
+        cmd = self.db_find_rows('Port_Binding', ('type', '=',
+                                constants.OVN_LOCALNET_VIF_PORT_TYPE))
+        for row in cmd.execute(check_error=True):
+            if row.tag:
+                tags.append(row.tag[0])
+        return tags
 
     def get_network_vlan_tag_by_network_name(self, network_name):
         tags = []

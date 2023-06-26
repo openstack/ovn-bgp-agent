@@ -154,7 +154,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             self._ensure_port_exposed(port)
 
         # remove extra wiring leftovers
-        wire_utils.cleanup_wiring(self.ovn_bridge_mappings,
+        wire_utils.cleanup_wiring(self.nb_idl,
+                                  self.ovn_bridge_mappings,
                                   self.ovs_flows,
                                   self._exposed_ips,
                                   self.ovn_routing_tables,

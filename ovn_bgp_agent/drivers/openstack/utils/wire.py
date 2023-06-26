@@ -63,17 +63,17 @@ def _ensure_base_wiring_config_underlay(idl, bridge_mappings, routing_tables):
     return ovn_bridge_mappings, flows_info
 
 
-def cleanup_wiring(bridge_mappings, ovs_flows, exposed_ips, routing_tables,
-                   routing_tables_routes):
+def cleanup_wiring(idl, bridge_mappings, ovs_flows, exposed_ips,
+                   routing_tables, routing_tables_routes):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
-        return _cleanup_wiring_underlay(bridge_mappings, ovs_flows,
+        return _cleanup_wiring_underlay(idl, bridge_mappings, ovs_flows,
                                         exposed_ips, routing_tables,
                                         routing_tables_routes)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         raise NotImplementedError()
 
 
-def _cleanup_wiring_underlay(bridge_mappings, ovs_flows, exposed_ips,
+def _cleanup_wiring_underlay(idl, bridge_mappings, ovs_flows, exposed_ips,
                              routing_tables, routing_tables_routes):
     current_ips = linux_net.get_exposed_ips(CONF.bgp_nic)
     expected_ips = [ip for ip_dict in exposed_ips.values()
@@ -106,6 +106,19 @@ def _cleanup_wiring_underlay(bridge_mappings, ovs_flows, exposed_ips,
     # remove all the extra routes not needed
     linux_net.delete_bridge_ip_routes(routing_tables, routing_tables_routes,
                                       extra_routes)
+
+    # delete leaked vlan devices from previous vlan provider networks
+    delete_vlan_devices_leftovers(idl, bridge_mappings)
+
+
+def delete_vlan_devices_leftovers(idl, bridge_mappings):
+    vlan_tags = idl.get_network_vlan_tags()
+    ovs_devices = set(bridge_mappings.values())
+    for ovs_device in ovs_devices:
+        vlans = linux_net.get_bridge_vlans(ovs_device)
+        for vlan in vlans:
+            if vlan and vlan not in vlan_tags:
+                linux_net.delete_vlan_device_for_network(ovs_device, vlan)
 
 
 def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,

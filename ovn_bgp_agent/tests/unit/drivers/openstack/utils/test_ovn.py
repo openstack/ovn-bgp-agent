@@ -39,6 +39,19 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
         self.nb_idl.db_find_rows = mock.Mock()
         self.nb_idl.lookup = mock.Mock()
 
+    def test_get_network_vlan_tags(self):
+        tag = [123]
+        lsp = fakes.create_object({'name': 'port-0',
+                                   'tag': tag})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            lsp]
+        ret = self.nb_idl.get_network_vlan_tags()
+
+        self.assertEqual(tag, ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Logical_Switch_Port',
+            ('type', '=', constants.OVN_LOCALNET_VIF_PORT_TYPE))
+
     def test_get_network_vlan_tag_by_network_name(self):
         network_name = 'net0'
         tag = [123]
@@ -321,6 +334,14 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
 
     def test_get_network_name_and_tag_not_in_bridge_mappings(self):
         self._test_get_network_name_and_tag(network_in_bridge_map=False)
+
+    def test_get_netweork_vlan_tags(self):
+        tag = [1001]
+        row = fakes.create_object({'tag': tag})
+        self.sb_idl.db_find_rows.return_value.execute.return_value = [row, ]
+
+        ret = self.sb_idl.get_network_vlan_tags()
+        self.assertEqual(tag, ret)
 
     def _test_get_network_vlan_tag_by_network_name(self, match=True):
         network = 'public' if match else 'spongebob'

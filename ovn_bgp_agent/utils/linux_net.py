@@ -339,6 +339,10 @@ def delete_vlan_device_for_network(bridge, vlan_tag):
     delete_device(vlan_device_name)
 
 
+def get_bridge_vlans(bridge):
+    return ovn_bgp_agent.privileged.linux_net.get_bridge_vlans(bridge)
+
+
 def enable_proxy_ndp(device):
     flag = "net.ipv6.conf.{}.proxy_ndp".format(device)
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)

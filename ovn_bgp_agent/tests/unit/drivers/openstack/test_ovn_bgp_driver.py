@@ -102,6 +102,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_ensure_ovn_dev.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
 
+    @mock.patch.object(wire_utils, 'delete_vlan_devices_leftovers')
     @mock.patch.object(linux_net, 'delete_bridge_ip_routes')
     @mock.patch.object(linux_net, 'delete_ip_rules')
     @mock.patch.object(linux_net, 'delete_exposed_ips')
@@ -119,7 +120,7 @@ class TestOVNBGPDriver(test_base.TestCase):
             mock_ensure_vlan_network, mock_nic_address, mock_exposed_ips,
             mock_get_ip_rules, mock_get_patch_ports, mock_ensure_mac,
             mock_remove_flows, mock_del_exposed_ips, mock_del_ip_rules,
-            mock_del_ip_routes):
+            mock_del_ip_routes, mock_vlan_leftovers):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.sb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -183,6 +184,8 @@ class TestOVNBGPDriver(test_base.TestCase):
             {'bridge0': ['fake-route'], 'bridge1': ['fake-route']})
 
         mock_get_ip_rules.assert_called_once_with(mock.ANY)
+        mock_vlan_leftovers.assert_called_once_with(
+            self.sb_idl, self.bgp_driver.ovn_bridge_mappings)
 
     @mock.patch.object(linux_net, 'get_ip_version')
     def test__ensure_cr_lrp_associated_ports_exposed(self, mock_ip_version):

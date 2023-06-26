@@ -440,6 +440,24 @@ def get_link_device(device_name):
             return device
 
 
+@ovn_bgp_agent.privileged.default.entrypoint
+def get_bridge_vlans(device_name):
+    index = _get_link_id(device_name, raise_exception=False)
+    if not index:
+        LOG.debug("OVS Bridge %s deleted, no need to get information about "
+                  "associated vlan devices", device_name)
+
+    vlan_devices = get_link_devices(link=index)
+    vlans = []
+    for vlan_device in vlan_devices:
+        ifla_linkinfo = get_attr(vlan_device, 'IFLA_LINKINFO')
+        if ifla_linkinfo:
+            ifla_data = get_attr(ifla_linkinfo, 'IFLA_INFO_DATA')
+            if ifla_data:
+                vlans.append(get_attr(ifla_data, 'IFLA_VLAN_ID'))
+    return vlans
+
+
 @tenacity.retry(
     retry=tenacity.retry_if_exception_type(
         netlink_exceptions.NetlinkDumpInterrupted),

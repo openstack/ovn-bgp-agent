@@ -356,6 +356,16 @@ class IpLinkTestCase(_LinuxNetTestCase):
                                    constants.LINK_UP)
             test_utils.wait_until_true(fn, timeout=5)
 
+    def test_get_bridge_vlan_devices(self):
+        vlan_id = random.randint(2, 4094)
+        linux_net.create_interface(self.dev_name, 'dummy')
+        linux_net.create_interface(self.dev_name2, 'vlan',
+                                   physical_interface=self.dev_name,
+                                   vlan_id=vlan_id)
+
+        vlan_devices = linux_net.get_bridge_vlans(self.dev_name)
+        self.assertEqual(vlan_devices[0], vlan_id)
+
 
 class IpAddressTestCase(_LinuxNetTestCase):
 
