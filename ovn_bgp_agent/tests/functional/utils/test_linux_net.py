@@ -15,6 +15,7 @@
 import socket
 
 import netaddr
+from neutron_lib.utils import net as net_utils
 from oslo_utils import uuidutils
 
 from ovn_bgp_agent import exceptions as agent_exc
@@ -67,10 +68,12 @@ class GetInterfaceTestCase(base_functional.BaseFunctionalTestCase):
                              range(5)))
         self.addCleanup(self._delete_interfaces, dev_names)
         for dev_name in dev_names:
-            priv_linux_net.create_interface(dev_name, 'dummy')
-            device = self._get_device(dev_name)
+            mac_address = net_utils.get_random_mac(
+                'fa:16:3e:00:00:00'.split(':'))
+            priv_linux_net.create_interface(dev_name, 'dummy',
+                                            address=mac_address)
             mac = linux_net.get_interface_address(dev_name)
-            self.assertEqual(device['mac'], mac)
+            self.assertEqual(mac_address, mac)
 
     def test_get_interface_address_no_interface(self):
         self.assertRaises(agent_exc.NetworkInterfaceNotFound,
