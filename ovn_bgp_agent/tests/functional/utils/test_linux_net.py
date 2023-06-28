@@ -39,7 +39,8 @@ class GetInterfaceTestCase(base_functional.BaseFunctionalTestCase):
                 pass
 
     def _get_device(self, device_name):
-        devices = test_priv_linux_net.get_devices_info()
+        device_index = linux_net.get_interface_index(device_name)
+        devices = test_priv_linux_net.get_devices_info(index=device_index)
         for device in devices.values():
             if device['name'] == device_name:
                 return device
