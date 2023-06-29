@@ -330,6 +330,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_get_ls_localnet_info = mock.patch.object(
             self.nb_bgp_driver, '_get_ls_localnet_info').start()
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
+        self.nb_bgp_driver.ovn_bridge_mappings = {'fake-localnet': 'br-ex'}
 
         cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
         logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
@@ -515,6 +516,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver, '_get_ls_localnet_info').start()
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex',
                                                   100)
+        self.nb_bgp_driver.ovn_bridge_mappings = {'fake-localnet': 'br-ex'}
         mock_expose_provider_port = mock.patch.object(
             self.nb_bgp_driver, '_expose_provider_port').start()
         row = fakes.create_object({

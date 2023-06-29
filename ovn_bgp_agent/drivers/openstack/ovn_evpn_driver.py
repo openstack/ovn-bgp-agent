@@ -27,6 +27,7 @@ from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.watchers import evpn_watcher as \
     watcher
+from ovn_bgp_agent.utils import helpers
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -127,8 +128,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         bridge_mappings = self.ovs_idl.get_ovn_bridge_mappings()
         # 2) Get macs for bridge mappings
         for bridge_index, bridge_mapping in enumerate(bridge_mappings, 1):
-            network = bridge_mapping.split(":")[0]
-            bridge = bridge_mapping.split(":")[1]
+            network, bridge = helpers.parse_bridge_mapping(bridge_mapping)
+            if not network:
+                continue
             self.ovn_bridge_mappings[network] = bridge
 
             linux_net.ensure_arp_ndp_enabled_for_bridge(bridge, bridge_index)

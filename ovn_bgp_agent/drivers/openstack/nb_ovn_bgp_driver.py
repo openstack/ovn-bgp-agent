@@ -265,6 +265,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # This means it is not a provider network
             self.ovn_tenant_ls[logical_switch] = True
             return False
+        if bridge_device not in self.ovn_bridge_mappings.values():
+            # This node is not properly configured, no need to expose it
+            return False
         if not self.ovn_provider_ls.get(logical_switch):
             self.ovn_provider_ls[logical_switch] = {
                 'bridge_device': bridge_device,
@@ -375,6 +378,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             logical_switch)
         if not bridge_device:
             # This means it is not a provider network
+            return False
+        if bridge_device not in self.ovn_bridge_mappings.values():
+            # This node is not properly configured, no need to expose it
             return False
         if not self.ovn_provider_ls.get(logical_switch):
             self.ovn_provider_ls[logical_switch] = {
