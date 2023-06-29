@@ -108,6 +108,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_ensure_ovn_dev.assert_called_once_with(
             CONF.bgp_nic, CONF.bgp_vrf)
 
+    @mock.patch.object(linux_net, 'delete_vlan_device_for_network')
+    @mock.patch.object(linux_net, 'get_bridge_vlans')
     @mock.patch.object(linux_net, 'get_extra_routing_table_for_bridge')
     @mock.patch.object(linux_net, 'delete_bridge_ip_routes')
     @mock.patch.object(linux_net, 'delete_ip_rules')
@@ -125,7 +127,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                   mock_ensure_arp, mock_nic_address, mock_get_patch_ports,
                   mock_ensure_mac, mock_remove_flows, mock_exposed_ips,
                   mock_get_ip_rules, mock_del_exposed_ips, mock_del_ip_rules,
-                  mock_del_ip_routes, mock_get_extra_route):
+                  mock_del_ip_routes, mock_get_extra_route,
+                  mock_get_bridge_vlans, mock_delete_vlan_dev):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.nb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -148,6 +151,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_routing_bridge.return_value = ['fake-route']
         mock_nic_address.return_value = self.mac
         mock_get_patch_ports.return_value = [1, 2]
+
+        self.nb_idl.get_network_vlan_tags.return_value = [10, 11]
+        mock_get_bridge_vlans.side_effect = [[10, 12], [11]]
 
         self.nb_bgp_driver.sync()
 
@@ -176,6 +182,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             ips, CONF.bgp_nic)
         mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
         mock_del_ip_routes.assert_called_once()
+
+        bridge = set(self.nb_bgp_driver.ovn_bridge_mappings.values()).pop()
+        mock_delete_vlan_dev.assert_called_once_with(bridge, 12)
 
     def test__ensure_port_exposed_fip(self):
         port0 = fakes.create_object({

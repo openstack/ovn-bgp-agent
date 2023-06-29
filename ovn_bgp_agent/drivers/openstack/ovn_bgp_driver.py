@@ -260,6 +260,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                                           self.ovn_routing_tables_routes,
                                           extra_routes)
 
+        wire_utils.delete_vlan_devices_leftovers(self.sb_idl,
+                                                 self.ovn_bridge_mappings)
+
     def _ensure_cr_lrp_associated_ports_exposed(self, cr_lrp_port,
                                                 exposed_ips, ovn_ip_rules):
         ips, patch_port_row = self.sb_idl.get_cr_lrp_nat_addresses_info(
