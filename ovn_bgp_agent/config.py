@@ -174,6 +174,9 @@ https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
 ]
 
 CONF = cfg.CONF
+EXTRA_LOG_LEVEL_DEFAULTS = [
+    'oslo.privsep.daemon=INFO'
+]
 
 logging.register_options(CONF)
 
@@ -188,8 +191,9 @@ def init(args, **kwargs):
 
 
 def setup_logging():
+    logging.set_defaults(default_log_levels=logging.get_default_log_levels() +
+                         EXTRA_LOG_LEVEL_DEFAULTS)
     logging.setup(CONF, 'bgp-agent')
-    logging.set_defaults(default_log_levels=logging.get_default_log_levels())
     LOG.info("Logging enabled!")
 
 
