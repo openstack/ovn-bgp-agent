@@ -451,17 +451,20 @@ class TestLinuxNet(test_base.TestCase):
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     def test_delete_ip_routes(self, mock_route_delete):
-        route0 = mock.MagicMock(
+        route0 = dict(
             table=10, dst='10.10.10.10', proto=10, dst_len=128,
             oif='ethout', family='fake', gateway='1.1.1.1')
-        route1 = mock.MagicMock(
+        route1 = dict(
             table=11, dst='11.11.11.11', proto=11, dst_len=64,
             oif='ethout', family='fake', gateway='2.2.2.2')
         routes = [route0, route1]
 
         linux_net.delete_ip_routes(routes)
 
-        mock_route_delete.has_calls([mock.call(route0), mock.call(route1)])
+        route0.pop('proto')
+        route1.pop('proto')
+        mock_route_delete.assert_has_calls(
+            [mock.call(route0), mock.call(route1)])
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ndp_proxy')
     def test_add_ndp_proxy(self, mock_ndp_proxy):
@@ -473,24 +476,29 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.del_ndp_proxy(self.ip, self.dev, vlan=10)
         mock_ndp_proxy.assert_called_once_with(self.ip, self.dev, 10)
 
+    @mock.patch.object(linux_net, 'get_interface_index')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.add_ip_to_dev')
-    def test_add_ips_to_dev(self, mock_add_ip_to_dev, mock_route_delete):
+    def test_add_ips_to_dev(self, mock_add_ip_to_dev, mock_route_delete,
+                            mock_get_index):
         ips = [self.ip, self.ipv6]
+        oif = 7
+        mock_get_index.return_value = oif
         linux_net.add_ips_to_dev(
             self.dev, ips, clear_local_route_at_table=123)
 
         # Assert called for each ip
         calls = [mock.call(self.ip, self.dev),
                  mock.call(self.ipv6, self.dev)]
-        mock_add_ip_to_dev.has_calls(calls)
+        mock_add_ip_to_dev.assert_has_calls(calls)
 
-        r1 = {'table': 123, 'proto': 2, 'scope': 254, 'dst': self.ip, 'oif': 7}
+        r1 = {'table': 123, 'proto': 2, 'scope': 254, 'dst': self.ip,
+              'oif': oif}
         r2 = {'table': 123, 'proto': 2, 'scope': 254, 'dst': self.ipv6,
-              'oif': 7}
+              'oif': oif}
         calls = [mock.call(r1),
                  mock.call(r2)]
-        mock_route_delete.has_calls(calls)
+        mock_route_delete.assert_has_calls(calls)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.del_ip_from_dev')
     def test_del_ips_from_dev(self, mock_del_ip_from_dev):
@@ -499,7 +507,7 @@ class TestLinuxNet(test_base.TestCase):
 
         calls = [mock.call(self.ip, self.dev),
                  mock.call(self.ipv6, self.dev)]
-        mock_del_ip_from_dev.has_calls(calls)
+        mock_del_ip_from_dev.assert_has_calls(calls)
 
     @mock.patch.object(linux_net, 'add_ip_nei')
     @mock.patch('ovn_bgp_agent.privileged.linux_net.rule_create')
