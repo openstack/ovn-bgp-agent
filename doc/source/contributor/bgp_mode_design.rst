@@ -496,7 +496,7 @@ below:
 
    .. note::
 
-    If you what to filter the tenant networks to be exposed by some specific
+    If you want to filter the tenant networks to be exposed by some specific
     address scopes, add the list of address scopes to ``addresss_scope=XXX``
     section. If no filtering should be applied, just remove the line.
 
