@@ -20,6 +20,7 @@ OVN_PATCH_VIF_PORT_TYPE = "patch"
 OVN_CHASSISREDIRECT_VIF_PORT_TYPE = "chassisredirect"
 OVN_LOCALNET_VIF_PORT_TYPE = "localnet"
 OVN_DNAT_AND_SNAT = "dnat_and_snat"
+OVN_CR_LRP_PORT_TYPE = 'crlrp'
 
 OVN_CIDRS_EXT_ID_KEY = 'neutron:cidrs'
 OVN_PORT_NAME_EXT_ID_KEY = 'neutron:port_name'
@@ -67,6 +68,7 @@ EXPOSE = "expose"
 WITHDRAW = "withdraw"
 
 OVN_REQUESTED_CHASSIS = "requested-chassis"
+OVN_STATUS_CHASSIS = "hosting-chassis"
 OVN_HOST_ID_EXT_ID_KEY = "neutron:host_id"
 OVN_CHASSIS_AT_OPTIONS = "options"
 OVN_CHASSIS_AT_EXT_IDS = "external-ids"
