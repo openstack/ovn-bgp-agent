@@ -66,7 +66,16 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             return
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            self.agent.expose_ip(ips, row)
+            mac = row.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': [
+                    row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)],
+                'type': row.type,
+                'logical_switch': row.external_ids.get(
+                    constants.OVN_LS_NAME_EXT_ID_KEY)
+            }
+            self.agent.expose_ip(ips, ips_info)
 
 
 class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
@@ -124,7 +133,16 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             return
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            self.agent.withdraw_ip(ips, row)
+            mac = row.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': [
+                    row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)],
+                'type': row.type,
+                'logical_switch': row.external_ids.get(
+                    constants.OVN_LS_NAME_EXT_ID_KEY)
+            }
+            self.agent.withdraw_ip(ips, ips_info)
 
 
 class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
@@ -287,3 +305,79 @@ class LocalnetCreateDeleteEvent(base_watcher.LSPChassisEvent):
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.sync()
+
+
+class ChassisRedirectCreateEvent(base_watcher.LRPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(ChassisRedirectCreateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            # check if hosting-chassis is being added
+            hosting_chassis = row.status.get(constants.OVN_STATUS_CHASSIS)
+            if hosting_chassis != self.agent.chassis_id:
+                # No chassis set or different one
+                return False
+
+            if hasattr(old, 'status'):
+                # status has changed
+                old_hosting_chassis = old.status.get(
+                    constants.OVN_STATUS_CHASSIS)
+                if old_hosting_chassis != hosting_chassis:
+                    return True
+            return False
+        except (IndexError, AttributeError):
+            return False
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            if row.networks:
+                ips_info = {
+                    'mac': row.mac,
+                    'cidrs': row.networks,
+                    'type': constants.OVN_CR_LRP_PORT_TYPE,
+                    'logical_switch': row.external_ids.get(
+                        constants.OVN_LS_NAME_EXT_ID_KEY)
+                }
+                ips = [net.split("/")[0] for net in row.networks]
+                self.agent.expose_ip(ips, ips_info)
+
+
+class ChassisRedirectDeleteEvent(base_watcher.LRPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE, self.ROW_DELETE,)
+        super(ChassisRedirectDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            if event == self.ROW_DELETE:
+                return (row.status.get(constants.OVN_STATUS_CHASSIS) ==
+                        self.agent.chassis_id)
+            # ROW UPDATE EVENT
+            if hasattr(old, 'status'):
+                # status has changed
+                hosting_chassis = row.status.get(constants.OVN_STATUS_CHASSIS)
+                old_hosting_chassis = old.status.get(
+                    constants.OVN_STATUS_CHASSIS)
+                if (hosting_chassis != old_hosting_chassis and
+                        old_hosting_chassis == self.agent.chassis_id):
+                    return True
+            return False
+        except (IndexError, AttributeError):
+            return False
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            if row.networks:
+                ips_info = {
+                    'mac': row.mac,
+                    'cidrs': row.networks,
+                    'type': constants.OVN_CR_LRP_PORT_TYPE,
+                    'logical_switch': row.external_ids.get(
+                        constants.OVN_LS_NAME_EXT_ID_KEY)
+                }
+                ips = [net.split("/")[0] for net in row.networks]
+                self.agent.withdraw_ip(ips, ips_info)

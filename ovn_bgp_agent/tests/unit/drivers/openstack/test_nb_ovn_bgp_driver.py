@@ -41,6 +41,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.nb_bgp_driver.nb_idl = mock.Mock()
         self.nb_idl = self.nb_bgp_driver.nb_idl
         self.nb_bgp_driver.chassis = 'fake-chassis'
+        self.nb_bgp_driver.chassis_id = 'fake-chassis-id'
         self.nb_bgp_driver.ovn_bridge_mappings = {'fake-network': self.bridge}
 
         self.mock_nbdb = mock.patch.object(ovn, 'OvnNbIdl').start()
@@ -71,6 +72,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         CONF.set_override('clear_vrf_routes_on_startup', True)
         self.addCleanup(CONF.clear_override, 'clear_vrf_routes_on_startup')
         self.mock_ovs_idl.get_own_chassis_name.return_value = 'chassis-name'
+        self.mock_ovs_idl.get_own_chassis_id.return_value = 'chassis-id'
         self.mock_ovs_idl.get_ovn_remote.return_value = (
             self.conf_ovsdb_connection)
 
@@ -80,6 +82,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.mock_ovs_idl().start.assert_called_once_with(
             CONF.ovsdb_connection)
         self.mock_ovs_idl().get_own_chassis_name.assert_called_once()
+        self.mock_ovs_idl().get_own_chassis_id.assert_called_once()
+
         self.mock_ovs_idl().get_ovn_remote.assert_called_once()
 
         mock_ensure_vrf.assert_called_once_with(
@@ -138,16 +142,21 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         ips = [self.ipv4, self.ipv6]
         mock_exposed_ips.return_value = ips
 
+        crlrp_port = fakes.create_object({
+            'name': 'crlrp_port'})
         port0 = fakes.create_object({
             'name': 'port-0',
             'type': constants.OVN_VM_VIF_PORT_TYPE})
         port1 = fakes.create_object({
             'name': 'port-1',
             'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE})
-        self.nb_idl.get_active_ports_on_chassis.return_value = [
+        self.nb_idl.get_active_cr_lrp_on_chassis.return_value = [crlrp_port]
+        self.nb_idl.get_active_lsp_on_chassis.return_value = [
             port0, port1]
-        mock_ensure_port_exposed = mock.patch.object(
-            self.nb_bgp_driver, '_ensure_port_exposed').start()
+        mock_ensure_crlrp_exposed = mock.patch.object(
+            self.nb_bgp_driver, '_ensure_crlrp_exposed').start()
+        mock_ensure_lsp_exposed = mock.patch.object(
+            self.nb_bgp_driver, '_ensure_lsp_exposed').start()
         mock_routing_bridge.return_value = ['fake-route']
         mock_nic_address.return_value = self.mac
         mock_get_patch_ports.return_value = [1, 2]
@@ -177,7 +186,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             mock.call(mock.ANY, 'bridge1', constants.OVS_RULE_COOKIE)]
         mock_remove_flows.assert_has_calls(expected_calls)
         mock_get_ip_rules.assert_called_once()
-        mock_ensure_port_exposed.assert_called_once_with(port0)
+        mock_ensure_crlrp_exposed.assert_called_once_with(crlrp_port)
+        mock_ensure_lsp_exposed.assert_called_once_with(port0)
         mock_del_exposed_ips.assert_called_once_with(
             ips, CONF.bgp_nic)
         mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
@@ -186,7 +196,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         bridge = set(self.nb_bgp_driver.ovn_bridge_mappings.values()).pop()
         mock_delete_vlan_dev.assert_called_once_with(bridge, 12)
 
-    def test__ensure_port_exposed_fip(self):
+    def test__ensure_lsp_exposed_fip(self):
         port0 = fakes.create_object({
             'name': 'port-0',
             'external_ids': {constants.OVN_FIP_EXT_ID_KEY: "fip"}})
@@ -201,14 +211,14 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_expose_ip = mock.patch.object(
             self.nb_bgp_driver, '_expose_ip').start()
 
-        self.nb_bgp_driver._ensure_port_exposed(port0)
+        self.nb_bgp_driver._ensure_lsp_exposed(port0)
 
         mock_get_port_external_ip_and_ls.assert_called_once_with(port0.name)
         mock_expose_fip.assert_called_once_with("192.168.0.10", "fake-mac",
                                                 "test-ls", port0)
         mock_expose_ip.assert_not_called()
 
-    def test__ensure_port_exposed_tenant_ls(self):
+    def test__ensure_lsp_exposed_tenant_ls(self):
         port0 = fakes.create_object({
             'name': 'port-0',
             'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"}})
@@ -221,14 +231,14 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_expose_ip = mock.patch.object(
             self.nb_bgp_driver, '_expose_ip').start()
 
-        self.nb_bgp_driver._ensure_port_exposed(port0)
+        self.nb_bgp_driver._ensure_lsp_exposed(port0)
 
         mock_get_port_external_ip_and_ls.assert_not_called()
         mock_expose_fip.assert_not_called()
         mock_expose_ip.assert_not_called()
 
     @mock.patch.object(linux_net, 'get_ip_version')
-    def test__ensure_port_exposed_no_fip_no_tenant_ls(self, mock_ip_version):
+    def test__ensure_lsp_exposed_no_fip_no_tenant_ls(self, mock_ip_version):
         port0 = fakes.create_object({
             'name': 'port-0',
             'addresses': ["fake_mac 192.168.0.10"],
@@ -250,14 +260,79 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
         mock_ip_version.return_value = constants.IP_VERSION_4
 
-        self.nb_bgp_driver._ensure_port_exposed(port0)
+        self.nb_bgp_driver._ensure_lsp_exposed(port0)
 
         mock_get_port_external_ip_and_ls.assert_not_called()
         mock_get_ls_localnet_info.assert_called_once_with('test-ls')
         mock_expose_fip.assert_not_called()
         mock_expose_ip.assert_called_once_with(
             ['192.168.0.10'], 'fake_mac', 'test-ls', 'br-ex', 10,
-            constants.OVN_VM_VIF_PORT_TYPE, None)
+            constants.OVN_VM_VIF_PORT_TYPE, [None])
+
+    def test__ensure_crlrp_exposed(self):
+        port = fakes.create_object({
+            'name': 'lrp-port',
+            'networks': ['172.24.16.2/24'],
+            'mac': "fake_mac",
+            'status': {'hosting-chassis': self.nb_bgp_driver.chassis_id},
+            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"}})
+        mock_get_ls_localnet_info = mock.patch.object(
+            self.nb_bgp_driver, '_get_ls_localnet_info').start()
+        mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
+        mock_expose_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ip').start()
+
+        self.nb_bgp_driver._ensure_crlrp_exposed(port)
+
+        mock_expose_ip.assert_called_once_with(
+            ['172.24.16.2'], 'fake_mac', 'test-ls', 'br-ex', 10,
+            constants.OVN_CR_LRP_PORT_TYPE, ['172.24.16.2/24'])
+
+    def test__ensure_crlrp_exposed_no_networks(self):
+        port = fakes.create_object({
+            'name': 'lrp-port',
+            'networks': [],
+            'mac': "fake_mac",
+            'status': {'hosting-chassis': self.nb_bgp_driver.chassis_id},
+            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"}})
+        mock_expose_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ip').start()
+
+        self.nb_bgp_driver._ensure_crlrp_exposed(port)
+
+        mock_expose_ip.assert_not_called()
+
+    def test__ensure_crlrp_exposed_no_logical_switch(self):
+        port = fakes.create_object({
+            'name': 'lrp-port',
+            'networks': ['172.24.16.2/24'],
+            'mac': "fake_mac",
+            'status': {'hosting-chassis': self.nb_bgp_driver.chassis_id},
+            'external_ids': {}})
+
+        mock_expose_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ip').start()
+
+        self.nb_bgp_driver._ensure_crlrp_exposed(port)
+
+        mock_expose_ip.assert_not_called()
+
+    def test__ensure_crlrp_exposed_no_bridge(self):
+        port = fakes.create_object({
+            'name': 'lrp-port',
+            'networks': ['172.24.16.2/24'],
+            'mac': "fake_mac",
+            'status': {'hosting-chassis': self.nb_bgp_driver.chassis_id},
+            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"}})
+        mock_get_ls_localnet_info = mock.patch.object(
+            self.nb_bgp_driver, '_get_ls_localnet_info').start()
+        mock_get_ls_localnet_info.return_value = (None, None, None)
+        mock_expose_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ip').start()
+
+        self.nb_bgp_driver._ensure_crlrp_exposed(port)
+
+        mock_expose_ip.assert_not_called()
 
     @mock.patch.object(wire_utils, 'wire_provider_port')
     @mock.patch.object(bgp_utils, 'announce_ips')
@@ -337,7 +412,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.assertEqual(bridge_device, None)
         self.assertEqual(bridge_vlan, None)
 
-    def _test_expose_ip(self, ips, row):
+    def _test_expose_ip(self, ips, ips_info):
         mock_expose_provider_port = mock.patch.object(
             self.nb_bgp_driver, '_expose_provider_port').start()
         mock_get_ls_localnet_info = mock.patch.object(
@@ -345,58 +420,63 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
         self.nb_bgp_driver.ovn_bridge_mappings = {'fake-localnet': 'br-ex'}
 
-        cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-        logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
+        self.nb_bgp_driver.expose_ip(ips, ips_info)
 
-        self.nb_bgp_driver.expose_ip(ips, row)
-
-        if not logical_switch:
+        if not ips_info['logical_switch']:
             mock_expose_provider_port.assert_not_called()
             mock_get_ls_localnet_info.assert_not_called()
             return
 
-        mock_get_ls_localnet_info.assert_called_once_with(logical_switch)
-        self.assertEqual(self.nb_bgp_driver.ovn_provider_ls[logical_switch],
-                         {'bridge_device': 'br-ex', 'bridge_vlan': 10,
-                          'localnet': 'fake-localnet'})
-        if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE and cidr:
+        mock_get_ls_localnet_info.assert_called_once_with(
+            ips_info['logical_switch'])
+        self.assertEqual(
+            self.nb_bgp_driver.ovn_provider_ls[ips_info['logical_switch']],
+            {'bridge_device': 'br-ex', 'bridge_vlan': 10,
+             'localnet': 'fake-localnet'})
+        if (ips_info['type'] == constants.OVN_VIRTUAL_VIF_PORT_TYPE and
+                ips_info['cidrs']):
             mock_expose_provider_port.assert_called_once_with(
                 ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet',
-                [cidr])
+                ips_info['cidrs'])
         else:
             mock_expose_provider_port.assert_called_once_with(
                 ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet')
 
     def test_expose_ip(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
-            'addresses': ['fake-mac {} {}'.format(self.ipv4, self.ipv6)],
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'}})
+            'logical_switch': 'test-ls'
+        }
 
-        self._test_expose_ip(ips, row)
+        self._test_expose_ip(ips, ips_info)
 
     def test_expose_ip_virtual(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
-            'addresses': ['fake-mac {} {}'.format(self.ipv4, self.ipv6)],
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': ['test-cidr'],
             'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls',
-                             constants.OVN_CIDRS_EXT_ID_KEY: 'test-cidr'}})
+            'logical_switch': 'test-ls'
+        }
 
-        self._test_expose_ip(ips, row)
+        self._test_expose_ip(ips, ips_info)
 
     def test_expose_ip_no_switch(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
-            'addresses': ['fake-mac {} {}'.format(self.ipv4, self.ipv6)],
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {}})
+            'logical_switch': None
+        }
 
-        self._test_expose_ip(ips, row)
+        self._test_expose_ip(ips, ips_info)
 
     @mock.patch.object(linux_net, 'get_ip_version')
-    def _test_withdraw_ip(self, ips, row, provider, mock_ip_version):
+    def _test_withdraw_ip(self, ips, ips_info, provider, mock_ip_version):
         mock_withdraw_provider_port = mock.patch.object(
             self.nb_bgp_driver, '_withdraw_provider_port').start()
         mock_get_ls_localnet_info = mock.patch.object(
@@ -409,60 +489,71 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         else:
             mock_get_ls_localnet_info.return_value = (None, None, None)
 
-        cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-        logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
+        self.nb_bgp_driver.withdraw_ip(ips, ips_info)
 
-        self.nb_bgp_driver.withdraw_ip(ips, row)
-
-        if not logical_switch:
+        if not ips_info['logical_switch']:
             mock_get_ls_localnet_info.assert_not_called()
             mock_withdraw_provider_port.assert_not_called()
             return
         if not provider:
-            mock_get_ls_localnet_info.assert_called_once_with(logical_switch)
+            mock_get_ls_localnet_info.assert_called_once_with(
+                ips_info['logical_switch'])
             mock_withdraw_provider_port.assert_not_called()
             return
 
-        mock_get_ls_localnet_info.assert_called_once_with(logical_switch)
-        if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE and cidr:
+        mock_get_ls_localnet_info.assert_called_once_with(
+            ips_info['logical_switch'])
+        if (ips_info['type'] == constants.OVN_VIRTUAL_VIF_PORT_TYPE and
+                ips_info['cidrs']):
             mock_withdraw_provider_port.assert_called_once_with(
-                ips, 'test-ls', 'br-ex', 10, [cidr])
+                ips, 'test-ls', 'br-ex', 10, ips_info['cidrs'])
         else:
             mock_withdraw_provider_port.assert_called_once_with(
                 ips, 'test-ls', 'br-ex', 10)
 
     def test_withdraw_ip(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'}})
+            'logical_switch': 'test-ls'
+        }
 
-        self._test_withdraw_ip(ips, row, True)
+        self._test_withdraw_ip(ips, ips_info, True)
 
     def test_withdraw_ip_no_provider(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'}})
+            'logical_switch': 'test-ls'
+        }
 
-        self._test_withdraw_ip(ips, row, False)
+        self._test_withdraw_ip(ips, ips_info, False)
 
     def test_withdraw_ip_virtual(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': ['test-cidr'],
             'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls',
-                             constants.OVN_CIDRS_EXT_ID_KEY: 'test-cidr'}})
+            'logical_switch': 'test-ls'
+        }
 
-        self._test_withdraw_ip(ips, row, True)
+        self._test_withdraw_ip(ips, ips_info, True)
 
     def test_withdraw_ip_no_switch(self):
         ips = [self.ipv4, self.ipv6]
-        row = fakes.create_object({
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {}})
+            'logical_switch': None
+        }
 
-        self._test_withdraw_ip(ips, row, True)
+        self._test_withdraw_ip(ips, ips_info, True)
 
     def test__get_ls_localnet_info(self):
         logical_switch = 'lswitch1'

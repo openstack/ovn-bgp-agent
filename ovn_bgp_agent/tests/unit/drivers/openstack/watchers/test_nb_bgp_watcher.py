@@ -86,12 +86,21 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_run(self):
-        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
-                               addresses=['mac 192.168.0.1'],
-                               options={'requested-chassis': self.chassis},
-                               up=[True])
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            external_ids={'neutron:host_id': self.chassis,
+                          constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'},
+            addresses=['mac 192.168.0.1'],
+            options={'requested-chassis': self.chassis},
+            up=[True])
+        ips_info = {
+            'mac': 'mac',
+            'cidrs': [None],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'test-ls'
+        }
         self.event.run(mock.Mock(), row, mock.Mock())
-        self.agent.expose_ip.assert_called_once_with(['192.168.0.1'], row)
+        self.agent.expose_ip.assert_called_once_with(['192.168.0.1'], ips_info)
 
     def test_run_wrong_type(self):
         row = utils.create_row(
@@ -170,12 +179,23 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_run(self):
-        row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
-                               addresses=['mac 192.168.0.1'],
-                               options={'requested-chassis': self.chassis},
-                               up=[True])
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            external_ids={'neutron:host_id': self.chassis,
+                          constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'},
+            addresses=['mac 192.168.0.1'],
+            options={'requested-chassis': self.chassis},
+            up=[True])
+        ips_info = {
+            'mac': 'mac',
+            'cidrs': [None],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'test-ls'
+        }
+
         self.event.run(mock.Mock(), row, mock.Mock())
-        self.agent.withdraw_ip.assert_called_once_with(['192.168.0.1'], row)
+        self.agent.withdraw_ip.assert_called_once_with(['192.168.0.1'],
+                                                       ips_info)
 
     def test_run_wrong_type(self):
         row = utils.create_row(
@@ -482,3 +502,136 @@ class TestLocalnetCreateDeleteEvent(test_base.TestCase):
         row = utils.create_row(type=constants.OVN_LOCALNET_VIF_PORT_TYPE)
         self.event.run(None, row, None)
         self.agent.sync.assert_called_once()
+
+
+class TestChassisRedirectCreateEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestChassisRedirectCreateEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.event = nb_bgp_watcher.ChassisRedirectCreateEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        old = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_exception(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_no_status_change(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        old = utils.create_row()
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_different_chassis(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': 'other_chassis'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=['192.168.0.2/24'],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        ips_info = {'mac': 'fake-mac',
+                    'cidrs': ['192.168.0.2/24'],
+                    'type': constants.OVN_CR_LRP_PORT_TYPE,
+                    'logical_switch': 'test-ls'}
+        self.event.run(None, row, None)
+        self.agent.expose_ip.assert_called_once_with(['192.168.0.2'], ips_info)
+
+    def test_run_no_networks(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=[],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        self.event.run(None, row, None)
+        self.agent.expose_ip.assert_not_called()
+
+
+class TestChassisRedirectDeleteEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestChassisRedirectDeleteEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.event = nb_bgp_watcher.ChassisRedirectDeleteEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={})
+        old = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
+
+    def test_match_fn_exception(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_no_status_change(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        old = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_different_chassis(self):
+        row = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': self.chassis_id})
+        old = utils.create_row(mac='fake-mac',
+                               networks=['192.168.0.2/24'],
+                               status={'hosting-chassis': 'different_chassis'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_run(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=['192.168.0.2/24'],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        ips_info = {'mac': 'fake-mac',
+                    'cidrs': ['192.168.0.2/24'],
+                    'type': constants.OVN_CR_LRP_PORT_TYPE,
+                    'logical_switch': 'test-ls'}
+        self.event.run(None, row, None)
+        self.agent.withdraw_ip.assert_called_once_with(['192.168.0.2'],
+                                                       ips_info)
+
+    def test_run_no_networks(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=[],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        self.event.run(None, row, None)
+        self.agent.withdraw_ip.assert_not_called()

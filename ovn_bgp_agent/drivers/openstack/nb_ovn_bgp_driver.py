@@ -34,7 +34,8 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch']
+OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch',
+              'Logical_Router_Port']
 LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
                             'Logical_Router', 'Logical_Router_Port',
                             'Logical_Router_Policy',
@@ -97,6 +98,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self.ovs_idl = ovs.OvsIdl()
         self.ovs_idl.start(CONF.ovsdb_connection)
         self.chassis = self.ovs_idl.get_own_chassis_name()
+        self.chassis_id = self.ovs_idl.get_own_chassis_id()
+
         # NOTE(ltomasbo): remote should point to NB DB port instead of SB DB,
         # so changing 6642 by 6641
         self.ovn_remote = self.ovs_idl.get_ovn_remote(nb=True)
@@ -144,7 +147,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "LogicalSwitchPortFIPDeleteEvent",
                       "LocalnetCreateDeleteEvent"])
         if self._expose_tenant_networks:
-            events.update([])
+            events.update(["ChassisRedirectCreateEvent",
+                           "ChassisRedirectDeleteEvent"])
         return events
 
     @lockutils.synchronized('nbbgp')
@@ -167,13 +171,17 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 routing_tables=self.ovn_routing_tables))
 
         LOG.debug("Syncing current routes.")
+        # add missing reoutes/ips for OVN router gateway ports
+        ports = self.nb_idl.get_active_cr_lrp_on_chassis(self.chassis_id)
+        for port in ports:
+            self._ensure_crlrp_exposed(port)
         # add missing routes/ips for IPs on provider network
-        ports = self.nb_idl.get_active_ports_on_chassis(self.chassis)
+        ports = self.nb_idl.get_active_lsp_on_chassis(self.chassis)
         for port in ports:
             if port.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                                  constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
                 continue
-            self._ensure_port_exposed(port)
+            self._ensure_lsp_exposed(port)
 
         # remove extra wiring leftovers
         wire_utils.cleanup_wiring(self.nb_idl,
@@ -183,7 +191,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                                   self.ovn_routing_tables,
                                   self.ovn_routing_tables_routes)
 
-    def _ensure_port_exposed(self, port):
+    def _ensure_lsp_exposed(self, port):
         port_fip = port.external_ids.get(constants.OVN_FIP_EXT_ID_KEY)
         if port_fip:
             external_ip, external_mac, ls_name = (
@@ -219,8 +227,31 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         ips = port.addresses[0].strip().split(' ')[1:]
         mac = port.addresses[0].strip().split(' ')[0]
         self._expose_ip(ips, mac, logical_switch, bridge_device, bridge_vlan,
-                        port.type, port.external_ids.get(
-                            constants.OVN_CIDRS_EXT_ID_KEY))
+                        port.type, [port.external_ids.get(
+                            constants.OVN_CIDRS_EXT_ID_KEY)])
+
+    def _ensure_crlrp_exposed(self, port):
+        if not port.networks:
+            return
+
+        logical_switch = port.external_ids.get(
+            constants.OVN_LS_NAME_EXT_ID_KEY)
+        if not logical_switch:
+            return
+        localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            logical_switch)
+
+        if not bridge_device:
+            return
+
+        self.ovn_provider_ls[logical_switch] = {
+            'bridge_device': bridge_device,
+            'bridge_vlan': bridge_vlan,
+            'localnet': localnet}
+        ips = [net.split("/")[0] for net in port.networks]
+        self._expose_ip(ips, port.mac, logical_switch, bridge_device,
+                        bridge_vlan, constants.OVN_CR_LRP_PORT_TYPE,
+                        port.networks)
 
     def _expose_provider_port(self, port_ips, mac, logical_switch,
                               bridge_device, bridge_vlan, localnet,
@@ -272,7 +303,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         return bridge_device, bridge_vlan
 
     @lockutils.synchronized('nbbgp')
-    def expose_ip(self, ips, row):
+    def expose_ip(self, ips, ips_info):
         '''Advertice BGP route by adding IP to device.
 
         This methods ensures BGP advertises the IP of the VM in the provider
@@ -284,7 +315,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         VRF), and adds the IP of:
         - VM IP on the provider network
         '''
-        logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
+        logical_switch = ips_info.get('logical_switch')
         if not logical_switch:
             return False
         localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
@@ -301,24 +332,24 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 'bridge_device': bridge_device,
                 'bridge_vlan': bridge_vlan,
                 'localnet': localnet}
-        mac = row.addresses[0].strip().split(' ')[0]
+        mac = ips_info.get('mac')
         return self._expose_ip(ips, mac, logical_switch, bridge_device,
-                               bridge_vlan, port_type=row.type,
-                               cidr=row.external_ids.get(
-                                   constants.OVN_CIDRS_EXT_ID_KEY))
+                               bridge_vlan, port_type=ips_info['type'],
+                               cidrs=ips_info['cidrs'])
 
     def _expose_ip(self, ips, mac, logical_switch, bridge_device, bridge_vlan,
-                   port_type, cidr):
+                   port_type, cidrs):
         LOG.debug("Adding BGP route for logical port with ip %s", ips)
         localnet = self.ovn_provider_ls[logical_switch]['localnet']
 
-        if cidr and port_type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+        if cidrs and port_type in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+                                   constants.OVN_CR_LRP_PORT_TYPE]:
             # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
             # network, we need a NDP Proxy so that the traffic from the
             # amphora can properly be redirected back
             if not self._expose_provider_port(ips, mac, logical_switch,
                                               bridge_device, bridge_vlan,
-                                              localnet, [cidr]):
+                                              localnet, cidrs):
                 return []
 
         else:
@@ -330,7 +361,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         return ips
 
     @lockutils.synchronized('nbbgp')
-    def withdraw_ip(self, ips, row):
+    def withdraw_ip(self, ips, ips_info):
         '''Withdraw BGP route by removing IP from device.
 
         This methods ensures BGP withdraw an advertised IP of a VM, either
@@ -342,7 +373,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         VRF), and removes the IP of:
         - VM IP on the provider network
         '''
-        logical_switch = row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
+        logical_switch = ips_info.get('logical_switch')
         if not logical_switch:
             return
         _, bridge_device, bridge_vlan = self._get_ls_localnet_info(
@@ -352,12 +383,13 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return
 
         proxy_cidr = None
-        if row.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
-            n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
-            if n_cidr and (linux_net.get_ip_version(n_cidr) ==
-                           constants.IP_VERSION_6):
-                if not self.nb_idl.ls_has_virtual_ports(logical_switch):
-                    proxy_cidr = n_cidr
+
+        if ips_info['type'] in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+                                constants.OVN_CR_LRP_PORT_TYPE]:
+            for n_cidr in ips_info['cidrs']:
+                if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
+                    if not self.nb_idl.ls_has_virtual_ports(logical_switch):
+                        proxy_cidr = n_cidr
         LOG.debug("Deleting BGP route for logical port with ip %s", ips)
         if proxy_cidr:
             self._withdraw_provider_port(ips, logical_switch, bridge_device,

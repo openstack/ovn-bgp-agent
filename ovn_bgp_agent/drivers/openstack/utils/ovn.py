@@ -409,7 +409,7 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         nat_info = cmd.execute(check_error=True)
         return nat_info[0] if nat_info else []
 
-    def get_active_ports_on_chassis(self, chassis):
+    def get_active_lsp_on_chassis(self, chassis):
         ports = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True))
         for row in cmd.execute(check_error=True):
@@ -420,6 +420,21 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
             elif (row.options and
                     row.options.get(
                         constants.OVN_REQUESTED_CHASSIS) == chassis):
+                ports.append(row)
+        return ports
+
+    def get_active_cr_lrp_on_chassis(self, chassis):
+        ports = []
+        rows = self.db_list_rows('Logical_Router_Port').execute(
+            check_error=True)
+
+        for row in rows:
+            if not hasattr(row, 'status'):
+                LOG.warning("OVN version does not include support for status "
+                            "information. Therefore router ports and tenant "
+                            "IPs cannot be exposed.")
+                break
+            if row.status.get(constants.OVN_STATUS_CHASSIS) == chassis:
                 ports.append(row)
         return ports
 

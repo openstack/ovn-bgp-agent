@@ -72,3 +72,12 @@ class LSPChassisEvent(Event):
             return (row.options[constants.OVN_REQUESTED_CHASSIS],
                     constants.OVN_CHASSIS_AT_OPTIONS)
         return None, None
+
+
+class LRPChassisEvent(Event):
+    def __init__(self, bgp_agent, events):
+        self.agent = bgp_agent
+        table = 'Logical_Router_Port'
+        super(LRPChassisEvent, self).__init__(
+            events, table, None)
+        self.event_name = self.__class__.__name__

@@ -40,3 +40,26 @@ class TestPortBindingChassisEvent(test_base.TestCase):
             'aa:bb:cc:dd:ee:ff'))
         self.assertTrue(self.pb_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
+
+
+class FakeLSPChassisEvent(base_watcher.LSPChassisEvent):
+    def run(self):
+        pass
+
+
+class TestLSPChassisEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestLSPChassisEvent, self).setUp()
+        self.lsp_event = FakeLSPChassisEvent(
+            mock.Mock(), [mock.Mock()])
+
+    def test__check_ip_associated(self):
+        self.assertTrue(self.lsp_event._check_ip_associated(
+            'aa:bb:cc:dd:ee:ff 10.10.1.16'))
+        self.assertTrue(self.lsp_event._check_ip_associated(
+            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17'))
+        self.assertFalse(self.lsp_event._check_ip_associated(
+            'aa:bb:cc:dd:ee:ff'))
+        self.assertTrue(self.lsp_event._check_ip_associated(
+            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
