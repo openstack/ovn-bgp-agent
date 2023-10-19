@@ -528,11 +528,11 @@ def get_routes_on_tables(table_ids):
 
 def delete_ip_routes(routes):
     for route in routes:
-        r_info = {'dst': route['dst'],
+        r_info = {'dst': route.get('dst'),
                   'dst_len': route['dst_len'],
                   'family': route['family'],
-                  'oif': route['oif'],
-                  'gateway': route['gateway'],
+                  'oif': route.get('oif'),
+                  'gateway': route.get('gateway'),
                   'table': route['table']}
         ovn_bgp_agent.privileged.linux_net.route_delete(r_info)
 

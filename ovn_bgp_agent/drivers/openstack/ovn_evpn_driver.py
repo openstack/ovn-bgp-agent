@@ -766,16 +766,17 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
                 if 'gateway' in route_info['route'].keys():  # subnet route
                     possible_matchings = [
                         r for r in vrf_routes
-                        if (r['dst'] == route_info['route']['dst'] and
+                        if (r.get('dst') == route_info['route']['dst'] and
                             r['dst_len'] == route_info['route']['dst_len'] and
-                            r['gateway'] == route_info['route']['gateway'] and
+                            r.get('gateway') == (
+                                route_info['route']['gateway']) and
                             r['table'] == route_info['route']['table'])]
                 else:  # cr-lrp
                     possible_matchings = [
                         r for r in vrf_routes
-                        if (r['dst'] == route_info['route']['dst'] and
+                        if (r.get('dst') == route_info['route']['dst'] and
                             r['dst_len'] == route_info['route']['dst_len'] and
-                            r['oif'] == oif and
+                            r.get('oif') == oif and
                             r['table'] == route_info['route']['table'])]
                 for r in possible_matchings:
                     vrf_routes.remove(r)
