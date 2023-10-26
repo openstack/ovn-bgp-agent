@@ -20,6 +20,7 @@ from oslo_config import cfg
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack import nb_ovn_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
@@ -35,6 +36,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
     def setUp(self):
         super(TestNBOVNBGPDriver, self).setUp()
+        CONF.set_override('expose_tenant_networks', True)
         self.bridge = 'fake-bridge'
         self.nb_bgp_driver = nb_ovn_bgp_driver.NBOVNBGPDriver()
         self.nb_bgp_driver._post_start_event = mock.Mock()
@@ -53,6 +55,11 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.fip = '172.24.4.33'
         self.mac = 'aa:bb:cc:dd:ee:ff'
 
+        self.router1_info = {'bridge_device': self.bridge,
+                             'bridge_vlan': 100,
+                             'ips': ['172.24.4.11']}
+        self.nb_bgp_driver.ovn_local_cr_lrps = {
+            'router1': self.router1_info}
         self.ovn_routing_tables = {
             self.bridge: 100,
             'br-vlan': 200}
@@ -144,6 +151,11 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         crlrp_port = fakes.create_object({
             'name': 'crlrp_port'})
+        lrp0 = fakes.create_object({
+            'name': 'lrp_port',
+            'external_ids': {
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'fake-router'}})
         port0 = fakes.create_object({
             'name': 'port-0',
             'type': constants.OVN_VM_VIF_PORT_TYPE})
@@ -151,10 +163,13 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'name': 'port-1',
             'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE})
         self.nb_idl.get_active_cr_lrp_on_chassis.return_value = [crlrp_port]
+        self.nb_idl.get_active_local_lrps.return_value = [lrp0]
         self.nb_idl.get_active_lsp_on_chassis.return_value = [
             port0, port1]
         mock_ensure_crlrp_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_crlrp_exposed').start()
+        mock_expose_subnet = mock.patch.object(
+            self.nb_bgp_driver, '_expose_subnet').start()
         mock_ensure_lsp_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_lsp_exposed').start()
         mock_routing_bridge.return_value = ['fake-route']
@@ -187,12 +202,15 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_remove_flows.assert_has_calls(expected_calls)
         mock_get_ip_rules.assert_called_once()
         mock_ensure_crlrp_exposed.assert_called_once_with(crlrp_port)
+        mock_expose_subnet.assert_called_once_with(
+            ["10.0.0.1/24"],
+            {'associated_router': 'fake-router',
+             'address_scopes': {4: None, 6: None}})
         mock_ensure_lsp_exposed.assert_called_once_with(port0)
         mock_del_exposed_ips.assert_called_once_with(
             ips, CONF.bgp_nic)
         mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
         mock_del_ip_routes.assert_called_once()
-
         bridge = set(self.nb_bgp_driver.ovn_bridge_mappings.values()).pop()
         mock_delete_vlan_dev.assert_called_once_with(bridge, 12)
 
@@ -267,7 +285,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_expose_fip.assert_not_called()
         mock_expose_ip.assert_called_once_with(
             ['192.168.0.10'], 'fake_mac', 'test-ls', 'br-ex', 10,
-            constants.OVN_VM_VIF_PORT_TYPE, [None])
+            constants.OVN_VM_VIF_PORT_TYPE, [])
 
     def test__ensure_crlrp_exposed(self):
         port = fakes.create_object({
@@ -286,7 +304,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         mock_expose_ip.assert_called_once_with(
             ['172.24.16.2'], 'fake_mac', 'test-ls', 'br-ex', 10,
-            constants.OVN_CR_LRP_PORT_TYPE, ['172.24.16.2/24'])
+            constants.OVN_CR_LRP_PORT_TYPE, ['172.24.16.2/24'], router=None)
 
     def test__ensure_crlrp_exposed_no_networks(self):
         port = fakes.create_object({
@@ -419,6 +437,14 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver, '_get_ls_localnet_info').start()
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
         self.nb_bgp_driver.ovn_bridge_mappings = {'fake-localnet': 'br-ex'}
+        mock_expose_subnet = mock.patch.object(
+            self.nb_bgp_driver, '_expose_subnet').start()
+        lrp0 = fakes.create_object({
+            'name': 'lrp_port',
+            'external_ids': {
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
+        self.nb_idl.get_active_local_lrps.return_value = [lrp0]
 
         self.nb_bgp_driver.expose_ip(ips, ips_info)
 
@@ -433,7 +459,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver.ovn_provider_ls[ips_info['logical_switch']],
             {'bridge_device': 'br-ex', 'bridge_vlan': 10,
              'localnet': 'fake-localnet'})
-        if (ips_info['type'] == constants.OVN_VIRTUAL_VIF_PORT_TYPE and
+        if (ips_info['type'] in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+                                 constants.OVN_CR_LRP_PORT_TYPE] and
                 ips_info['cidrs']):
             mock_expose_provider_port.assert_called_once_with(
                 ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet',
@@ -441,6 +468,12 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         else:
             mock_expose_provider_port.assert_called_once_with(
                 ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet')
+
+        if (ips_info.get('router') and
+                ips_info['type'] == constants.OVN_CR_LRP_PORT_TYPE):
+            mock_expose_subnet.assert_called_once_with(
+                ["10.0.0.1/24"], {'associated_router': 'router1',
+                                  'address_scopes': {4: None, 6: None}})
 
     def test_expose_ip(self):
         ips = [self.ipv4, self.ipv6]
@@ -475,6 +508,18 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self._test_expose_ip(ips, ips_info)
 
+    def test_expose_ip_router(self):
+        ips = [self.ipv4, self.ipv6]
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': ['test-cidr'],
+            'type': constants.OVN_CR_LRP_PORT_TYPE,
+            'logical_switch': 'test-ls',
+            'router': 'router1'
+        }
+
+        self._test_expose_ip(ips, ips_info)
+
     @mock.patch.object(linux_net, 'get_ip_version')
     def _test_withdraw_ip(self, ips, ips_info, provider, mock_ip_version):
         mock_withdraw_provider_port = mock.patch.object(
@@ -488,6 +533,15 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                                                       10)
         else:
             mock_get_ls_localnet_info.return_value = (None, None, None)
+
+        mock_withdraw_subnet = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_subnet').start()
+        lrp0 = fakes.create_object({
+            'name': 'lrp_port',
+            'external_ids': {
+                constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
+        self.nb_idl.get_active_local_lrps.return_value = [lrp0]
 
         self.nb_bgp_driver.withdraw_ip(ips, ips_info)
 
@@ -503,13 +557,19 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         mock_get_ls_localnet_info.assert_called_once_with(
             ips_info['logical_switch'])
-        if (ips_info['type'] == constants.OVN_VIRTUAL_VIF_PORT_TYPE and
+        if (ips_info['type'] in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+                                 constants.OVN_CR_LRP_PORT_TYPE] and
                 ips_info['cidrs']):
             mock_withdraw_provider_port.assert_called_once_with(
                 ips, 'test-ls', 'br-ex', 10, ips_info['cidrs'])
         else:
             mock_withdraw_provider_port.assert_called_once_with(
                 ips, 'test-ls', 'br-ex', 10)
+
+        if ips_info.get('router'):
+            mock_withdraw_subnet.assert_called_once_with(
+                ["10.0.0.1/24"], {'associated_router': 'router1',
+                                  'address_scopes': {4: None, 6: None}})
 
     def test_withdraw_ip(self):
         ips = [self.ipv4, self.ipv6]
@@ -551,6 +611,18 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'cidrs': [],
             'type': constants.OVN_VM_VIF_PORT_TYPE,
             'logical_switch': None
+        }
+
+        self._test_withdraw_ip(ips, ips_info, True)
+
+    def test_withdraw_ip_router(self):
+        ips = [self.ipv4, self.ipv6]
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': ['test-cidr'],
+            'type': constants.OVN_CR_LRP_PORT_TYPE,
+            'logical_switch': 'test-ls',
+            'router': 'router1'
         }
 
         self._test_withdraw_ip(ips, ips_info, True)
@@ -686,3 +758,214 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self.nb_bgp_driver.withdraw_fip(ip, row)
         mock_withdraw_provider_port.assert_not_called()
+
+    def test_expose_subnet(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'router1',
+            'address_scopes': {4: None, 6: None}}
+        mock_expose_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_expose_router_lsp').start()
+
+        self.nb_bgp_driver.expose_subnet(ips, subnet_info)
+        mock_expose_router_lsp.assert_called_once_with(
+            ips, subnet_info, self.router1_info)
+
+    def test_expose_subnet_no_router(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': None,
+            'address_scopes': {4: None, 6: None}}
+        mock_expose_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_expose_router_lsp').start()
+
+        self.nb_bgp_driver.expose_subnet(ips, subnet_info)
+        mock_expose_router_lsp.assert_not_called()
+
+    def test_expose_subnet_no_cr_lrp(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_expose_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_expose_router_lsp').start()
+
+        self.nb_bgp_driver.expose_subnet(ips, subnet_info)
+        mock_expose_router_lsp.assert_not_called()
+
+    def test_withdraw_subnet(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'router1',
+            'address_scopes': {4: None, 6: None}}
+        mock_withdraw_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_router_lsp').start()
+
+        self.nb_bgp_driver.withdraw_subnet(ips, subnet_info)
+        mock_withdraw_router_lsp.assert_called_once_with(
+            ips, subnet_info, self.router1_info)
+
+    def test_withdraw_subnet_no_router(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': None,
+            'address_scopes': {4: None, 6: None}}
+        mock_withdraw_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_router_lsp').start()
+
+        self.nb_bgp_driver.withdraw_subnet(ips, subnet_info)
+        mock_withdraw_router_lsp.assert_not_called()
+
+    def test_withdraw_subnet_no_cr_lrp(self):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_withdraw_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_router_lsp').start()
+
+        self.nb_bgp_driver.withdraw_subnet(ips, subnet_info)
+        mock_withdraw_router_lsp.assert_not_called()
+
+    @mock.patch.object(wire_utils, 'wire_lrp_port')
+    def test__expose_router_lsp(self, mock_wire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
+                                                    self.router1_info)
+
+        self.assertTrue(ret)
+        mock_wire.assert_called_once_with(
+            mock.ANY, ips[0], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'wire_lrp_port')
+    def test__expose_router_lsp_exception(self, mock_wire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_wire.side_effect = Exception
+
+        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
+                                                    self.router1_info)
+
+        self.assertFalse(ret)
+        mock_wire.assert_called_once_with(
+            mock.ANY, ips[0], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'wire_lrp_port')
+    def test__expose_router_lsp_no_tenants(self, mock_wire):
+        CONF.set_override('expose_tenant_networks', False)
+        self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
+                                                    self.router1_info)
+
+        self.assertTrue(ret)
+        mock_wire.assert_not_called()
+
+    @mock.patch.object(driver_utils, 'is_ipv6_gua')
+    @mock.patch.object(wire_utils, 'wire_lrp_port')
+    def test__expose_router_lsp_no_tenants_but_gua(self, mock_wire, mock_gua):
+        CONF.set_override('expose_tenant_networks', False)
+        self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
+        CONF.set_override('expose_ipv6_gua_tenant_networks', True)
+        self.addCleanup(CONF.clear_override, 'expose_ipv6_gua_tenant_networks')
+
+        ips = ['10.0.0.1/24', '2002::1/64']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_gua.side_effect = [False, True]
+
+        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
+                                                    self.router1_info)
+
+        self.assertTrue(ret)
+        mock_wire.assert_called_once_with(
+            mock.ANY, ips[1], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'unwire_lrp_port')
+    def test__withdraw_router_lsp(self, mock_unwire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
+                                                      self.router1_info)
+
+        self.assertTrue(ret)
+        mock_unwire.assert_called_once_with(
+            mock.ANY, ips[0], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'unwire_lrp_port')
+    def test__withdraw_router_lsp_exception(self, mock_unwire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_unwire.side_effect = Exception
+
+        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
+                                                      self.router1_info)
+
+        self.assertFalse(ret)
+        mock_unwire.assert_called_once_with(
+            mock.ANY, ips[0], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'unwire_lrp_port')
+    def test__withdraw_router_lsp_no_tenants(self, mock_unwire):
+        CONF.set_override('expose_tenant_networks', False)
+        self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
+                                                      self.router1_info)
+
+        self.assertTrue(ret)
+        mock_unwire.assert_not_called()
+
+    @mock.patch.object(driver_utils, 'is_ipv6_gua')
+    @mock.patch.object(wire_utils, 'unwire_lrp_port')
+    def test__withdraw_router_lsp_no_tenants_but_gua(self, mock_unwire,
+                                                     mock_gua):
+        CONF.set_override('expose_tenant_networks', False)
+        self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
+        CONF.set_override('expose_ipv6_gua_tenant_networks', True)
+        self.addCleanup(CONF.clear_override, 'expose_ipv6_gua_tenant_networks')
+
+        ips = ['10.0.0.1/24', '2002::1/64']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'address_scopes': {4: None, 6: None}}
+        mock_gua.side_effect = [False, True]
+
+        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
+                                                      self.router1_info)
+
+        self.assertTrue(ret)
+        mock_unwire.assert_called_once_with(
+            mock.ANY, ips[1], self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
