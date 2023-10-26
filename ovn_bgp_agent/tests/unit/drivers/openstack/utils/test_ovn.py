@@ -160,24 +160,48 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
             }})
         row2 = fakes.create_object({
             'external_ids': {
-                constants.OVN_DEVICE_OWNER_EXT_ID_KEY: 'other_device_owner',
-                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'
-            }})
-        row3 = fakes.create_object({
-            'external_ids': {
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     constants.OVN_ROUTER_INTERFACE,
                 constants.OVN_DEVICE_ID_EXT_ID_KEY: 'other_router'
             }})
 
         self.nb_idl.db_find_rows.return_value.execute.return_value = [
-            row1, row2, row3]
+            row1, row2]
         ret = self.nb_idl.get_active_local_lrps(local_gateway_ports)
 
         self.assertEqual([row1], ret)
         self.nb_idl.db_find_rows.assert_called_once_with(
             'Logical_Switch_Port',
-            ('up', '=', True), ('type', '=', constants.OVN_ROUTER_PORT_TYPE))
+            ('up', '=', True), ('type', '=', constants.OVN_ROUTER_PORT_TYPE),
+            ('external_ids', '=', {constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
+                                   constants.OVN_ROUTER_INTERFACE}))
+
+    def test_get_active_lsp(self):
+        row1 = fakes.create_object({
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'}})
+        row2 = fakes.create_object({
+            'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'}})
+        self.nb_idl.db_find_rows.return_value.execute.side_effect = [
+            [row1], [row2]]
+
+        ret = self.nb_idl.get_active_lsp('net1')
+
+        self.assertEqual([row1, row2], ret)
+        expected_calls = [
+            mock.call('Logical_Switch_Port', ('up', '=', True),
+                      ('type', '=', constants.OVN_VM_VIF_PORT_TYPE),
+                      ('external_ids', '=',
+                       {constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})),
+            mock.call().execute(check_error=True),
+            mock.call('Logical_Switch_Port', ('up', '=', True),
+                      ('type', '=', constants.OVN_VIRTUAL_VIF_PORT_TYPE),
+                      ('external_ids', '=',
+                       {constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})),
+            mock.call().execute(check_error=True)]
+
+        self.nb_idl.db_find_rows.assert_has_calls(expected_calls)
 
 
 class TestOvsdbSbOvnIdl(test_base.TestCase):

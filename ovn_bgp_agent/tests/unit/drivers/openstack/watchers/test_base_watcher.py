@@ -15,8 +15,10 @@
 
 from unittest import mock
 
+from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 from ovn_bgp_agent.tests import base as test_base
+from ovn_bgp_agent.tests import utils
 
 
 class FakePortBindingChassisEvent(base_watcher.PortBindingChassisEvent):
@@ -63,3 +65,30 @@ class TestLSPChassisEvent(test_base.TestCase):
             'aa:bb:cc:dd:ee:ff'))
         self.assertTrue(self.lsp_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
+
+    def test__get_network(self):
+        row = utils.create_row(
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-net'})
+        self.assertEqual('test-net', self.lsp_event._get_network(row))
+        row = utils.create_row(external_ids={})
+        self.assertEqual(None, self.lsp_event._get_network(row))
+
+
+class FakeLRPChassisEvent(base_watcher.LRPChassisEvent):
+    def run(self):
+        pass
+
+
+class TestLRPChassisEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestLRPChassisEvent, self).setUp()
+        self.lrp_event = FakeLRPChassisEvent(
+            mock.Mock(), [mock.Mock()])
+
+    def test__get_network(self):
+        row = utils.create_row(
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-net'})
+        self.assertEqual('test-net', self.lrp_event._get_network(row))
+        row = utils.create_row(external_ids={})
+        self.assertEqual(None, self.lrp_event._get_network(row))

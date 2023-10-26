@@ -73,6 +73,12 @@ class LSPChassisEvent(Event):
                     constants.OVN_CHASSIS_AT_OPTIONS)
         return None, None
 
+    def _get_network(self, row):
+        if (hasattr(row, 'external_ids') and
+                row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)):
+            return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
+        return None
+
 
 class LRPChassisEvent(Event):
     def __init__(self, bgp_agent, events):
@@ -81,3 +87,9 @@ class LRPChassisEvent(Event):
         super(LRPChassisEvent, self).__init__(
             events, table, None)
         self.event_name = self.__class__.__name__
+
+    def _get_network(self, row):
+        if (hasattr(row, 'external_ids') and
+                row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)):
+            return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
+        return None
