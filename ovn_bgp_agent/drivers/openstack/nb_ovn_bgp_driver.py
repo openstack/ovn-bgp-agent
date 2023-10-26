@@ -22,6 +22,7 @@ from oslo_log import log as logging
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
@@ -148,7 +149,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "LocalnetCreateDeleteEvent"])
         if self._expose_tenant_networks:
             events.update(["ChassisRedirectCreateEvent",
-                           "ChassisRedirectDeleteEvent"])
+                           "ChassisRedirectDeleteEvent",
+                           "LogicalSwitchPortSubnetAttachEvent",
+                           "LogicalSwitchPortSubnetDetachEvent"])
         return events
 
     @lockutils.synchronized('nbbgp')
@@ -171,10 +174,22 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 routing_tables=self.ovn_routing_tables))
 
         LOG.debug("Syncing current routes.")
-        # add missing reoutes/ips for OVN router gateway ports
+        # add missing routes/ips for OVN router gateway ports
         ports = self.nb_idl.get_active_cr_lrp_on_chassis(self.chassis_id)
         for port in ports:
             self._ensure_crlrp_exposed(port)
+        # add missing routes/ips for subnets connected to local gateway ports
+        ports = self.nb_idl.get_active_local_lrps(
+            self.ovn_local_cr_lrps.keys())
+        for port in ports:
+            ips = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                        "").split()
+            subnet_info = {
+                'associated_router': port.external_ids.get(
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                'address_scopes': driver_utils.get_addr_scopes(port)}
+            self._expose_subnet(ips, subnet_info)
+
         # add missing routes/ips for IPs on provider network
         ports = self.nb_idl.get_active_lsp_on_chassis(self.chassis)
         for port in ports:
@@ -227,8 +242,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         ips = port.addresses[0].strip().split(' ')[1:]
         mac = port.addresses[0].strip().split(' ')[0]
         self._expose_ip(ips, mac, logical_switch, bridge_device, bridge_vlan,
-                        port.type, [port.external_ids.get(
-                            constants.OVN_CIDRS_EXT_ID_KEY)])
+                        port.type, port.external_ids.get(
+                            constants.OVN_CIDRS_EXT_ID_KEY, "").split())
 
     def _ensure_crlrp_exposed(self, port):
         if not port.networks:
@@ -249,9 +264,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             'bridge_vlan': bridge_vlan,
             'localnet': localnet}
         ips = [net.split("/")[0] for net in port.networks]
+        router = port.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY)
         self._expose_ip(ips, port.mac, logical_switch, bridge_device,
                         bridge_vlan, constants.OVN_CR_LRP_PORT_TYPE,
-                        port.networks)
+                        port.networks, router=router)
 
     def _expose_provider_port(self, port_ips, mac, logical_switch,
                               bridge_device, bridge_vlan, localnet,
@@ -273,6 +289,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             LOG.exception("Unexpected exception while wiring provider port: "
                           "%s", e)
             return False
+        return True
 
     def _withdraw_provider_port(self, port_ips, logical_switch, bridge_device,
                                 bridge_vlan, proxy_cidrs=None):
@@ -335,10 +352,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         mac = ips_info.get('mac')
         return self._expose_ip(ips, mac, logical_switch, bridge_device,
                                bridge_vlan, port_type=ips_info['type'],
-                               cidrs=ips_info['cidrs'])
+                               cidrs=ips_info['cidrs'],
+                               router=ips_info.get('router'))
 
     def _expose_ip(self, ips, mac, logical_switch, bridge_device, bridge_vlan,
-                   port_type, cidrs):
+                   port_type, cidrs, router=None):
         LOG.debug("Adding BGP route for logical port with ip %s", ips)
         localnet = self.ovn_provider_ls[logical_switch]['localnet']
 
@@ -351,7 +369,24 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                                               bridge_device, bridge_vlan,
                                               localnet, cidrs):
                 return []
-
+            if router and port_type == constants.OVN_CR_LRP_PORT_TYPE:
+                # Store information about local CR-LRPs that will later be used
+                # to expose networks
+                self.ovn_local_cr_lrps[router] = {
+                    'bridge_device': bridge_device,
+                    'bridge_vlan': bridge_vlan,
+                    'ips': ips,
+                }
+                # Expose associated subnets
+                ports = self.nb_idl.get_active_local_lrps([router])
+                for port in ports:
+                    ips = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                                "").split()
+                    subnet_info = {
+                        'associated_router': port.external_ids.get(
+                            constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                        'address_scopes': driver_utils.get_addr_scopes(port)}
+                    self._expose_subnet(ips, subnet_info)
         else:
             if not self._expose_provider_port(ips, mac, logical_switch,
                                               bridge_device, bridge_vlan,
@@ -397,6 +432,23 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         else:
             self._withdraw_provider_port(ips, logical_switch, bridge_device,
                                          bridge_vlan)
+        if ips_info.get('router'):
+            # It is a Logical Router Port (CR-LRP)
+            # Withdraw associated subnets
+            ports = self.nb_idl.get_active_local_lrps([ips_info['router']])
+            for port in ports:
+                ips = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                            "").split()
+                subnet_info = {
+                    'associated_router': port.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                    'address_scopes': driver_utils.get_addr_scopes(port)}
+                self._withdraw_subnet(ips, subnet_info)
+            try:
+                del self.ovn_local_cr_lrps[ips_info['router']]
+            except KeyError:
+                LOG.debug("Gateway port for router %s already cleanup.",
+                          ips_info['router'])
         LOG.debug("Deleted BGP route for logical port with ip %s", ips)
 
     def _get_ls_localnet_info(self, logical_switch):
@@ -501,9 +553,118 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         pass
 
     @lockutils.synchronized('nbbgp')
-    def expose_subnet(self, ip, row):
-        pass
+    def expose_subnet(self, ips, subnet_info):
+        return self._expose_subnet(ips, subnet_info)
 
     @lockutils.synchronized('nbbgp')
-    def withdraw_subnet(self, ip, row):
-        pass
+    def withdraw_subnet(self, ips, subnet_info):
+        return self._withdraw_subnet(ips, subnet_info)
+
+    def _expose_subnet(self, ips, subnet_info):
+        gateway_router = subnet_info['associated_router']
+        if not gateway_router:
+            LOG.debug("Subnet CIDRs %s not exposed as there is no associated "
+                      "router", ips)
+            return
+        cr_lrp_info = self.ovn_local_cr_lrps.get(gateway_router)
+        if not cr_lrp_info:
+            LOG.debug("Subnet CIDRs %s not exposed as there is no local "
+                      "cr-lrp matching %s", ips, gateway_router)
+            return
+
+        if not self._expose_router_lsp(ips, subnet_info, cr_lrp_info):
+            LOG.debug("Something happen while exposing the Subnet CIRDs %s "
+                      "and they have not been properly exposed", ips)
+            return
+
+    def _withdraw_subnet(self, ips, subnet_info):
+        gateway_router = subnet_info['associated_router']
+        if not gateway_router:
+            LOG.debug("Subnet CIDRs %s not withdrawn as there is no associated"
+                      " router", ips)
+            return
+        cr_lrp_info = self.ovn_local_cr_lrps.get(gateway_router)
+        if not cr_lrp_info:
+            # NOTE(ltomasbo) there is a chance the cr-lrp just got moved
+            # to this node but was not yet processed. In that case there
+            # is no need to withdraw the network as it was not exposed here
+            LOG.debug("Subnet CIDRs %s not withdrawn as there is no local "
+                      "cr-lrp matching %s", ips, gateway_router)
+            return
+
+        self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
+
+    def _expose_router_lsp(self, ips, subnet_info, cr_lrp_info):
+        if not self._expose_tenant_networks:
+            return True
+        success = True
+        for ip in ips:
+            if not CONF.expose_tenant_networks:
+                # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+                if not driver_utils.is_ipv6_gua(ip):
+                    continue
+            if not self._address_scope_allowed(ip,
+                                               subnet_info['address_scopes']):
+                continue
+            try:
+                if wire_utils.wire_lrp_port(
+                        self.ovn_routing_tables_routes, ip,
+                        cr_lrp_info.get('bridge_device'),
+                        cr_lrp_info.get('bridge_vlan'),
+                        self.ovn_routing_tables, cr_lrp_info.get('ips')):
+                    self._exposed_ips.setdefault(
+                        subnet_info['associated_router'], {}).update(
+                        {ip: {
+                            'bridge_device': cr_lrp_info.get('bridge_device'),
+                            'bridge_vlan': cr_lrp_info.get('bridge_vlan')}})
+                else:
+                    success = False
+
+            except Exception as e:
+                LOG.exception("Unexpected exception while wiring subnet CIDRs"
+                              " %s: %s", ip, e)
+                success = False
+        return success
+
+    def _withdraw_router_lsp(self, ips, subnet_info, cr_lrp_info):
+        if not self._expose_tenant_networks:
+            return
+        for ip in ips:
+            if (not CONF.expose_tenant_networks and
+                    not driver_utils.is_ipv6_gua(ip)):
+                # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+                continue
+            if not self._address_scope_allowed(ip,
+                                               subnet_info['address_scopes']):
+                continue
+            try:
+                if wire_utils.unwire_lrp_port(
+                        self.ovn_routing_tables_routes, ip,
+                        cr_lrp_info.get('bridge_device'),
+                        cr_lrp_info.get('bridge_vlan'),
+                        self.ovn_routing_tables, cr_lrp_info.get('ips')):
+                    if self._exposed_ips.get(
+                            subnet_info['associated_router'], {}).get(ip):
+                        self._exposed_ips[
+                            subnet_info['associated_router']].pop(ip)
+                else:
+                    return False
+            except Exception as e:
+                LOG.exception("Unexpected exception while unwiring subnet "
+                              "CIDRs %s: %s", ip, e)
+                return False
+        return True
+
+    def _address_scope_allowed(self, ip, address_scopes):
+        if not self.allowed_address_scopes:
+            # No address scopes to filter on => announce everything
+            return True
+
+        # if we should filter on address scopes and this port has no
+        # address scopes set we do not need to expose it
+        if not any(address_scopes.values()):
+            return False
+        # if address scope does not match, no need to expose it
+        ip_version = linux_net.get_ip_version(ip)
+
+        return address_scopes[ip_version] in self.allowed_address_scopes

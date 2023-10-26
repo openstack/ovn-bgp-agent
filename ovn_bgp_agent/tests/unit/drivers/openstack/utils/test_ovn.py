@@ -150,6 +150,35 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
         self.nb_idl.db_list_rows.assert_called_once_with(
             'Logical_Router_Port')
 
+    def test_get_active_local_lrps(self):
+        local_gateway_ports = ['router1']
+        row1 = fakes.create_object({
+            'external_ids': {
+                constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
+                    constants.OVN_ROUTER_INTERFACE,
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'
+            }})
+        row2 = fakes.create_object({
+            'external_ids': {
+                constants.OVN_DEVICE_OWNER_EXT_ID_KEY: 'other_device_owner',
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'
+            }})
+        row3 = fakes.create_object({
+            'external_ids': {
+                constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
+                    constants.OVN_ROUTER_INTERFACE,
+                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'other_router'
+            }})
+
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            row1, row2, row3]
+        ret = self.nb_idl.get_active_local_lrps(local_gateway_ports)
+
+        self.assertEqual([row1], ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Logical_Switch_Port',
+            ('up', '=', True), ('type', '=', constants.OVN_ROUTER_PORT_TYPE))
+
 
 class TestOvsdbSbOvnIdl(test_base.TestCase):
 

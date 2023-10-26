@@ -261,7 +261,8 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
             # Handling the case for unknown MACs when configdrive is used
             # instead of dhcp
             if row.mac == ['unknown']:
-                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "").split()
                 if not n_cidrs:
                     return False
             # single and dual-stack format
@@ -280,7 +281,8 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
             if row.mac == ['unknown']:
                 # Handling the case for unknown MACs when configdrive is used
                 # instead of dhcp
-                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "")
                 ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
             else:
                 ips = row.mac[0].split(' ')[1:]
@@ -298,7 +300,8 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
             if row.mac == ['unknown']:
                 # Handling the case for unknown MACs when configdrive is used
                 # instead of dhcp
-                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "").split()
                 if not n_cidrs:
                     return False
             # single and dual-stack format
@@ -324,7 +327,8 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
             if row.mac == ['unknown']:
                 # Handling the case for unknown MACs when configdrive is used
                 # instead of dhcp
-                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                n_cidrs = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "")
                 ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
             else:
                 ips = row.mac[0].split(' ')[1:]
@@ -356,7 +360,8 @@ class OVNLBVIPPortEvent(base_watcher.PortBindingChassisEvent):
         with _SYNC_STATE_LOCK.read_lock():
             # This is depending on the external-id information added by
             # neutron, regarding the neutron:cidrs
-            ext_n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+            ext_n_cidr = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                              "")
             if not ext_n_cidr:
                 return
 
@@ -402,7 +407,7 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBMemberEvent):
         vip_port = self.agent.sb_idl.get_ovn_vip_port(row.name)
         if not vip_port:
             return
-        vip_ip = vip_port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+        vip_ip = vip_port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY, "")
         if not vip_ip:
             return
         vip_ip = vip_ip.strip().split(" ")[0].split("/")[0]
