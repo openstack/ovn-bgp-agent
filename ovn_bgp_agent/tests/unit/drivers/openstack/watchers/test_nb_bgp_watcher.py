@@ -734,19 +734,21 @@ class TestLogicalSwitchPortSubnetAttachEvent(test_base.TestCase):
                 constants.OVN_CIDRS_EXT_ID_KEY: "192.168.24.1/24",
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     'network:router_interface',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
                 constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'},
             up=[True])
         subnet_info = {
             'associated_router': 'router1',
+            'network': 'network1',
             'address_scopes': {4: None, 6: None}}
         self.event.run(None, row, None)
         self.agent.expose_subnet.assert_called_once_with(["192.168.24.1/24"],
                                                          subnet_info)
 
 
-class TestLogicalSwitchPortSubnetDetachEventt(test_base.TestCase):
+class TestLogicalSwitchPortSubnetDetachEvent(test_base.TestCase):
     def setUp(self):
-        super(TestLogicalSwitchPortSubnetDetachEventt, self).setUp()
+        super(TestLogicalSwitchPortSubnetDetachEvent, self).setUp()
         self.chassis = 'fake-chassis'
         self.chassis_id = 'fake-chassis-id'
         self.agent = mock.Mock(chassis=self.chassis,
@@ -864,6 +866,7 @@ class TestLogicalSwitchPortSubnetDetachEventt(test_base.TestCase):
             type=constants.OVN_ROUTER_PORT_TYPE,
             external_ids={
                 constants.OVN_CIDRS_EXT_ID_KEY: "192.168.24.1/24",
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     'network:router_interface'},
             up=[True])
@@ -872,9 +875,11 @@ class TestLogicalSwitchPortSubnetDetachEventt(test_base.TestCase):
                 constants.OVN_CIDRS_EXT_ID_KEY: "192.168.24.1/24",
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     'network:router_interface',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
                 constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'})
         subnet_info = {
             'associated_router': 'router1',
+            'network': 'network1',
             'address_scopes': {4: None, 6: None}}
         self.event.run(None, row, old)
         self.agent.withdraw_subnet.assert_called_once_with(
@@ -887,11 +892,13 @@ class TestLogicalSwitchPortSubnetDetachEventt(test_base.TestCase):
                 constants.OVN_CIDRS_EXT_ID_KEY: "192.168.24.1/24",
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     'network:router_interface',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
                 constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'},
             up=[True])
         old = utils.create_row()
         subnet_info = {
             'associated_router': 'router1',
+            'network': 'network1',
             'address_scopes': {4: None, 6: None}}
         self.event.run(None, row, old)
         self.agent.withdraw_subnet.assert_called_once_with(
@@ -905,11 +912,189 @@ class TestLogicalSwitchPortSubnetDetachEventt(test_base.TestCase):
                 constants.OVN_CIDRS_EXT_ID_KEY: "192.168.24.1/24",
                 constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
                     'network:router_interface',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
                 constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'},
             up=[True])
         subnet_info = {
             'associated_router': 'router1',
+            'network': 'network1',
             'address_scopes': {4: None, 6: None}}
         self.event.run(event, row, mock.Mock())
         self.agent.withdraw_subnet.assert_called_once_with(
             ["192.168.24.1/24"], subnet_info)
+
+
+class TestLogicalSwitchPortTenantCreateEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestLogicalSwitchPortTenantCreateEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.agent.ovn_local_lrps = {
+            'net1': ['10.0.0.5']}
+        self.event = nb_bgp_watcher.LogicalSwitchPortTenantCreateEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        old = utils.create_row(up=[False])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_network_set(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        old = utils.create_row(external_ids={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_wong_ip(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_not_up(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[False])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_not_local_lrp(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'},
+            up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_exception(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                          constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.6/24"},
+            up=[True])
+        ips_info = {
+            'mac': 'mac',
+            'cidrs': ["10.0.0.6/24"],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'net1'}
+        self.event.run(None, row, mock.Mock())
+        self.agent.expose_remote_ip.assert_called_once_with(
+            ["10.0.0.6"], ips_info)
+
+    def test_run_wrong_type(self):
+        row = utils.create_row(
+            type=constants.OVN_PATCH_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                          constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.6/24"},
+            up=[True])
+        self.event.run(None, row, mock.Mock())
+        self.agent.expose_remote_ip.assert_not_called()
+
+
+class TestLogicalSwitchPortTenantDeleteEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestLogicalSwitchPortTenantDeleteEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.agent.ovn_local_lrps = {
+            'net1': ['10.0.0.5']}
+        self.event = nb_bgp_watcher.LogicalSwitchPortTenantDeleteEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[False])
+        old = utils.create_row(up=[True])
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
+
+    def test_match_fn_wong_ip(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_not_up(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        old = utils.create_row(up=[False])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_not_local_lrp(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'},
+            up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_exception(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                          constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.6/24"},
+            up=[True])
+        ips_info = {
+            'mac': 'mac',
+            'cidrs': ["10.0.0.6/24"],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'net1'}
+        self.event.run(None, row, mock.Mock())
+        self.agent.withdraw_remote_ip.assert_called_once_with(
+            ["10.0.0.6"], ips_info)
+
+    def test_run_wrong_type(self):
+        row = utils.create_row(
+            type=constants.OVN_PATCH_VIF_PORT_TYPE,
+            addresses=['mac 10.0.0.6'],
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                          constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.6/24"},
+            up=[True])
+        self.event.run(None, row, mock.Mock())
+        self.agent.withdraw_remote_ip.assert_not_called()

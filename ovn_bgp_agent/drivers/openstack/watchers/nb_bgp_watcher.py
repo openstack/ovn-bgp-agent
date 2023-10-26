@@ -60,6 +60,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
                         return True
         except (IndexError, AttributeError):
             return False
+        return False
 
     def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
@@ -73,8 +74,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
                 'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
                                               "").split(),
                 'type': row.type,
-                'logical_switch': row.external_ids.get(
-                    constants.OVN_LS_NAME_EXT_ID_KEY)
+                'logical_switch': self._get_network(row)
             }
             self.agent.expose_ip(ips, ips_info)
 
@@ -93,7 +93,8 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
 
             current_chassis, chassis_location = self._get_chassis(row)
             if event == self.ROW_DELETE:
-                return current_chassis == self.agent.chassis and row.up
+                return (current_chassis == self.agent.chassis and
+                        bool(row.up[0]))
 
             # ROW_UPDATE EVENT
             if hasattr(old, 'up'):
@@ -127,6 +128,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
                         return True
         except (IndexError, AttributeError):
             return False
+        return False
 
     def _run(self, event, row, old):
         if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
@@ -339,8 +341,7 @@ class ChassisRedirectCreateEvent(base_watcher.LRPChassisEvent):
                     'mac': row.mac,
                     'cidrs': row.networks,
                     'type': constants.OVN_CR_LRP_PORT_TYPE,
-                    'logical_switch': row.external_ids.get(
-                        constants.OVN_LS_NAME_EXT_ID_KEY),
+                    'logical_switch': self._get_network(row),
                     'router': row.external_ids.get(
                         constants.OVN_LR_NAME_EXT_ID_KEY)
                 }
@@ -379,8 +380,7 @@ class ChassisRedirectDeleteEvent(base_watcher.LRPChassisEvent):
                     'mac': row.mac,
                     'cidrs': row.networks,
                     'type': constants.OVN_CR_LRP_PORT_TYPE,
-                    'logical_switch': row.external_ids.get(
-                        constants.OVN_LS_NAME_EXT_ID_KEY),
+                    'logical_switch': self._get_network(row),
                     'router': row.external_ids.get(
                         constants.OVN_LR_NAME_EXT_ID_KEY)
                 }
@@ -434,6 +434,7 @@ class LogicalSwitchPortSubnetAttachEvent(base_watcher.LSPChassisEvent):
             subnet_info = {
                 'associated_router': row.external_ids.get(
                     constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                'network': self._get_network(row),
                 'address_scopes': driver_utils.get_addr_scopes(row)}
             self.agent.expose_subnet(ips, subnet_info)
 
@@ -508,6 +509,7 @@ class LogicalSwitchPortSubnetDetachEvent(base_watcher.LSPChassisEvent):
                 subnet_info = {
                     'associated_router': row.external_ids.get(
                         constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                    'network': self._get_network(row),
                     'address_scopes': driver_utils.get_addr_scopes(row)}
             else:
                 associated_router = row.external_ids.get(
@@ -519,6 +521,98 @@ class LogicalSwitchPortSubnetDetachEvent(base_watcher.LSPChassisEvent):
                         associated_router = previous_associated_router
                 subnet_info = {
                     'associated_router': associated_router,
+                    'network': self._get_network(row),
                     'address_scopes': driver_utils.get_addr_scopes(row)}
-
             self.agent.withdraw_subnet(ips, subnet_info)
+
+
+class LogicalSwitchPortTenantCreateEvent(base_watcher.LSPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(LogicalSwitchPortTenantCreateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            # single and dual-stack format
+            if not self._check_ip_associated(row.addresses[0]):
+                return False
+
+            if not bool(row.up[0]):
+                return False
+
+            current_network = self._get_network(row)
+            if current_network not in self.agent.ovn_local_lrps:
+                return False
+
+            if hasattr(old, 'up'):
+                if not bool(old.up[0]):
+                    return True
+
+            if hasattr(old, 'external_ids'):
+                old_network = self._get_network(old)
+                if old_network != current_network:
+                    return True
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
+        with _SYNC_STATE_LOCK.read_lock():
+            ips = row.addresses[0].split(' ')[1:]
+            mac = row.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                              "").split(),
+                'type': row.type,
+                'logical_switch': self._get_network(row)
+            }
+            self.agent.expose_remote_ip(ips, ips_info)
+
+
+class LogicalSwitchPortTenantDeleteEvent(base_watcher.LSPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE, self.ROW_DELETE,)
+        super(LogicalSwitchPortTenantDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            # single and dual-stack format
+            if not self._check_ip_associated(row.addresses[0]):
+                return False
+
+            current_network = self._get_network(row)
+            # Assuming the current_network cannot be changed at once
+            if current_network not in self.agent.ovn_local_lrps:
+                return False
+
+            if event == self.ROW_DELETE:
+                return bool(row.up[0])
+
+            # ROW UPDATE EVENT
+            if hasattr(old, 'up'):
+                return bool(old.up[0])
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
+        with _SYNC_STATE_LOCK.read_lock():
+            ips = row.addresses[0].split(' ')[1:]
+            mac = row.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                              "").split(),
+                'type': row.type,
+                'logical_switch': self._get_network(row)
+            }
+            self.agent.withdraw_remote_ip(ips, ips_info)
