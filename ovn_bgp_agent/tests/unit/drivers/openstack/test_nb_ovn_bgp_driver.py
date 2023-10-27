@@ -59,7 +59,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self.router1_info = {'bridge_device': self.bridge,
                              'bridge_vlan': 100,
-                             'ips': ['172.24.4.11']}
+                             'ips': ['172.24.4.11'],
+                             'provider_switch': 'provider-ls'}
         self.nb_bgp_driver.ovn_local_cr_lrps = {
             'router1': self.router1_info}
         self.ovn_routing_tables = {
@@ -165,16 +166,25 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         port1 = fakes.create_object({
             'name': 'port-1',
             'type': constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE})
+        lb1 = fakes.create_object({
+            'name': 'lb1',
+            'external_ids': {constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fake-fip'}
+        })
         self.nb_idl.get_active_cr_lrp_on_chassis.return_value = [crlrp_port]
         self.nb_idl.get_active_local_lrps.return_value = [lrp0]
         self.nb_idl.get_active_lsp_on_chassis.return_value = [
             port0, port1]
+        self.nb_idl.get_active_local_lbs.return_value = [lb1]
         mock_ensure_crlrp_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_crlrp_exposed').start()
         mock_expose_subnet = mock.patch.object(
             self.nb_bgp_driver, '_expose_subnet').start()
         mock_ensure_lsp_exposed = mock.patch.object(
             self.nb_bgp_driver, '_ensure_lsp_exposed').start()
+        mock_expose_ovn_lb_vip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ovn_lb_vip').start()
+        mock_expose_ovn_lb_fip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_ovn_lb_fip').start()
         mock_routing_bridge.return_value = ['fake-route']
         mock_nic_address.return_value = self.mac
         mock_get_patch_ports.return_value = [1, 2]
@@ -211,6 +221,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
              'network': 'network1',
              'address_scopes': {4: None, 6: None}})
         mock_ensure_lsp_exposed.assert_called_once_with(port0)
+        mock_expose_ovn_lb_vip.assert_called_once_with(lb1)
+        mock_expose_ovn_lb_fip.assert_called_once_with(lb1)
         mock_del_exposed_ips.assert_called_once_with(
             ips, CONF.bgp_nic)
         mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
@@ -443,13 +455,24 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.nb_bgp_driver.ovn_bridge_mappings = {'fake-localnet': 'br-ex'}
         mock_expose_subnet = mock.patch.object(
             self.nb_bgp_driver, '_expose_subnet').start()
-        lrp0 = fakes.create_object({
-            'name': 'lrp_port',
-            'external_ids': {
-                constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
-                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
-        self.nb_idl.get_active_local_lrps.return_value = [lrp0]
+
+        if (ips_info.get('router') and
+                ips_info['type'] == constants.OVN_CR_LRP_PORT_TYPE):
+            lrp0 = fakes.create_object({
+                'name': 'lrp_port',
+                'external_ids': {
+                    constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
+                    constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
+            self.nb_idl.get_active_local_lrps.return_value = [lrp0]
+            lb1 = fakes.create_object({
+                'name': 'lb1', 'external_ids': {
+                    constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fake-fip'}})
+            self.nb_idl.get_active_local_lbs.return_value = [lb1]
+            mock_expose_ovn_lb_vip = mock.patch.object(
+                self.nb_bgp_driver, '_expose_ovn_lb_vip').start()
+            mock_expose_ovn_lb_fip = mock.patch.object(
+                self.nb_bgp_driver, '_expose_ovn_lb_fip').start()
 
         self.nb_bgp_driver.expose_ip(ips, ips_info)
 
@@ -480,6 +503,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                 ["10.0.0.1/24"], {'associated_router': 'router1',
                                   'network': 'network1',
                                   'address_scopes': {4: None, 6: None}})
+            mock_expose_ovn_lb_vip.assert_called_once_with(lb1)
+            mock_expose_ovn_lb_fip.assert_called_once_with(lb1)
 
     def test_expose_ip(self):
         ips = [self.ipv4, self.ipv6]
@@ -542,13 +567,23 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         mock_withdraw_subnet = mock.patch.object(
             self.nb_bgp_driver, '_withdraw_subnet').start()
-        lrp0 = fakes.create_object({
-            'name': 'lrp_port',
-            'external_ids': {
-                constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
-                constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
-        self.nb_idl.get_active_local_lrps.return_value = [lrp0]
+        if (ips_info.get('router') and
+                ips_info['type'] == constants.OVN_CR_LRP_PORT_TYPE):
+            lrp0 = fakes.create_object({
+                'name': 'lrp_port',
+                'external_ids': {
+                    constants.OVN_CIDRS_EXT_ID_KEY: "10.0.0.1/24",
+                    constants.OVN_LS_NAME_EXT_ID_KEY: 'network1',
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY: 'router1'}})
+            self.nb_idl.get_active_local_lrps.return_value = [lrp0]
+            lb1 = fakes.create_object({
+                'name': 'lb1', 'external_ids': {
+                    constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fake-fip'}})
+            self.nb_idl.get_active_local_lbs.return_value = [lb1]
+            mock_withdraw_ovn_lb_vip = mock.patch.object(
+                self.nb_bgp_driver, '_withdraw_ovn_lb_vip').start()
+            mock_withdraw_ovn_lb_fip = mock.patch.object(
+                self.nb_bgp_driver, '_withdraw_ovn_lb_fip').start()
 
         self.nb_bgp_driver.withdraw_ip(ips, ips_info)
 
@@ -578,6 +613,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                 ["10.0.0.1/24"], {'associated_router': 'router1',
                                   'network': 'network1',
                                   'address_scopes': {4: None, 6: None}})
+            mock_withdraw_ovn_lb_vip.assert_called_once_with(lb1)
+            mock_withdraw_ovn_lb_fip.assert_called_once_with(lb1)
 
     def test_withdraw_ip(self):
         ips = [self.ipv4, self.ipv6]
@@ -1113,3 +1150,243 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             mock.ANY, ips[1], self.router1_info['bridge_device'],
             self.router1_info['bridge_vlan'], mock.ANY,
             self.router1_info['ips'])
+
+    def test_expose_ovn_lb_vip_tenant(self):
+        self.nb_bgp_driver.ovn_local_lrps = {'net1': ['ip1']}
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+
+        vip_lsp = utils.create_row(
+            external_ids={
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'
+            })
+        self.nb_idl.lsp_get.return_value.execute.return_value = vip_lsp
+        mock_expose_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_remote_ip').start()
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+
+        self.nb_bgp_driver.expose_ovn_lb_vip(lb)
+
+        mock_expose_remote_ip.assert_called_once_with(
+            ['vip'], {'logical_switch': 'router1'}
+        )
+        mock_expose_provider_port.assert_not_called()
+
+    def test_expose_ovn_lb_vip_provider(self):
+        self.nb_bgp_driver.ovn_local_lrps = {'net1': ['ip1']}
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+
+        vip_lsp = utils.create_row(
+            external_ids={
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'
+            })
+        self.nb_idl.lsp_get.return_value.execute.return_value = vip_lsp
+        mock_expose_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_remote_ip').start()
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+        mock_get_ls_localnet_info = mock.patch.object(
+            self.nb_bgp_driver, '_get_ls_localnet_info').start()
+        mock_get_ls_localnet_info.return_value = (None, None, None)
+
+        self.nb_bgp_driver.expose_ovn_lb_vip(lb)
+
+        mock_expose_remote_ip.assert_not_called()
+        mock_get_ls_localnet_info.assert_called_once_with('net2')
+        mock_expose_provider_port.assert_called_once_with(
+            ['vip'], None, 'net2', mock.ANY, mock.ANY, mock.ANY)
+
+    def test_expose_ovn_lb_vip_no_vip(self):
+        self.nb_bgp_driver.ovn_local_lrps = {'net1': ['ip1']}
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+
+        self.nb_idl.lsp_get.return_value.execute.return_value = None
+        mock_expose_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_remote_ip').start()
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+
+        self.nb_bgp_driver.expose_ovn_lb_vip(lb)
+
+        mock_expose_remote_ip.assert_not_called()
+        mock_expose_provider_port.assert_not_called()
+
+    def test_withdraw_ovn_lb_vip_tenant(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_remote_ip').start()
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_vip(lb)
+
+        mock_withdraw_provider_port.assert_not_called()
+        mock_withdraw_remote_ip.assert_called_once_with(
+            ['vip'], {'logical_switch': 'router1'})
+
+    def test_withdraw_ovn_lb_vip_provider(self):
+        self.nb_bgp_driver._exposed_ips = {
+            'provider-ls': {'vip': {'bridge_device': self.bridge,
+                                    'bridge_vlan': None}}}
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_remote_ip').start()
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_vip(lb)
+
+        mock_withdraw_provider_port.assert_called_once_with(
+            ['vip'],
+            self.router1_info['provider_switch'],
+            self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'])
+        mock_withdraw_remote_ip.assert_not_called()
+
+    def test_withdraw_ovn_lb_vip_no_router(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_remote_ip').start()
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_vip(lb)
+
+        mock_withdraw_remote_ip.assert_not_called()
+        mock_withdraw_provider_port.assert_not_called()
+
+    def test_expose_ovn_lb_fip(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        vip_lsp = utils.create_row(
+            name='vip-port-name',
+            external_ids={
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'
+            })
+        self.nb_idl.lsp_get.return_value.execute.return_value = vip_lsp
+        mock_get_port_external_ip_and_ls = mock.patch.object(
+            self.nb_bgp_driver, 'get_port_external_ip_and_ls').start()
+        mock_get_port_external_ip_and_ls.return_value = ('fip',
+                                                         'fip-mac',
+                                                         'provider-ls')
+        mock_expose_fip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_fip').start()
+
+        self.nb_bgp_driver.expose_ovn_lb_fip(lb)
+        mock_expose_fip.assert_called_once_with(
+            'fip', 'fip-mac', 'provider-ls', vip_lsp)
+
+    def test_expose_ovn_lb_fip_no_vip_port(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        self.nb_idl.lsp_get.return_value.execute.return_value = None
+        mock_expose_fip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_fip').start()
+
+        self.nb_bgp_driver.expose_ovn_lb_fip(lb)
+        mock_expose_fip.assert_not_called()
+
+    def test_expose_ovn_lb_fip_no_external_ip(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        vip_lsp = utils.create_row(
+            name='vip-port-name',
+            external_ids={
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'
+            })
+        self.nb_idl.lsp_get.return_value.execute.return_value = vip_lsp
+        mock_get_port_external_ip_and_ls = mock.patch.object(
+            self.nb_bgp_driver, 'get_port_external_ip_and_ls').start()
+        mock_get_port_external_ip_and_ls.return_value = (None, None, None)
+        mock_expose_fip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_fip').start()
+
+        self.nb_bgp_driver.expose_ovn_lb_fip(lb)
+        mock_expose_fip.assert_not_called()
+
+    def test_withdraw_ovn_lb_fip(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'vip-fip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_fip(lb)
+        mock_withdraw_provider_port.assert_called_once_with(
+            ['vip-fip'],
+            self.router1_info['provider_switch'],
+            self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'])
+
+    def test_withdraw_ovn_lb_fip_no_vip_router(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'vip-fip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_fip(lb)
+        mock_withdraw_provider_port.assert_not_called()
+
+    def test_withdraw_ovn_lb_fip_no_cr_lrp(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
+                constants.OVN_LB_VIP_PORT_EXT_ID_KEY: 'vip_port',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: 'vip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'vip-fip'},
+            vips={'vip': 'member', 'fip': 'member'})
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_lb_fip(lb)
+        mock_withdraw_provider_port.assert_not_called()

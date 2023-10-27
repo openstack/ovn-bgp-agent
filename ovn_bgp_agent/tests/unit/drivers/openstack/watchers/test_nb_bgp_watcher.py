@@ -1098,3 +1098,291 @@ class TestLogicalSwitchPortTenantDeleteEvent(test_base.TestCase):
             up=[True])
         self.event.run(None, row, mock.Mock())
         self.agent.withdraw_remote_ip.assert_not_called()
+
+
+class TestOVNLBCreateEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestOVNLBCreateEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.agent.ovn_local_cr_lrps = {
+            'router1': {'bridge_device': 'br-ex',
+                        'bridge_vlan': None,
+                        'ips': ['172.24.16.2']}}
+        self.event = nb_bgp_watcher.OVNLBCreateEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(vips={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_router_added(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_fip_added(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_vips(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_match_fn_no_local_crlrp(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
+
+    def test_run_vip(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(vips={})
+
+        self.event.run(None, row, old)
+
+        self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
+        self.agent.expose_ovn_lb_fip.assert_not_called()
+
+    def test_run_vip_added_extra_ext_id_info(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                'other': 'info'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})
+
+        self.event.run(None, row, old)
+
+        self.agent.expose_ovn_lb_vip.assert_not_called()
+        self.agent.expose_ovn_lb_fip.assert_not_called()
+
+    def test_run_fip(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'})
+
+        self.event.run(None, row, old)
+
+        self.agent.expose_ovn_lb_vip.assert_not_called()
+        self.agent.expose_ovn_lb_fip.assert_called_once_with(row)
+
+
+class TestOVNLBDeleteEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestOVNLBDeleteEvent, self).setUp()
+        self.chassis = 'fake-chassis'
+        self.chassis_id = 'fake-chassis-id'
+        self.agent = mock.Mock(chassis=self.chassis,
+                               chassis_id=self.chassis_id)
+        self.agent.ovn_local_cr_lrps = {
+            'router1': {'bridge_device': 'br-ex',
+                        'bridge_vlan': None,
+                        'ips': ['172.24.16.2']}}
+        self.event = nb_bgp_watcher.OVNLBDeleteEvent(
+            self.agent)
+
+    def test_match_fn(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+        old = utils.create_row(vips={'vip': 'member', 'fip': 'member'})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
+
+    def test_match_fn_delete_no_vips(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+        self.assertFalse(self.event.match_fn(event, row, mock.Mock()))
+
+    def test_match_fn_delete_no_local_router(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        self.assertFalse(self.event.match_fn(event, row, mock.Mock()))
+
+    def test_match_fn_router_deleted(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'
+        })
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_old_router(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_old_router_non_local(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
+        })
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_fip_deleted(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+            constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip'})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_vip_deleted_with_ext_id_update(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                'other': 'info'},
+            vips={'vip': 'member', 'fip': 'member'})
+        self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_run_vip(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+        old = utils.create_row(vips={'vip': 'member'})
+
+        self.event.run(None, row, old)
+
+        self.agent.withdraw_ovn_lb_vip.assert_called_once_with(row)
+        self.agent.withdraw_ovn_lb_fip.assert_not_called()
+
+    def test_run_vip_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={})
+
+        self.event.run(event, row, None)
+
+        self.agent.withdraw_ovn_lb_vip.assert_called_once_with(row)
+        self.agent.withdraw_ovn_lb_fip.assert_called_once_with(row)
+
+    def test_run_vip_deleted_extra_ext_id_info(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                'other': 'info'})
+
+        self.event.run(None, row, old)
+
+        self.agent.withdraw_ovn_lb_vip.assert_not_called()
+        self.agent.withdraw_ovn_lb_fip.assert_not_called()
+
+    def test_run_fip(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(external_ids={
+            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+            constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip'})
+
+        self.event.run(None, row, old)
+
+        self.agent.withdraw_ovn_lb_vip.assert_not_called()
+        self.agent.withdraw_ovn_lb_fip.assert_called_once_with(old)
