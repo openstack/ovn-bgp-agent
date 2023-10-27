@@ -467,6 +467,16 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         ports.extend(cmd.execute(check_error=True))
         return ports
 
+    def get_active_local_lbs(self, local_gateway_ports):
+        lbs = []
+        cmd = self.db_find_rows('Load_Balancer', ('vips', '!=', {}))
+        for row in cmd.execute(check_error=True):
+            if (row.vips and row.external_ids[
+                    constants.OVN_LB_LR_REF_EXT_ID_KEY].replace(
+                        'neutron-', "", 1) in local_gateway_ports):
+                lbs.append(row)
+        return lbs
+
     # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0
     def ls_get_localnet_ports(self, logical_switch, if_exists=True):
         return LSGetLocalnetPortsCommand(self, logical_switch,

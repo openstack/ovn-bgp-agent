@@ -79,7 +79,7 @@ networking accordingly.
 
 The BGP watcher detects OVN Southbound Database events at the ``Port_Binding``
 and ``Load_Balancer`` tables. It creates new event classes named
-``PortBindingChassisEvent`` and ``OVNLBMemberEvent``, that all the events
+``PortBindingChassisEvent`` and ``OVNLBEvent``, that all the events
 watched for BGP use as the base (inherit from).
 
 The driver react specifically to the following events:

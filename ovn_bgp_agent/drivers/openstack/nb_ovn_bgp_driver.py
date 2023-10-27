@@ -36,7 +36,7 @@ LOG = logging.getLogger(__name__)
 # logging.basicConfig(level=logging.DEBUG)
 
 OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch',
-              'Logical_Router_Port']
+              'Logical_Router_Port', 'Load_Balancer']
 LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
                             'Logical_Router', 'Logical_Router_Port',
                             'Logical_Router_Policy',
@@ -146,7 +146,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "LogicalSwitchPortProviderDeleteEvent",
                       "LogicalSwitchPortFIPCreateEvent",
                       "LogicalSwitchPortFIPDeleteEvent",
-                      "LocalnetCreateDeleteEvent"])
+                      "LocalnetCreateDeleteEvent",
+                      "OVNLBCreateEvent",
+                      "OVNLBDeleteEvent"])
         if self._expose_tenant_networks:
             events.update(["ChassisRedirectCreateEvent",
                            "ChassisRedirectDeleteEvent",
@@ -201,6 +203,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                                  constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
                 continue
             self._ensure_lsp_exposed(port)
+
+        # add missing routes/ips for OVN loadbalancers
+        self._expose_lbs(self.ovn_local_cr_lrps.keys())
 
         # remove extra wiring leftovers
         wire_utils.cleanup_wiring(self.nb_idl,
@@ -323,6 +328,22 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             bridge_vlan = localnet.tag[0]
         return bridge_device, bridge_vlan
 
+    def _expose_lbs(self, router_list):
+        lbs = self.nb_idl.get_active_local_lbs(router_list)
+        for lb in lbs:
+            self._expose_ovn_lb_vip(lb)
+            # if vip-fip expose fip too
+            if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
+                self._expose_ovn_lb_fip(lb)
+
+    def _withdraw_lbs(self, router_list):
+        lbs = self.nb_idl.get_active_local_lbs(router_list)
+        for lb in lbs:
+            self._withdraw_ovn_lb_vip(lb)
+            # if vip-fip withdraw fip too
+            if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
+                self._withdraw_ovn_lb_fip(lb)
+
     @lockutils.synchronized('nbbgp')
     def expose_ip(self, ips, ips_info):
         '''Advertice BGP route by adding IP to device.
@@ -339,20 +360,28 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         logical_switch = ips_info.get('logical_switch')
         if not logical_switch:
             return False
-        localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
-            logical_switch)
-        if not bridge_device:
-            # This means it is not a provider network
-            self.ovn_tenant_ls[logical_switch] = True
-            return False
-        if bridge_device not in self.ovn_bridge_mappings.values():
-            # This node is not properly configured, no need to expose it
-            return False
-        if not self.ovn_provider_ls.get(logical_switch):
-            self.ovn_provider_ls[logical_switch] = {
-                'bridge_device': bridge_device,
-                'bridge_vlan': bridge_vlan,
-                'localnet': localnet}
+
+        bridge_info = self.ovn_provider_ls.get(logical_switch)
+        if bridge_info:
+            # already known provider ls
+            bridge_device = bridge_info['bridge_device']
+            bridge_vlan = bridge_info['bridge_vlan']
+            localnet = bridge_info['localnet']
+        else:
+            localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+                logical_switch)
+            if not bridge_device:
+                # This means it is not a provider network
+                self.ovn_tenant_ls[logical_switch] = True
+                return False
+            if bridge_device not in self.ovn_bridge_mappings.values():
+                # This node is not properly configured, no need to expose it
+                return False
+            if not self.ovn_provider_ls.get(logical_switch):
+                self.ovn_provider_ls[logical_switch] = {
+                    'bridge_device': bridge_device,
+                    'bridge_vlan': bridge_vlan,
+                    'localnet': localnet}
         mac = ips_info.get('mac')
         return self._expose_ip(ips, mac, logical_switch, bridge_device,
                                bridge_vlan, port_type=ips_info['type'],
@@ -379,6 +408,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 self.ovn_local_cr_lrps[router] = {
                     'bridge_device': bridge_device,
                     'bridge_vlan': bridge_vlan,
+                    'provider_switch': logical_switch,
                     'ips': ips,
                 }
                 # Expose associated subnets
@@ -393,6 +423,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                             constants.OVN_LS_NAME_EXT_ID_KEY),
                         'address_scopes': driver_utils.get_addr_scopes(port)}
                     self._expose_subnet(ips, subnet_info)
+
+                # add missing routes/ips for OVN loadbalancers
+                self._expose_lbs([router])
         else:
             if not self._expose_provider_port(ips, mac, logical_switch,
                                               bridge_device, bridge_vlan,
@@ -452,6 +485,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                         constants.OVN_LS_NAME_EXT_ID_KEY),
                     'address_scopes': driver_utils.get_addr_scopes(port)}
                 self._withdraw_subnet(ips, subnet_info)
+
+            # withdraw routes/ips for OVN loadbalancers
+            self._withdraw_lbs([ips_info['router']])
+
             try:
                 del self.ovn_local_cr_lrps[ips_info['router']]
             except KeyError:
@@ -497,19 +534,26 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         return self._expose_fip(ip, mac, logical_switch, row)
 
     def _expose_fip(self, ip, mac, logical_switch, row):
-        localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
-            logical_switch)
-        if not bridge_device:
-            # This means it is not a provider network
-            return False
-        if bridge_device not in self.ovn_bridge_mappings.values():
-            # This node is not properly configured, no need to expose it
-            return False
-        if not self.ovn_provider_ls.get(logical_switch):
-            self.ovn_provider_ls[logical_switch] = {
-                'bridge_device': bridge_device,
-                'bridge_vlan': bridge_vlan,
-                'localnet': localnet}
+        bridge_info = self.ovn_provider_ls.get(logical_switch)
+        if bridge_info:
+            # already known provider ls
+            bridge_device = bridge_info['bridge_device']
+            bridge_vlan = bridge_info['bridge_vlan']
+            localnet = bridge_info['localnet']
+        else:
+            localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+                logical_switch)
+            if not bridge_device:
+                # This means it is not a provider network
+                return False
+            if bridge_device not in self.ovn_bridge_mappings.values():
+                # This node is not properly configured, no need to expose it
+                return False
+            if not self.ovn_provider_ls.get(logical_switch):
+                self.ovn_provider_ls[logical_switch] = {
+                    'bridge_device': bridge_device,
+                    'bridge_vlan': bridge_vlan,
+                    'localnet': localnet}
         tenant_logical_switch = row.external_ids.get(
             constants.OVN_LS_NAME_EXT_ID_KEY)
         if not tenant_logical_switch:
@@ -556,6 +600,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def expose_remote_ip(self, ips, ips_info):
         self._expose_remote_ip(ips, ips_info)
 
+    @lockutils.synchronized('nbbgp')
+    def withdraw_remote_ip(self, ips, ips_info):
+        self._withdraw_remote_ip(ips, ips_info)
+
     def _expose_remote_ip(self, ips, ips_info):
         ips_to_expose = ips
         if not CONF.expose_tenant_networks:
@@ -573,10 +621,6 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 ips_info['logical_switch'], {}).update({ip: {}})
         LOG.debug("Added BGP route for tenant IP(s) %s on chassis %s",
                   ips_to_expose, self.chassis)
-
-    @lockutils.synchronized('nbbgp')
-    def withdraw_remote_ip(self, ips, ips_info):
-        self._withdraw_remote_ip(ips, ips_info)
 
     def _withdraw_remote_ip(self, ips, ips_info):
         ips_to_withdraw = ips
@@ -736,6 +780,95 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # Router port for subnet already cleanup
             pass
         return True
+
+    @lockutils.synchronized('nbbgp')
+    def expose_ovn_lb_vip(self, lb):
+        self._expose_ovn_lb_vip(lb)
+
+    def _expose_ovn_lb_vip(self, lb):
+        vip_port = lb.external_ids.get(constants.OVN_LB_VIP_PORT_EXT_ID_KEY)
+        vip_ip = lb.external_ids.get(constants.OVN_LB_VIP_IP_EXT_ID_KEY)
+        vip_router = lb.external_ids[
+            constants.OVN_LB_LR_REF_EXT_ID_KEY].replace('neutron-', "", 1)
+        vip_lsp = self.nb_idl.lsp_get(vip_port).execute(check_error=True)
+        if not vip_lsp:
+            LOG.debug("Something went wrong, VIP port %s not found", vip_port)
+            return
+        vip_net = vip_lsp.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)
+        if vip_net in self.ovn_local_lrps.keys():
+            # It is a VIP on a tenant network
+            # NOTE: the LB is exposed through the cr-lrp, so we add the
+            # vip_router instead of the logical switch
+            ips_info = {'logical_switch': vip_router}
+            self._expose_remote_ip([vip_ip], ips_info)
+        else:
+            # It is a VIP on a provider network
+            localnet, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+                vip_net)
+            self._expose_provider_port([vip_ip], None, vip_net, bridge_device,
+                                       bridge_vlan, localnet)
+
+    @lockutils.synchronized('nbbgp')
+    def withdraw_ovn_lb_vip(self, lb):
+        self._withdraw_ovn_lb_vip(lb)
+
+    def _withdraw_ovn_lb_vip(self, lb):
+        vip_ip = lb.external_ids.get(constants.OVN_LB_VIP_IP_EXT_ID_KEY)
+        vip_router = lb.external_ids[
+            constants.OVN_LB_LR_REF_EXT_ID_KEY].replace('neutron-', "", 1)
+
+        cr_lrp_info = self.ovn_local_cr_lrps.get(vip_router)
+        if not cr_lrp_info:
+            return
+        provider_ls = cr_lrp_info['provider_switch']
+        if self._exposed_ips.get(provider_ls, {}).get(vip_ip):
+            # VIP is on provider network
+            self._withdraw_provider_port([vip_ip],
+                                         cr_lrp_info['provider_switch'],
+                                         cr_lrp_info['bridge_device'],
+                                         cr_lrp_info['bridge_vlan'])
+        else:
+            # VIP is on tenant network
+            ips_info = {'logical_switch': vip_router}
+            self._withdraw_remote_ip([vip_ip], ips_info)
+
+    @lockutils.synchronized('nbbgp')
+    def expose_ovn_lb_fip(self, lb):
+        self._expose_ovn_lb_fip(lb)
+
+    def _expose_ovn_lb_fip(self, lb):
+        vip_port = lb.external_ids.get(constants.OVN_LB_VIP_PORT_EXT_ID_KEY)
+        vip_lsp = self.nb_idl.lsp_get(vip_port).execute(check_error=True)
+        if not vip_lsp:
+            LOG.debug("Something went wrong, VIP port %s not found", vip_port)
+            return
+
+        external_ip, external_mac, ls_name = (
+            self.get_port_external_ip_and_ls(vip_lsp.name))
+        if not external_ip or not ls_name:
+            LOG.debug("Something went wrong, no NAT entry for the VIP %s",
+                      vip_port)
+            return
+        self._expose_fip(external_ip, external_mac, ls_name, vip_lsp)
+
+    @lockutils.synchronized('nbbgp')
+    def withdraw_ovn_lb_fip(self, lb):
+        self._withdraw_ovn_lb_fip(lb)
+
+    def _withdraw_ovn_lb_fip(self, lb):
+        vip_fip = lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY)
+        # OVN loadbalancers ARPs are replied by router port
+        vip_router = lb.external_ids.get(
+            constants.OVN_LB_LR_REF_EXT_ID_KEY, "").replace('neutron-', "", 1)
+        if not vip_router:
+            return
+        cr_lrp_info = self.ovn_local_cr_lrps.get(vip_router)
+        if not cr_lrp_info:
+            return
+        self._withdraw_provider_port([vip_fip],
+                                     cr_lrp_info['provider_switch'],
+                                     cr_lrp_info['bridge_device'],
+                                     cr_lrp_info['bridge_vlan'])
 
     def _address_scope_allowed(self, ip, address_scopes):
         if not self.allowed_address_scopes:

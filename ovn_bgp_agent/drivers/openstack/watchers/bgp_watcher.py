@@ -372,7 +372,7 @@ class OVNLBVIPPortEvent(base_watcher.PortBindingChassisEvent):
                 self.agent.expose_ovn_lb(ovn_lb_ip, row)
 
 
-class OVNLBMemberCreateEvent(base_watcher.OVNLBMemberEvent):
+class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_CREATE,)
         super(OVNLBMemberCreateEvent, self).__init__(
@@ -445,7 +445,7 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBMemberEvent):
                 vip_ip, row.name, associated_cr_lrp_port)
 
 
-class OVNLBMemberDeleteEvent(base_watcher.OVNLBMemberEvent):
+class OVNLBMemberDeleteEvent(base_watcher.OVNLBEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_DELETE,)
         super(OVNLBMemberDeleteEvent, self).__init__(

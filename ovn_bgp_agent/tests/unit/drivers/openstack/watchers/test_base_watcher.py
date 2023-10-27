@@ -44,6 +44,33 @@ class TestPortBindingChassisEvent(test_base.TestCase):
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
 
 
+class FakeOVNLBEvent(base_watcher.OVNLBEvent):
+    def run(self):
+        pass
+
+
+class TestOVNLBEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestOVNLBEvent, self).setUp()
+        self.ovnlb_event = FakeOVNLBEvent(
+            mock.Mock(), [mock.Mock()])
+
+    def test__get_router(self):
+        row = utils.create_row(
+            external_ids={constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-net'})
+        self.assertEqual('net', self.ovnlb_event._get_router(row))
+        row = utils.create_row(external_ids={})
+        self.assertEqual(None, self.ovnlb_event._get_router(row))
+
+    def test__get_vip_fip(self):
+        row = utils.create_row(
+            external_ids={constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip'})
+        self.assertEqual('fip', self.ovnlb_event._get_vip_fip(row))
+        row = utils.create_row(external_ids={})
+        self.assertEqual(None, self.ovnlb_event._get_vip_fip(row))
+
+
 class FakeLSPChassisEvent(base_watcher.LSPChassisEvent):
     def run(self):
         pass
