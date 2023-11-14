@@ -66,6 +66,11 @@ agent_opts = [
                default='/etc/ipa/ca.crt',
                help='The PEM file with CA certificate that OVN should use to'
                     ' verify certificates presented to it by SSL peers'),
+    cfg.StrOpt('ovn_sb_connection',
+               default='',
+               help='The connection string for the OVN_Southbound OVSDB.\n'
+                    'Use tcp:IP:PORT for TCP connection.\n'
+                    'Use unix:FILE for unix domain socket connection.'),
     cfg.StrOpt('ovn_nb_private_key',
                default='/etc/pki/tls/private/ovn_bgp_agent.key',
                help='The PEM file with private key for SSL connection to '
@@ -78,6 +83,11 @@ agent_opts = [
                default='/etc/ipa/ca.crt',
                help='The PEM file with CA certificate that OVN should use to'
                     ' verify certificates presented to it by SSL peers'),
+    cfg.StrOpt('ovn_nb_connection',
+               default='',
+               help='The connection string for the OVN_Northbound OVSDB.\n'
+                    'Use tcp:IP:PORT for TCP connection.\n'
+                    'Use unix:FILE for unix domain socket connection.'),
     cfg.StrOpt('bgp_AS',
                default='64999',
                help='AS number to be used by the Agent when running in BGP '
@@ -173,6 +183,25 @@ https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
 """)),
 ]
 
+local_ovn_cluster_opts = [
+    cfg.StrOpt('ovn_nb_connection',
+               default='unix:/var/run/ovn/ovnnb_db.sock',
+               help='The connection string for the OVN_Northbound OVSDB.\n'
+                    'Use tcp:IP:PORT for TCP connection.\n'
+                    'Use unix:FILE for unix domain socket connection.'),
+    cfg.ListOpt('external_nics',
+                default=[],
+                help='List of NICS that the local OVN cluster needs to be '
+                     'connected to for the external connectivity.'),
+    cfg.ListOpt('peer_ips',
+                default=[],
+                help='List of peer IPs used for redirecting the outgoing '
+                     'traffic (ECMP supported).'),
+    cfg.ListOpt('provider_networks_pool_prefixes',
+                default=['192.168.0.0/16'],
+                help='List of prefixes for provider networks'),
+]
+
 CONF = cfg.CONF
 EXTRA_LOG_LEVEL_DEFAULTS = [
     'oslo.privsep.daemon=INFO'
@@ -183,7 +212,8 @@ logging.register_options(CONF)
 
 def register_opts():
     CONF.register_opts(agent_opts)
-    CONF.register_opts(root_helper_opts, "AGENT")
+    CONF.register_opts(root_helper_opts, "agent")
+    CONF.register_opts(local_ovn_cluster_opts, "local_ovn_cluster")
 
 
 def init(args, **kwargs):
@@ -198,7 +228,7 @@ def setup_logging():
 
 
 def get_root_helper(conf):
-    return conf.AGENT.root_helper
+    return conf.agent.root_helper
 
 
 def setup_privsep():
@@ -208,5 +238,6 @@ def setup_privsep():
 def list_opts():
     return [
         ("DEFAULT", agent_opts),
-        ("AGENT", root_helper_opts)
+        ("agent", root_helper_opts),
+        ("ovn", local_ovn_cluster_opts),
     ]

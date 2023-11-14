@@ -288,19 +288,23 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
         external_ip = '10.0.0.10'
         ls_name = 'neutron-net-id'
         self.agent.get_port_external_ip_and_ls.return_value = (external_ip,
+                                                               'mac',
                                                                ls_name)
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               addresses=['mac 192.168.0.1'],
                                name='net-id')
         self.event.run(mock.Mock(), row, mock.Mock())
-        self.agent.expose_fip.assert_called_once_with(external_ip, ls_name,
-                                                      row)
+        self.agent.expose_fip.assert_called_once_with(external_ip, 'mac',
+                                                      ls_name, row)
 
     def test_run_no_external_ip(self):
         external_ip = None
         ls_name = 'logical_switch'
         self.agent.get_port_external_ip_and_ls.return_value = (external_ip,
+                                                               'mac',
                                                                ls_name)
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
+                               addresses=['mac 192.168.0.1'],
                                name='net-id')
         self.event.run(mock.Mock(), row, mock.Mock())
         self.agent.expose_fip.assert_not_called()

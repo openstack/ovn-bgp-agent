@@ -77,3 +77,15 @@ EXPOSE_METHOD_L2VNI = 'l2vni'
 EXPOSE_METHOD_VRF = 'vrf'
 EXPOSE_METHOD_OVN = 'ovn'
 EXPOSE_METHOD_DYNAMIC = 'dynamic'
+
+# OVN Cluster related constants
+OVN_CLUSTER_BRIDGE = 'bgp'
+OVN_CLUSTER_ROUTER = 'bgp-router'
+OVN_CLUSTER_ROUTER_INTERNAL_MAC = '40:44:00:00:00:06'
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp version is >=1.13.0
+POLICY_ACTION_REROUTE = 'reroute'
+POLICY_ACTION_TYPES = (POLICY_ACTION_REROUTE)
+LR_POLICY_PRIORITY_MAX = 32767
+
+ROUTE_DISCARD = 'discard'

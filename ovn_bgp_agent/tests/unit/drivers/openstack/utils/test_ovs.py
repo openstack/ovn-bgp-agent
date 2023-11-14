@@ -19,6 +19,7 @@ from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovs as ovs_utils
+from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
 
@@ -72,6 +73,70 @@ class TestOVS(test_base.TestCase):
         self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
             'ovs-vsctl', ['get', 'Interface', port, 'ofport'])
 
+    def test_get_ovs_ports_info(self):
+        bridge = 'fake-bridge'
+        bridge_ports = ['br-ex']
+        self.mock_ovs_vsctl.ovs_cmd.return_value = bridge_ports
+
+        ret = ovs_utils.get_ovs_ports_info(bridge)
+
+        self.assertEqual(bridge_ports, ret)
+        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
+            'ovs-vsctl', ['list-ports', bridge])
+
+    def test_get_ovs_patch_port_ofport(self):
+        patch = 'fake-patch'
+        ofport = ['1']
+        self.mock_ovs_vsctl.ovs_cmd.return_value = ofport
+
+        ret = ovs_utils.get_ovs_patch_port_ofport(patch)
+
+        self.assertEqual(ofport[0], ret)
+        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
+            'ovs-vsctl',
+            ['get', 'Interface', 'patch-fake-patch-to-br-int', 'ofport'])
+
+    def test_get_ovs_patch_port_ofport_exception(self):
+        patch = 'fake-patch'
+        self.mock_ovs_vsctl.ovs_cmd.side_effect = Exception
+
+        self.assertRaises(agent_exc.PatchPortNotFound,
+                          ovs_utils.get_ovs_patch_port_ofport, patch)
+
+        expected_calls = [
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport'])]
+        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
+
+    def test_get_ovs_patch_port_ofport_no_port(self):
+        patch = 'fake-patch'
+        ofport = ['[]']
+        self.mock_ovs_vsctl.ovs_cmd.return_value = ofport
+
+        self.assertRaises(agent_exc.PatchPortNotFound,
+                          ovs_utils.get_ovs_patch_port_ofport, patch)
+
+        expected_calls = [
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call('ovs-vsctl', ['get', 'Interface',
+                                    'patch-fake-patch-to-br-int', 'ofport'])]
+        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
+
     @mock.patch.object(ovs_utils, 'get_bridge_flows')
     def test_remove_extra_ovs_flows(self, mock_flows):
         port_iface = '1'
@@ -99,6 +164,15 @@ class TestOVS(test_base.TestCase):
         self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
             'ovs-ofctl', ['del-flows', self.bridge, expected_del_flow])
         mock_flows.assert_called_once_with(self.bridge, self.cookie_id)
+
+    def test_ensure_flow(self):
+        bridge = 'fake-bridge'
+        flow = 'fake-flow'
+
+        ovs_utils.ensure_flow(bridge, flow)
+
+        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
+            'ovs-ofctl', ['add-flow', bridge, flow])
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     @mock.patch.object(linux_net, 'get_interface_address')
@@ -374,11 +448,26 @@ class TestOvsIdl(test_base.TestCase):
         self._test_ovs_ext_ids_getters(
             self.ovs_idl.get_own_chassis_id, row, expected_return)
 
+    def test_get_own_chassis_name(self):
+        expected_return = 'fake-name'
+        row = {'hostname': expected_return}
+        self._test_ovs_ext_ids_getters(
+            self.ovs_idl.get_own_chassis_name, row, expected_return)
+
     def test_get_ovn_remote(self):
         expected_return = 'fake-ovn-remote'
         row = {'ovn-remote': expected_return}
         self._test_ovs_ext_ids_getters(
             self.ovs_idl.get_ovn_remote, row, expected_return)
+
+    def test_get_ovn_remote_nb(self):
+        expected_return = 'fake-ovn-remote'
+        row = {'ovn-nb-remote': expected_return}
+        self.execute_ref.return_value = row
+        ret = self.ovs_idl.get_ovn_remote(nb=True)
+        self.assertEqual(expected_return, ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')
 
     def test_get_ovn_bridge_mappings(self):
         self.execute_ref.return_value = {
@@ -392,5 +481,15 @@ class TestOvsIdl(test_base.TestCase):
         self.execute_ref.return_value = {}
         ret = self.ovs_idl.get_ovn_bridge_mappings()
         self.assertEqual([], ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')
+
+    def test_get_ovn_bridge_mappings_bridge(self):
+        bridge = 'bgp'
+        self.execute_ref.return_value = {
+            'ovn-bridge-mappings-bgp':
+            'net0:bridge0,net1:bridge1, net2:bridge2'}
+        ret = self.ovs_idl.get_ovn_bridge_mappings(bridge=bridge)
+        self.assertEqual(['net0:bridge0', 'net1:bridge1', 'net2:bridge2'], ret)
         self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
             'Open_vSwitch', '.', 'external_ids')

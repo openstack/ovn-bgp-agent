@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import netaddr
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -51,7 +53,8 @@ class OvnDbNotifyHandler(event.RowEventHandler):
 class OvnNbIdl(OvnIdl):
     SCHEMA = 'OVN_Northbound'
 
-    def __init__(self, connection_string, events=None, tables=None):
+    def __init__(self, connection_string, events=None, tables=None,
+                 leader_only=False):
         if connection_string.startswith("ssl"):
             self._check_and_set_ssl_files(self.SCHEMA)
         helper = self._get_ovsdb_helper(connection_string)
@@ -61,7 +64,7 @@ class OvnNbIdl(OvnIdl):
         for table in tables:
             helper.register_table(table)
         super(OvnNbIdl, self).__init__(
-            None, connection_string, helper, leader_only=False)
+            None, connection_string, helper, leader_only=leader_only)
 
     def _get_ovsdb_helper(self, connection_string):
         return idlutils.get_schema_helper(connection_string, self.SCHEMA)
@@ -176,6 +179,200 @@ class LSGetLocalnetPortsCommand(command.ReadOnlyCommand):
             raise RuntimeError(msg) from e
 
 
+# FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.1.0
+class _LrpNetworksCommand(command.BaseCommand):
+    table = 'Logical_Router_Port'
+
+    def __init__(self, api, port, networks, exists):
+        super().__init__(api)
+        self.port = port
+        self.exists = exists
+        if isinstance(networks, (str, bytes)):
+            networks = [networks]
+        self.networks = [str(netaddr.IPNetwork(network))
+                         for network in networks]
+
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.1.0
+class LrpAddNetworksCommand(_LrpNetworksCommand):
+    def run_idl(self, txn):
+        lrp = self.api.lookup(self.table, self.port)
+        for network in self.networks:
+            if network in lrp.networks and not self.exists:
+                msg = "Network '%s' already exist in networks of port %s" % (
+                    network, lrp.uuid)
+                raise RuntimeError(msg)
+            lrp.addvalue('networks', network)
+
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp supports it
+class LrRouteAddCommand(command.BaseCommand):
+    def __init__(self, api, router, prefix, nexthop, port=None,
+                 policy='dst-ip', ecmp=False, may_exist=False):
+        prefix = str(netaddr.IPNetwork(prefix))
+        if nexthop != constants.ROUTE_DISCARD:
+            nexthop = str(netaddr.IPAddress(nexthop))
+        super().__init__(api)
+        self.router = router
+        self.prefix = prefix
+        self.nexthop = nexthop
+        self.port = port
+        self.policy = policy
+        self.ecmp = ecmp
+        self.may_exist = may_exist
+
+    def run_idl(self, txn):
+        lr = self.api.lookup('Logical_Router', self.router)
+        for route in lr.static_routes:
+            if self.prefix == route.ip_prefix:
+                if self.ecmp and self.nexthop != route.nexthop:
+                    continue
+                if not self.may_exist:
+                    msg = "Route %s already exists on router %s" % (
+                        self.prefix, self.router)
+                    raise RuntimeError(msg)
+                route.nexthop = self.nexthop
+                route.policy = self.policy
+                if self.port:
+                    route.output_port = self.port
+                self.result = rowview.RowView(route)
+                return
+        route = txn.insert(self.api.tables['Logical_Router_Static_Route'])
+        route.ip_prefix = self.prefix
+        route.nexthop = self.nexthop
+        route.policy = self.policy
+        if self.port:
+            route.output_port = self.port
+        lr.addvalue('static_routes', route)
+        self.result = route.uuid
+
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp supports it
+class LrRouteDelCommand(command.BaseCommand):
+    def __init__(self, api, router,
+                 prefix=None, nexthop=None, if_exists=False):
+        if prefix is not None:
+            prefix = str(netaddr.IPNetwork(prefix))
+        super().__init__(api)
+        self.router = router
+        self.prefix = prefix
+        self.nexthop = nexthop
+        self.if_exists = if_exists
+
+    def run_idl(self, txn):
+        lr = self.api.lookup('Logical_Router', self.router)
+        if not self.prefix:
+            lr.static_routes = []
+            return
+        for route in lr.static_routes:
+            if self.prefix == route.ip_prefix:
+                if self.nexthop and route.nexthop != self.nexthop:
+                    continue
+                lr.delvalue('static_routes', route)
+                return
+        if not self.if_exists:
+            msg = "Route for %s in router %s does not exist" % (
+                self.prefix, self.router)
+            raise RuntimeError(msg)
+
+
+class StaticMACBindingFindCommand(command.DbFindCommand):
+    table = 'Static_MAC_Binding'
+
+    def __init__(self, api, port, ip):
+        super().__init__(
+            api,
+            self.table,
+            ('logical_port', '=', port),
+            ('ip', '=', ip),
+            row=True,
+        )
+
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp supports it
+class StaticMACBindingAddCommand(command.AddCommand):
+    table_name = 'Static_MAC_Binding'
+
+    def __init__(self, api, port, ip, mac, override_dynamic_mac=False,
+                 may_exist=False, **columns):
+        super().__init__(api)
+        self.port = port
+        self.ip = ip
+        self.mac = mac
+        self.override_dynamic_mac = override_dynamic_mac
+        self.may_exist = may_exist
+        self.columns = columns
+
+    def run_idl(self, txn):
+        cmd = StaticMACBindingFindCommand(self.api, self.port, self.ip)
+        cmd.run_idl(txn)
+        static_mac_binding_result = cmd.result
+        if static_mac_binding_result:
+            if len(static_mac_binding_result) > 1:
+                # With the current database schema, this cannot happen, but
+                # better safe than sorry.
+                raise RuntimeError(
+                    "Unexpected duplicates in database for port %s "
+                    "and ip %s" % (self.port, self.ip))
+            binding = static_mac_binding_result[0]
+            if self.may_exist:
+                # When no changes are made to a record, the parent
+                # `post_commit` method will not be called.
+                #
+                # Ensure consistent return to caller of `Command.execute()`
+                # even when no changes have been applied.
+                self.result = rowview.RowView(binding)
+                return
+            else:
+                raise RuntimeError(
+                    "Static MAC Binding entry for port %s and ip %s exists" % (
+                        self.port, self.ip))
+        binding = txn.insert(self.api.tables[self.table_name])
+        binding.logical_port = self.port
+        binding.ip = self.ip
+        binding.mac = self.mac
+        binding.override_dynamic_mac = self.override_dynamic_mac
+        self.set_columns(binding, **self.columns)
+        # Setting the result to something other than a :class:`rowview.RowView`
+        # or :class:`ovs.db.idl.Row` typed value will make the parent
+        # `post_commit` method retrieve the newly insterted row from IDL and
+        # return that to the caller.
+        self.result = binding.uuid
+
+
+# FIXME(ltomasbo): This can be removed once ovsdbapp supports it
+class StaticMACBindingDelCommand(command.BaseCommand):
+    table_name = 'Static_MAC_Binding'
+
+    def __init__(self, api, port, ip, if_exists=False, **columns):
+        super().__init__(api)
+        self.port = port
+        self.ip = ip
+        self.if_exists = if_exists
+        self.columns = columns
+
+    def run_idl(self, txn):
+        cmd = StaticMACBindingFindCommand(self.api, self.port, self.ip)
+        cmd.run_idl(txn)
+        static_mac_binding_result = cmd.result
+        if static_mac_binding_result:
+            if len(static_mac_binding_result) > 1:
+                # With the current database schema, this cannot happen, but
+                # better safe than sorry.
+                raise RuntimeError(
+                    "Unexpected duplicates in database for port %s "
+                    "and ip %s" % (self.port, self.ip))
+            binding = static_mac_binding_result[0]
+            binding.delete()
+            return
+        if self.if_exists:
+            return
+        else:
+            raise RuntimeError(
+                "Static MAC Binding entry for port %s and ip %s does not "
+                "exist" % (self.port, self.ip))
+
+
 class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def __init__(self, connection):
         super(OvsdbNbOvnIdl, self).__init__(connection)
@@ -230,6 +427,26 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def ls_get_localnet_ports(self, logical_switch, if_exists=True):
         return LSGetLocalnetPortsCommand(self, logical_switch,
                                          if_exists=if_exists)
+
+    # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.1.0
+    def lrp_add_networks(self, port, networks, may_exist=False):
+        return LrpAddNetworksCommand(self, port, networks, may_exist)
+
+    def lr_route_add(self, router, prefix, nexthop, port=None,
+                     policy='dst-ip', ecmp=False, may_exist=False):
+        return LrRouteAddCommand(self, router, prefix, nexthop, port,
+                                 policy, ecmp, may_exist)
+
+    def lr_route_del(self, router, prefix=None, nexthop=None, if_exists=False):
+        return LrRouteDelCommand(self, router, prefix, nexthop, if_exists)
+
+    def static_mac_binding_add(self, port, ip, mac, override_dynamic_mac=False,
+                               may_exist=False):
+        return StaticMACBindingAddCommand(self, port, ip, mac,
+                                          override_dynamic_mac, may_exist)
+
+    def static_mac_binding_del(self, port, ip, if_exists=False):
+        return StaticMACBindingDelCommand(self, port, ip, if_exists)
 
 
 class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
