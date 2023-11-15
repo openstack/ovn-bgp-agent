@@ -239,5 +239,5 @@ def list_opts():
     return [
         ("DEFAULT", agent_opts),
         ("agent", root_helper_opts),
-        ("ovn", local_ovn_cluster_opts),
+        ("local_ovn_cluster", local_ovn_cluster_opts),
     ]
