@@ -616,3 +616,122 @@ class LogicalSwitchPortTenantDeleteEvent(base_watcher.LSPChassisEvent):
                 'logical_switch': self._get_network(row)
             }
             self.agent.withdraw_remote_ip(ips, ips_info)
+
+
+class OVNLBCreateEvent(base_watcher.OVNLBEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(OVNLBCreateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # The ovn lb balancers are exposed through the cr-lrp, so if the
+        # local agent does not have the matching router there is no need
+        # to process the event
+        try:
+            if not row.vips:
+                return False
+            lb_router = self._get_router(row)
+            if lb_router not in self.agent.ovn_local_cr_lrps.keys():
+                return False
+
+            # Only expose if there is a modification in the VIPS
+            # And only expose if it is the first item on VIPs
+            if hasattr(old, 'vips'):
+                if not old.vips and row.vips:
+                    return True
+
+            if hasattr(old, 'external_ids'):
+                # Check if the lb_router was added
+                old_lb_router = self._get_router(old)
+                if lb_router != old_lb_router:
+                    return True
+                # Also check if there is a vip_fip addition to expose the FIP
+                vip_fip = self._get_vip_fip(row)
+                if not vip_fip:
+                    return False
+                old_vip_fip = self._get_vip_fip(old)
+                if vip_fip != old_vip_fip:
+                    return True
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        vip_fip = self._get_vip_fip(row)
+        old_vip_fip = self._get_vip_fip(old)
+        with _SYNC_STATE_LOCK.read_lock():
+            if hasattr(old, 'external_ids'):
+                if vip_fip and vip_fip != old_vip_fip:
+                    self.agent.expose_ovn_lb_fip(row)
+            else:
+                self.agent.expose_ovn_lb_vip(row)
+
+
+class OVNLBDeleteEvent(base_watcher.OVNLBEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_DELETE, self.ROW_UPDATE)
+        super(OVNLBDeleteEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        # The ovn lb balancers are exposed through the cr-lrp, so if the
+        # local agent does not have the matching router there is no need
+        # to process the event
+        try:
+            if event == self.ROW_DELETE:
+                if not row.vips:
+                    return False
+                lb_router = self._get_router(row)
+                if lb_router in self.agent.ovn_local_cr_lrps.keys():
+                    return True
+                return False
+
+            # ROW UPDATE EVENT
+            lb_router = self._get_router(row)
+            old_external_ids = False
+            if hasattr(old, 'external_ids'):
+                old_external_ids = True
+                old_lb_router = self._get_router(old)
+                if not old_lb_router:
+                    return False
+                if old_lb_router not in self.agent.ovn_local_cr_lrps.keys():
+                    return False
+                if old_lb_router != lb_router:
+                    # Router should not be removed, but if that is the case we
+                    # should remove the loadbalancer
+                    return True
+                # Also check if the vip_fip is removed to withdraw the FIP
+                vip_fip = self._get_vip_fip(row)
+                old_vip_fip = self._get_vip_fip(old)
+                if old_vip_fip and old_vip_fip != vip_fip:
+                    return True
+
+            # Withdraw IP if VIPs is removed
+            if hasattr(old, 'vips'):
+                if old.vips and not row.vips:
+                    if old_external_ids:
+                        old_lb_router = self._get_router(old)
+                        return (old_lb_router in
+                                self.agent.ovn_local_cr_lrps.keys())
+                    else:
+                        return (lb_router in
+                                self.agent.ovn_local_cr_lrps.keys())
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        vip_fip = self._get_vip_fip(row)
+        old_vip_fip = self._get_vip_fip(old)
+        with _SYNC_STATE_LOCK.read_lock():
+            if event == self.ROW_DELETE:
+                self.agent.withdraw_ovn_lb_vip(row)
+                if vip_fip:
+                    self.agent.withdraw_ovn_lb_fip(row)
+            else:
+                if not vip_fip and vip_fip != old_vip_fip:
+                    self.agent.withdraw_ovn_lb_fip(old)
+
+                if hasattr(old, 'vips'):
+                    self.agent.withdraw_ovn_lb_vip(row)

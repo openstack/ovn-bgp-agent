@@ -203,6 +203,24 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
 
         self.nb_idl.db_find_rows.assert_has_calls(expected_calls)
 
+    def test_get_active_local_lbs(self):
+        local_gateway_ports = ['router1']
+        lb1 = fakes.create_object({
+            'vips': {'vip': 'member1,member2'},
+            'external_ids': {
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: "neutron-router1"}})
+        lb2 = fakes.create_object({
+            'vips': {'vip': 'member1,member2'},
+            'external_ids': {
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: "neutron-router2"}})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [lb1, lb2]
+
+        ret = self.nb_idl.get_active_local_lbs(local_gateway_ports)
+
+        self.assertEqual([lb1], ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Load_Balancer', ('vips', '!=', {}))
+
 
 class TestOvsdbSbOvnIdl(test_base.TestCase):
 

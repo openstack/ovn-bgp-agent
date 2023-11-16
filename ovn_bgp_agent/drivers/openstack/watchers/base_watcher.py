@@ -42,13 +42,26 @@ class PortBindingChassisEvent(Event):
         return len(mac.strip().split(' ')) > 1
 
 
-class OVNLBMemberEvent(Event):
+class OVNLBEvent(Event):
     def __init__(self, bgp_agent, events):
         self.agent = bgp_agent
         table = 'Load_Balancer'
-        super(OVNLBMemberEvent, self).__init__(
+        super(OVNLBEvent, self).__init__(
             events, table, None)
         self.event_name = self.__class__.__name__
+
+    def _get_router(self, row):
+        try:
+            return row.external_ids[
+                constants.OVN_LB_LR_REF_EXT_ID_KEY].replace('neutron-', "", 1)
+        except (AttributeError, KeyError):
+            return
+
+    def _get_vip_fip(self, row):
+        try:
+            return row.external_ids[constants.OVN_LB_VIP_FIP_EXT_ID_KEY]
+        except (AttributeError, KeyError):
+            return
 
 
 class LSPChassisEvent(Event):
@@ -74,10 +87,10 @@ class LSPChassisEvent(Event):
         return None, None
 
     def _get_network(self, row):
-        if (hasattr(row, 'external_ids') and
-                row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)):
+        try:
             return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
-        return None
+        except (AttributeError, KeyError):
+            return
 
 
 class LRPChassisEvent(Event):
@@ -89,7 +102,7 @@ class LRPChassisEvent(Event):
         self.event_name = self.__class__.__name__
 
     def _get_network(self, row):
-        if (hasattr(row, 'external_ids') and
-                row.external_ids.get(constants.OVN_LS_NAME_EXT_ID_KEY)):
+        try:
             return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
-        return None
+        except (AttributeError, KeyError):
+            return
