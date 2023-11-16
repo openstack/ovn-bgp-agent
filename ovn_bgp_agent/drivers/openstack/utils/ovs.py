@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from oslo_config import cfg
 from oslo_log import log as logging
 from ovs.db import idl
 from ovsdbapp.backend.ovs_idl import connection
@@ -24,6 +25,7 @@ from ovn_bgp_agent import exceptions as agent_exc
 import ovn_bgp_agent.privileged.ovs_vsctl
 from ovn_bgp_agent.utils import linux_net
 
+CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
@@ -52,12 +54,17 @@ def get_device_port_at_ovs(device):
         'ovs-vsctl', ['get', 'Interface', device, 'ofport'])[0].rstrip()
 
 
-def get_ovs_patch_ports_info(bridge):
-    in_ports = []
+def get_ovs_ports_info(bridge):
     ovs_ports = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
         'ovs-vsctl', ['list-ports', bridge])[0].rstrip()
-    for ovs_port in ovs_ports.split("\n"):
-        if ovs_port.startswith('patch-provnet-'):
+    return ovs_ports.split("\n")
+
+
+def get_ovs_patch_ports_info(bridge, prefix='patch-provnet-'):
+    in_ports = []
+    ovs_ports = get_ovs_ports_info(bridge)
+    for ovs_port in ovs_ports:
+        if ovs_port.startswith(prefix):
             ovs_ofport = get_device_port_at_ovs(ovs_port)
             in_ports.append(ovs_ofport)
     return in_ports
@@ -131,6 +138,11 @@ def remove_extra_ovs_flows(ovs_flows, bridge, cookie):
                 cookie_id, flow.split("priority=900,")[1].split(" actions")[0])
             ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
                 'ovs-ofctl', ['del-flows', bridge, del_flow])
+
+
+def ensure_flow(bridge, flow):
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+        'ovs-ofctl', ['add-flow', bridge, flow])
 
 
 def ensure_evpn_ovs_flow(bridge, cookie, mac, output_port, port_dst, net,
@@ -282,20 +294,27 @@ class OvsIdl(object):
         """
         return self._get_from_ext_ids('hostname')
 
-    def get_ovn_remote(self):
+    def get_ovn_remote(self, nb=False):
         """Return the external_ids:ovn-remote value of the Open_vSwitch table.
 
         """
-        return self._get_from_ext_ids('ovn-remote')
+        if nb:
+            return (CONF.ovn_nb_connection if CONF.ovn_nb_connection
+                    else self._get_from_ext_ids('ovn-nb-remote'))
+        return (CONF.ovn_sb_connection if CONF.ovn_sb_connection
+                else self._get_from_ext_ids('ovn-remote'))
 
-    def get_ovn_bridge_mappings(self):
+    def get_ovn_bridge_mappings(self, bridge=None):
         """Return a list of bridge mappings
 
         Return a list of bridge mappings based on the
         external_ids:ovn-bridge-mappings value of the Open_vSwitch table.
         """
+        key = 'ovn-bridge-mappings'
+        if bridge:
+            key = key + '-' + str(bridge)
         try:
             return [i.strip() for i in
-                    self._get_from_ext_ids('ovn-bridge-mappings').split(',')]
+                    self._get_from_ext_ids(key).split(',')]
         except KeyError:
             return []

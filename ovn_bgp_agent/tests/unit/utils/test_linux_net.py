@@ -98,6 +98,24 @@ class TestLinuxNet(test_base.TestCase):
         self.assertRaises(agent_exc.NetworkInterfaceNotFound,
                           linux_net.get_interface_address, 'fake-nic')
 
+    def test_get_nic_info(self):
+        device_idx = 7
+        nic_addr = IPRouteDict({'prefixlen': 32,
+                                'attrs': [('IFA_ADDRESS', self.ip)]})
+        self.fake_ipr.link_lookup.return_value = [device_idx]
+        self.fake_ipr.get_addr.return_value = [nic_addr]
+        fake_link = mock.MagicMock()
+        fake_link.get_attr.return_value = self.mac
+        self.fake_ipr.get_links.return_value = [fake_link]
+
+        ret = linux_net.get_nic_info('fake-nic')
+        self.assertEqual(('{}/32'.format(self.ip), self.mac), ret)
+
+    def test_get_nic_info_index_error(self):
+        self.fake_ipr.link_lookup.return_value = ''
+        self.assertRaises(agent_exc.NetworkInterfaceNotFound,
+                          linux_net.get_nic_info, 'fake-nic')
+
     @mock.patch('ovn_bgp_agent.privileged.linux_net.ensure_vrf')
     def test_ensure_vrf(self, mock_ensure_vrf):
         linux_net.ensure_vrf('fake-vrf', 10)
