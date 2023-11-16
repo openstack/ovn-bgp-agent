@@ -440,14 +440,31 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
 
     def get_active_local_lrps(self, local_gateway_ports):
         ports = []
-        cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True),
-                                ('type', '=', constants.OVN_ROUTER_PORT_TYPE))
+        cmd = self.db_find_rows(
+            'Logical_Switch_Port', ('up', '=', True),
+            ('type', '=', constants.OVN_ROUTER_PORT_TYPE),
+            ('external_ids', '=', {constants.OVN_DEVICE_OWNER_EXT_ID_KEY:
+                                   constants.OVN_ROUTER_INTERFACE}))
         for row in cmd.execute(check_error=True):
-            if ((row.external_ids.get(constants.OVN_DEVICE_OWNER_EXT_ID_KEY) ==
-                    constants.OVN_ROUTER_INTERFACE) and
-                    (row.external_ids.get(constants.OVN_DEVICE_ID_EXT_ID_KEY)
-                     in local_gateway_ports)):
+            if (row.external_ids.get(constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                    in local_gateway_ports):
                 ports.append(row)
+        return ports
+
+    def get_active_lsp(self, network):
+        ports = []
+        # port type ""
+        cmd = self.db_find_rows(
+            'Logical_Switch_Port', ('up', '=', True),
+            ('type', '=', constants.OVN_VM_VIF_PORT_TYPE),
+            ('external_ids', '=', {constants.OVN_LS_NAME_EXT_ID_KEY: network}))
+        ports.extend(cmd.execute(check_error=True))
+        # port type "virtual"
+        cmd = self.db_find_rows(
+            'Logical_Switch_Port', ('up', '=', True),
+            ('type', '=', constants.OVN_VIRTUAL_VIF_PORT_TYPE),
+            ('external_ids', '=', {constants.OVN_LS_NAME_EXT_ID_KEY: network}))
+        ports.extend(cmd.execute(check_error=True))
         return ports
 
     # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0

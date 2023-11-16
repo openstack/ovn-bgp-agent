@@ -151,7 +151,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             events.update(["ChassisRedirectCreateEvent",
                            "ChassisRedirectDeleteEvent",
                            "LogicalSwitchPortSubnetAttachEvent",
-                           "LogicalSwitchPortSubnetDetachEvent"])
+                           "LogicalSwitchPortSubnetDetachEvent",
+                           "LogicalSwitchPortTenantCreateEvent",
+                           "LogicalSwitchPortTenantDeleteEvent"])
         return events
 
     @lockutils.synchronized('nbbgp')
@@ -187,6 +189,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             subnet_info = {
                 'associated_router': port.external_ids.get(
                     constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                'network': port.external_ids.get(
+                    constants.OVN_LS_NAME_EXT_ID_KEY),
                 'address_scopes': driver_utils.get_addr_scopes(port)}
             self._expose_subnet(ips, subnet_info)
 
@@ -385,6 +389,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     subnet_info = {
                         'associated_router': port.external_ids.get(
                             constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                        'network': port.external_ids.get(
+                            constants.OVN_LS_NAME_EXT_ID_KEY),
                         'address_scopes': driver_utils.get_addr_scopes(port)}
                     self._expose_subnet(ips, subnet_info)
         else:
@@ -442,6 +448,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 subnet_info = {
                     'associated_router': port.external_ids.get(
                         constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                    'network': port.external_ids.get(
+                        constants.OVN_LS_NAME_EXT_ID_KEY),
                     'address_scopes': driver_utils.get_addr_scopes(port)}
                 self._withdraw_subnet(ips, subnet_info)
             try:
@@ -545,12 +553,50 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         LOG.debug("Deleted BGP route for FIP with ip %s", ip)
 
     @lockutils.synchronized('nbbgp')
-    def expose_remote_ip(self, ips, row):
-        pass
+    def expose_remote_ip(self, ips, ips_info):
+        self._expose_remote_ip(ips, ips_info)
+
+    def _expose_remote_ip(self, ips, ips_info):
+        ips_to_expose = ips
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            gua_ips = [ip for ip in ips if driver_utils.is_ipv6_gua(ip)]
+            if not gua_ips:
+                return
+            ips_to_expose = gua_ips
+
+        LOG.debug("Adding BGP route for tenant IP(s) %s on chassis %s",
+                  ips_to_expose, self.chassis)
+        bgp_utils.announce_ips(ips_to_expose)
+        for ip in ips_to_expose:
+            self._exposed_ips.setdefault(
+                ips_info['logical_switch'], {}).update({ip: {}})
+        LOG.debug("Added BGP route for tenant IP(s) %s on chassis %s",
+                  ips_to_expose, self.chassis)
 
     @lockutils.synchronized('nbbgp')
-    def withdraw_remote_ip(self, ips, row, chassis=None):
-        pass
+    def withdraw_remote_ip(self, ips, ips_info):
+        self._withdraw_remote_ip(ips, ips_info)
+
+    def _withdraw_remote_ip(self, ips, ips_info):
+        ips_to_withdraw = ips
+        if not CONF.expose_tenant_networks:
+            # This means CONF.expose_ipv6_gua_tenant_networks is enabled
+            gua_ips = [ip for ip in ips if driver_utils.is_ipv6_gua(ip)]
+            if not gua_ips:
+                return
+            ips_to_withdraw = gua_ips
+
+        LOG.debug("Deleting BGP route for tenant IP(s) %s on chassis %s",
+                  ips_to_withdraw, self.chassis)
+        bgp_utils.withdraw_ips(ips_to_withdraw)
+        for ip in ips_to_withdraw:
+            if self._exposed_ips.get(
+                    ips_info['logical_switch'], {}).get(ip):
+                self._exposed_ips[
+                    ips_info['logical_switch']].pop(ip)
+        LOG.debug("Deleted BGP route for tenant IP(s) %s on chassis %s",
+                  ips_to_withdraw, self.chassis)
 
     @lockutils.synchronized('nbbgp')
     def expose_subnet(self, ips, subnet_info):
@@ -577,6 +623,20 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "and they have not been properly exposed", ips)
             return
 
+        ports = self.nb_idl.get_active_lsp(subnet_info['network'])
+        for port in ports:
+            ips = port.addresses[0].split(' ')[1:]
+            mac = port.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "").split(),
+                'type': port.type,
+                'logical_switch': port.external_ids.get(
+                    constants.OVN_LS_NAME_EXT_ID_KEY)
+            }
+            self._expose_remote_ip(ips, ips_info)
+
     def _withdraw_subnet(self, ips, subnet_info):
         gateway_router = subnet_info['associated_router']
         if not gateway_router:
@@ -593,6 +653,19 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return
 
         self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
+        ports = self.nb_idl.get_active_lsp(subnet_info['network'])
+        for port in ports:
+            ips = port.addresses[0].split(' ')[1:]
+            mac = port.addresses[0].strip().split(' ')[0]
+            ips_info = {
+                'mac': mac,
+                'cidrs': port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                               "").split(),
+                'type': port.type,
+                'logical_switch': port.external_ids.get(
+                    constants.OVN_LS_NAME_EXT_ID_KEY)
+            }
+            self._withdraw_remote_ip(ips, ips_info)
 
     def _expose_router_lsp(self, ips, subnet_info, cr_lrp_info):
         if not self._expose_tenant_networks:
@@ -617,6 +690,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                         {ip: {
                             'bridge_device': cr_lrp_info.get('bridge_device'),
                             'bridge_vlan': cr_lrp_info.get('bridge_vlan')}})
+                    if self.ovn_local_lrps.get(subnet_info['network']):
+                        self.ovn_local_lrps[subnet_info['network']].append(ip)
+                    else:
+                        self.ovn_local_lrps[subnet_info['network']] = [ip]
                 else:
                     success = False
 
@@ -653,6 +730,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 LOG.exception("Unexpected exception while unwiring subnet "
                               "CIDRs %s: %s", ip, e)
                 return False
+        try:
+            del self.ovn_local_lrps[subnet_info['network']]
+        except KeyError:
+            # Router port for subnet already cleanup
+            pass
         return True
 
     def _address_scope_allowed(self, ip, address_scopes):
