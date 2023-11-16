@@ -369,7 +369,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         # specific case for ovn-lb vips on tenant networks
         if not port.mac and not port.chassis and not port.up[0]:
             ext_n_cidr = port.external_ids.get(
-                constants.OVN_CIDRS_EXT_ID_KEY)
+                constants.OVN_CIDRS_EXT_ID_KEY, "")
             if ext_n_cidr:
                 ovn_lb_ip = ext_n_cidr.split(" ")[0].split("/")[0]
                 bgp_utils.announce_ips([ovn_lb_ip])
@@ -390,7 +390,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if port.mac == ['unknown']:
                 # Handling the case for unknown MACs when configdrive is used
                 # instead of dhcp
-                n_cidrs = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)
+                n_cidrs = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                                "")
                 port_ips = [ip.split("/")[0] for ip in n_cidrs.split(" ")]
             else:
                 port_ips = port.mac[0].strip().split(' ')[1:]
@@ -581,10 +582,10 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                     # NOTE: This is neutron specific as we need the provider
                     # prefix to add the ndp proxy
                     n_cidr = row.external_ids.get(
-                        constants.OVN_CIDRS_EXT_ID_KEY)
+                        constants.OVN_CIDRS_EXT_ID_KEY, "").split()
                     exposed_port = self._expose_provider_port(
                         ips, row.datapath, bridge_device, bridge_vlan, None,
-                        [n_cidr])
+                        n_cidr)
                 else:
                     exposed_port = self._expose_provider_port(ips,
                                                               row.datapath)
@@ -721,11 +722,11 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                             # NOTE: This is neutron specific as we need the
                             # provider prefix to add the ndp proxy
                             n_cidr = row.external_ids.get(
-                                constants.OVN_CIDRS_EXT_ID_KEY)
+                                constants.OVN_CIDRS_EXT_ID_KEY, "").split()
                 if n_cidr:
                     withdrawn_port = self._withdraw_provider_port(
                         ips, row.datapath, bridge_device, bridge_vlan, None,
-                        [n_cidr])
+                        n_cidr)
                 else:
                     withdrawn_port = self._withdraw_provider_port(ips,
                                                                   row.datapath)

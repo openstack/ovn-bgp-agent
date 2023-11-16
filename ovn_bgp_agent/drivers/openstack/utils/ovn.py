@@ -438,6 +438,18 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
                 ports.append(row)
         return ports
 
+    def get_active_local_lrps(self, local_gateway_ports):
+        ports = []
+        cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True),
+                                ('type', '=', constants.OVN_ROUTER_PORT_TYPE))
+        for row in cmd.execute(check_error=True):
+            if ((row.external_ids.get(constants.OVN_DEVICE_OWNER_EXT_ID_KEY) ==
+                    constants.OVN_ROUTER_INTERFACE) and
+                    (row.external_ids.get(constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                     in local_gateway_ports)):
+                ports.append(row)
+        return ports
+
     # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0
     def ls_get_localnet_ports(self, logical_switch, if_exists=True):
         return LSGetLocalnetPortsCommand(self, logical_switch,
@@ -714,7 +726,7 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             # This is depending on the external-id information added by
             # neutron, regarding the neutron:cidrs
             ip_info = row.external_ids.get(
-                constants.OVN_CIDRS_EXT_ID_KEY)
+                constants.OVN_CIDRS_EXT_ID_KEY, "")
             if not ip_info:
                 continue
             port_name = row.external_ids.get(

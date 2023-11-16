@@ -21,6 +21,7 @@ from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import ovn as ovn_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovs as ovs_utils
 from ovn_bgp_agent.drivers.openstack.utils import wire
+from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
 
@@ -453,3 +454,146 @@ class TestWire(test_base.TestCase):
         port_ips = []
         wire._unwire_provider_port_ovn(self.nb_idl, port_ips)
         m_cmds.assert_not_called()
+
+    @mock.patch.object(wire, '_wire_lrp_port_underlay')
+    def test_wire_lrp_port_underlay(self, mock_underlay):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        wire.wire_lrp_port(routing_tables_routes, ip, bridge_device,
+                           bridge_vlan, routing_tables, cr_lrp_ips)
+        mock_underlay.assert_called_once_with(
+            routing_tables_routes, ip, bridge_device, bridge_vlan,
+            routing_tables, cr_lrp_ips)
+
+    @mock.patch.object(wire, '_unwire_lrp_port_underlay')
+    def test_unwire_lrp_port_underlay(self, mock_underlay):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        wire.unwire_lrp_port(routing_tables_routes, ip, bridge_device,
+                             bridge_vlan, routing_tables, cr_lrp_ips)
+        mock_underlay.assert_called_once_with(
+            routing_tables_routes, ip, bridge_device, bridge_vlan,
+            routing_tables, cr_lrp_ips)
+
+    @mock.patch.object(linux_net, 'add_ip_route')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    def test__wire_lrp_port_underlay(self, m_ip_rule, m_ip_version,
+                                     m_ip_route):
+        routing_tables_routes = {}
+        ip = '10.0.0.1/24'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        ret = wire._wire_lrp_port_underlay(routing_tables_routes, ip,
+                                           bridge_device, bridge_vlan,
+                                           routing_tables, cr_lrp_ips)
+        self.assertTrue(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        m_ip_route.assert_called_once_with(
+            routing_tables_routes, '10.0.0.1', 5, 'fake-bridge',
+            vlan='101', mask='24', via='fake-crlrp-ip')
+
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    def test__wire_lrp_port_underlay_no_bridge(self, m_ip_rule):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = None
+        bridge_vlan = None
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        ret = wire._wire_lrp_port_underlay(routing_tables_routes, ip,
+                                           bridge_device, bridge_vlan,
+                                           routing_tables, cr_lrp_ips)
+
+        self.assertFalse(ret)
+        m_ip_rule.assert_not_called()
+
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    def test__wire_lrp_port_underlay_invalid_ip(self, m_ip_rule, m_ip_version):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+        m_ip_rule.side_effect = agent_exc.InvalidPortIP(ip=ip)
+
+        ret = wire._wire_lrp_port_underlay(routing_tables_routes, ip,
+                                           bridge_device, bridge_vlan,
+                                           routing_tables, cr_lrp_ips)
+
+        self.assertFalse(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        m_ip_version.assert_not_called()
+
+    @mock.patch.object(linux_net, 'del_ip_route')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'del_ip_rule')
+    def test__unwire_lrp_port_underlay(self, m_ip_rule, m_ip_version,
+                                       m_ip_route):
+        routing_tables_routes = {}
+        ip = '10.0.0.1/24'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        ret = wire._unwire_lrp_port_underlay(routing_tables_routes, ip,
+                                             bridge_device, bridge_vlan,
+                                             routing_tables, cr_lrp_ips)
+        self.assertTrue(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        m_ip_route.assert_called_once_with(
+            routing_tables_routes, '10.0.0.1', 5, 'fake-bridge',
+            vlan='101', mask='24', via='fake-crlrp-ip')
+
+    @mock.patch.object(linux_net, 'del_ip_rule')
+    def test__unwire_lrp_port_underlay_no_bridge(self, m_ip_rule):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = None
+        bridge_vlan = None
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+
+        ret = wire._unwire_lrp_port_underlay(routing_tables_routes, ip,
+                                             bridge_device, bridge_vlan,
+                                             routing_tables, cr_lrp_ips)
+
+        self.assertFalse(ret)
+        m_ip_rule.assert_not_called()
+
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'del_ip_rule')
+    def test__unwire_lrp_port_underlay_invalid_ip(self, m_ip_rule,
+                                                  m_ip_version):
+        routing_tables_routes = {}
+        ip = 'fake-ip'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+        m_ip_rule.side_effect = agent_exc.InvalidPortIP(ip=ip)
+
+        ret = wire._unwire_lrp_port_underlay(routing_tables_routes, ip,
+                                             bridge_device, bridge_vlan,
+                                             routing_tables, cr_lrp_ips)
+
+        self.assertFalse(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        m_ip_version.assert_not_called()

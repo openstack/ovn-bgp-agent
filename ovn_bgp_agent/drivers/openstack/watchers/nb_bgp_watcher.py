@@ -16,6 +16,7 @@ from oslo_concurrency import lockutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
@@ -69,8 +70,8 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             mac = row.addresses[0].strip().split(' ')[0]
             ips_info = {
                 'mac': mac,
-                'cidrs': [
-                    row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)],
+                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                              "").split(),
                 'type': row.type,
                 'logical_switch': row.external_ids.get(
                     constants.OVN_LS_NAME_EXT_ID_KEY)
@@ -136,8 +137,8 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             mac = row.addresses[0].strip().split(' ')[0]
             ips_info = {
                 'mac': mac,
-                'cidrs': [
-                    row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY)],
+                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                              "").split(),
                 'type': row.type,
                 'logical_switch': row.external_ids.get(
                     constants.OVN_LS_NAME_EXT_ID_KEY)
@@ -327,9 +328,9 @@ class ChassisRedirectCreateEvent(base_watcher.LRPChassisEvent):
                     constants.OVN_STATUS_CHASSIS)
                 if old_hosting_chassis != hosting_chassis:
                     return True
-            return False
         except (IndexError, AttributeError):
             return False
+        return False
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
@@ -339,7 +340,9 @@ class ChassisRedirectCreateEvent(base_watcher.LRPChassisEvent):
                     'cidrs': row.networks,
                     'type': constants.OVN_CR_LRP_PORT_TYPE,
                     'logical_switch': row.external_ids.get(
-                        constants.OVN_LS_NAME_EXT_ID_KEY)
+                        constants.OVN_LS_NAME_EXT_ID_KEY),
+                    'router': row.external_ids.get(
+                        constants.OVN_LR_NAME_EXT_ID_KEY)
                 }
                 ips = [net.split("/")[0] for net in row.networks]
                 self.agent.expose_ip(ips, ips_info)
@@ -365,9 +368,9 @@ class ChassisRedirectDeleteEvent(base_watcher.LRPChassisEvent):
                 if (hosting_chassis != old_hosting_chassis and
                         old_hosting_chassis == self.agent.chassis_id):
                     return True
-            return False
         except (IndexError, AttributeError):
             return False
+        return False
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
@@ -377,7 +380,145 @@ class ChassisRedirectDeleteEvent(base_watcher.LRPChassisEvent):
                     'cidrs': row.networks,
                     'type': constants.OVN_CR_LRP_PORT_TYPE,
                     'logical_switch': row.external_ids.get(
-                        constants.OVN_LS_NAME_EXT_ID_KEY)
+                        constants.OVN_LS_NAME_EXT_ID_KEY),
+                    'router': row.external_ids.get(
+                        constants.OVN_LR_NAME_EXT_ID_KEY)
                 }
                 ips = [net.split("/")[0] for net in row.networks]
                 self.agent.withdraw_ip(ips, ips_info)
+
+
+class LogicalSwitchPortSubnetAttachEvent(base_watcher.LSPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE,)
+        super(LogicalSwitchPortSubnetAttachEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            if row.type != constants.OVN_ROUTER_PORT_TYPE:
+                return False
+            # skip route_gateway port events
+            row_device_owner = row.external_ids.get(
+                constants.OVN_DEVICE_OWNER_EXT_ID_KEY)
+            if row_device_owner != constants.OVN_ROUTER_INTERFACE:
+                return False
+
+            if not bool(row.up[0]):
+                return False
+
+            associated_router = row.external_ids.get(
+                constants.OVN_DEVICE_ID_EXT_ID_KEY)
+
+            if associated_router not in self.agent.ovn_local_cr_lrps:
+                return False
+
+            if hasattr(old, 'up') and not bool(old.up[0]):
+                return True
+
+            if hasattr(old, 'external_ids'):
+                previous_associated_router = old.external_ids.get(
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                if (associated_router != previous_associated_router and
+                        previous_associated_router not in
+                        self.agent.ovn_local_cr_lrps):
+                    return True
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            ips = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                       "").split()
+            subnet_info = {
+                'associated_router': row.external_ids.get(
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                'address_scopes': driver_utils.get_addr_scopes(row)}
+            self.agent.expose_subnet(ips, subnet_info)
+
+
+class LogicalSwitchPortSubnetDetachEvent(base_watcher.LSPChassisEvent):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE, self.ROW_DELETE,)
+        super(LogicalSwitchPortSubnetDetachEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        try:
+            if row.type != constants.OVN_ROUTER_PORT_TYPE:
+                return False
+            # skip route_gateway port events
+            row_device_owner = row.external_ids.get(
+                constants.OVN_DEVICE_OWNER_EXT_ID_KEY)
+            if row_device_owner != constants.OVN_ROUTER_INTERFACE:
+                return False
+
+            associated_router = row.external_ids.get(
+                constants.OVN_DEVICE_ID_EXT_ID_KEY)
+
+            if event == self.ROW_DELETE:
+                if not bool(row.up[0]):
+                    return False
+                if associated_router in self.agent.ovn_local_cr_lrps:
+                    return True
+                return False
+
+            # ROW UPDATE
+            # We need to withdraw the subnet in the next cases:
+            # 1. same/local associated router and status moves from up to down
+            # 2. status changes to down and also associated router changes to a
+            #    non local one
+            # 3. status is up (same) but associated router changes to a non
+            #    local one
+            if hasattr(old, 'up'):
+                if not bool(old.up[0]):
+                    return False
+                if hasattr(old, 'external_ids'):
+                    previous_associated_router = old.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                    if previous_associated_router in (
+                            self.agent.ovn_local_cr_lrps):
+                        return True
+                else:
+                    if associated_router in self.agent.ovn_local_cr_lrps:
+                        return True
+            else:
+                # no change in status
+                if not bool(row.up[0]):
+                    # it was not exposed
+                    return False
+                if hasattr(old, 'external_ids'):
+                    previous_associated_router = old.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                    if (previous_associated_router and
+                            associated_router != previous_associated_router and
+                            previous_associated_router in
+                            self.agent.ovn_local_cr_lrps):
+                        return True
+        except (IndexError, AttributeError):
+            return False
+        return False
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            ips = row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                       "").split()
+            if event == self.ROW_DELETE:
+                subnet_info = {
+                    'associated_router': row.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                    'address_scopes': driver_utils.get_addr_scopes(row)}
+            else:
+                associated_router = row.external_ids.get(
+                    constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                if hasattr(old, 'external_ids'):
+                    previous_associated_router = old.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY)
+                    if previous_associated_router != associated_router:
+                        associated_router = previous_associated_router
+                subnet_info = {
+                    'associated_router': associated_router,
+                    'address_scopes': driver_utils.get_addr_scopes(row)}
+
+            self.agent.withdraw_subnet(ips, subnet_info)

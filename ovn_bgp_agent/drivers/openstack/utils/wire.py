@@ -403,11 +403,14 @@ def _cleanup_wiring_underlay(idl, bridge_mappings, ovs_flows, exposed_ips,
     ovn_ip_rules = linux_net.get_ovn_ip_rules(routing_tables.values())
     if ovn_ip_rules:
         for ip in expected_ips:
-            ip_version = linux_net.get_ip_version(ip)
-            if ip_version == constants.IP_VERSION_6:
-                ip_dst = "{}/128".format(ip)
+            if len(ip.split("/")) == 1:
+                ip_version = linux_net.get_ip_version(ip)
+                if ip_version == constants.IP_VERSION_6:
+                    ip_dst = "{}/128".format(ip)
+                else:
+                    ip_dst = "{}/32".format(ip)
             else:
-                ip_dst = "{}/32".format(ip)
+                ip_dst = ip
             ovn_ip_rules.pop(ip_dst, None)
     linux_net.delete_ip_rules(ovn_ip_rules)
 
@@ -573,12 +576,29 @@ def _unwire_provider_port_ovn(ovn_idl, port_ips):
 
 
 def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
-                  routing_table, cr_lrp_ips):
+                  routing_tables, cr_lrp_ips):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _wire_lrp_port_underlay(routing_tables_routes, ip,
+                                       bridge_device, bridge_vlan,
+                                       routing_tables, cr_lrp_ips)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        # TODO(ltomasbo): Add flow on br-ex(-X)
+        # ovs-ofctl add-flow br-ex
+        # "cookie=0xbadcaf2,ip,nw_dst=20.0.0.0/24,in_port=enp2s0,priority=100,
+        # actions=mod_dl_dst:$ENP2S0_MAC,output=$patch"
+        # Add router route to go through cr-lrp ip:
+        # ovn-nbctl lr-route-add bgp-router 20.0.0.0/24 172.16.100.143
+        #     bgp-router-public
+        return
+
+
+def _wire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
+                            bridge_vlan, routing_tables, cr_lrp_ips):
     if not bridge_device:
         return False
     LOG.debug("Adding IP Rules for network %s", ip)
     try:
-        linux_net.add_ip_rule(ip, routing_table[bridge_device])
+        linux_net.add_ip_rule(ip, routing_tables[bridge_device])
     except agent_exc.InvalidPortIP:
         LOG.exception("Invalid IP to create a rule for the lrp (network "
                       "router interface) port: %s", ip)
@@ -594,7 +614,7 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
             linux_net.add_ip_route(
                 routing_tables_routes,
                 ip.split("/")[0],
-                routing_table[bridge_device],
+                routing_tables[bridge_device],
                 bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],
@@ -605,12 +625,23 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
 
 
 def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
-                    routing_table, cr_lrp_ips):
+                    routing_tables, cr_lrp_ips):
+    if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
+        return _unwire_lrp_port_underlay(routing_tables_routes, ip,
+                                         bridge_device, bridge_vlan,
+                                         routing_tables, cr_lrp_ips)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
+        # TODO(ltomasbo): Remove flow(s) and router route
+        return
+
+
+def _unwire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
+                              bridge_vlan, routing_tables, cr_lrp_ips):
     if not bridge_device:
         return False
     LOG.debug("Deleting IP Rules for network %s", ip)
     try:
-        linux_net.del_ip_rule(ip, routing_table[bridge_device])
+        linux_net.del_ip_rule(ip, routing_tables[bridge_device])
     except agent_exc.InvalidPortIP:
         LOG.exception("Invalid IP to delete a rule for the "
                       "lrp (network router interface) port: %s", ip)
@@ -624,7 +655,7 @@ def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
             linux_net.del_ip_route(
                 routing_tables_routes,
                 ip.split("/")[0],
-                routing_table[bridge_device],
+                routing_tables[bridge_device],
                 bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],
