@@ -299,9 +299,9 @@ class OvsIdl(object):
 
         """
         if nb:
-            return (CONF.ovn_nb_connection if CONF.ovn_nb_connection
+            return (CONF.ovn.ovn_nb_connection if CONF.ovn.ovn_nb_connection
                     else self._get_from_ext_ids('ovn-nb-remote'))
-        return (CONF.ovn_sb_connection if CONF.ovn_sb_connection
+        return (CONF.ovn.ovn_sb_connection if CONF.ovn.ovn_sb_connection
                 else self._get_from_ext_ids('ovn-remote'))
 
     def get_ovn_bridge_mappings(self, bridge=None):

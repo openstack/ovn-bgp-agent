@@ -54,40 +54,6 @@ agent_opts = [
     cfg.IntOpt('ovsdb_connection_timeout',
                default=180,
                help='Timeout in seconds for the OVSDB connection transaction'),
-    cfg.StrOpt('ovn_sb_private_key',
-               default='/etc/pki/tls/private/ovn_bgp_agent.key',
-               help='The PEM file with private key for SSL connection to '
-                    'OVN-SB-DB'),
-    cfg.StrOpt('ovn_sb_certificate',
-               default='/etc/pki/tls/certs/ovn_bgp_agent.crt',
-               help='The PEM file with certificate that certifies the '
-                    'private key specified in ovn_sb_private_key'),
-    cfg.StrOpt('ovn_sb_ca_cert',
-               default='/etc/ipa/ca.crt',
-               help='The PEM file with CA certificate that OVN should use to'
-                    ' verify certificates presented to it by SSL peers'),
-    cfg.StrOpt('ovn_sb_connection',
-               default='',
-               help='The connection string for the OVN_Southbound OVSDB.\n'
-                    'Use tcp:IP:PORT for TCP connection.\n'
-                    'Use unix:FILE for unix domain socket connection.'),
-    cfg.StrOpt('ovn_nb_private_key',
-               default='/etc/pki/tls/private/ovn_bgp_agent.key',
-               help='The PEM file with private key for SSL connection to '
-                    'OVN-NB-DB'),
-    cfg.StrOpt('ovn_nb_certificate',
-               default='/etc/pki/tls/certs/ovn_bgp_agent.crt',
-               help='The PEM file with certificate that certifies the '
-                    'private key specified in ovn_nb_private_key'),
-    cfg.StrOpt('ovn_nb_ca_cert',
-               default='/etc/ipa/ca.crt',
-               help='The PEM file with CA certificate that OVN should use to'
-                    ' verify certificates presented to it by SSL peers'),
-    cfg.StrOpt('ovn_nb_connection',
-               default='',
-               help='The connection string for the OVN_Northbound OVSDB.\n'
-                    'Use tcp:IP:PORT for TCP connection.\n'
-                    'Use unix:FILE for unix domain socket connection.'),
     cfg.StrOpt('bgp_AS',
                default='64999',
                help='AS number to be used by the Agent when running in BGP '
@@ -183,6 +149,51 @@ https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
 """)),
 ]
 
+ovn_opts = [
+    cfg.StrOpt('ovn_sb_private_key',
+               default='/etc/pki/tls/private/ovn_bgp_agent.key',
+               deprecated_group='DEFAULT',
+               help='The PEM file with private key for SSL connection to '
+                    'OVN-SB-DB'),
+    cfg.StrOpt('ovn_sb_certificate',
+               default='/etc/pki/tls/certs/ovn_bgp_agent.crt',
+               deprecated_group='DEFAULT',
+               help='The PEM file with certificate that certifies the '
+                    'private key specified in ovn_sb_private_key'),
+    cfg.StrOpt('ovn_sb_ca_cert',
+               default='/etc/ipa/ca.crt',
+               deprecated_group='DEFAULT',
+               help='The PEM file with CA certificate that OVN should use to'
+                    ' verify certificates presented to it by SSL peers'),
+    cfg.StrOpt('ovn_sb_connection',
+               default='',
+               deprecated_group='DEFAULT',
+               help='The connection string for the OVN_Southbound OVSDB.\n'
+                    'Use tcp:IP:PORT for TCP connection.\n'
+                    'Use unix:FILE for unix domain socket connection.'),
+    cfg.StrOpt('ovn_nb_private_key',
+               default='/etc/pki/tls/private/ovn_bgp_agent.key',
+               deprecated_group='DEFAULT',
+               help='The PEM file with private key for SSL connection to '
+                    'OVN-NB-DB'),
+    cfg.StrOpt('ovn_nb_certificate',
+               default='/etc/pki/tls/certs/ovn_bgp_agent.crt',
+               deprecated_group='DEFAULT',
+               help='The PEM file with certificate that certifies the '
+                    'private key specified in ovn_nb_private_key'),
+    cfg.StrOpt('ovn_nb_ca_cert',
+               default='/etc/ipa/ca.crt',
+               deprecated_group='DEFAULT',
+               help='The PEM file with CA certificate that OVN should use to'
+                    ' verify certificates presented to it by SSL peers'),
+    cfg.StrOpt('ovn_nb_connection',
+               default='',
+               deprecated_group='DEFAULT',
+               help='The connection string for the OVN_Northbound OVSDB.\n'
+                    'Use tcp:IP:PORT for TCP connection.\n'
+                    'Use unix:FILE for unix domain socket connection.'),
+]
+
 local_ovn_cluster_opts = [
     cfg.StrOpt('ovn_nb_connection',
                default='unix:/var/run/ovn/ovnnb_db.sock',
@@ -213,6 +224,7 @@ logging.register_options(CONF)
 def register_opts():
     CONF.register_opts(agent_opts)
     CONF.register_opts(root_helper_opts, "agent")
+    CONF.register_opts(ovn_opts, "ovn")
     CONF.register_opts(local_ovn_cluster_opts, "local_ovn_cluster")
 
 
@@ -239,5 +251,6 @@ def list_opts():
     return [
         ("DEFAULT", agent_opts),
         ("agent", root_helper_opts),
+        ("ovn", ovn_opts),
         ("local_ovn_cluster", local_ovn_cluster_opts),
     ]

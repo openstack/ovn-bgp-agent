@@ -776,9 +776,9 @@ class TestOvnNbIdl(test_base.TestCase):
     @mock.patch.object(Stream, 'ssl_set_private_key_file')
     def test__check_and_set_ssl_files(
             self, mock_ssl_priv_key, mock_ssl_cert, mock_ssl_ca_cert):
-        CONF.set_override('ovn_nb_private_key', 'fake-priv-key')
-        CONF.set_override('ovn_nb_certificate', 'fake-cert')
-        CONF.set_override('ovn_nb_ca_cert', 'fake-ca-cert')
+        CONF.set_override('ovn_nb_private_key', 'fake-priv-key', group='ovn')
+        CONF.set_override('ovn_nb_certificate', 'fake-cert', group='ovn')
+        CONF.set_override('ovn_nb_ca_cert', 'fake-ca-cert', group='ovn')
 
         self.nb_idl._check_and_set_ssl_files('fake-schema')
 
@@ -812,9 +812,9 @@ class TestOvnSbIdl(test_base.TestCase):
     @mock.patch.object(Stream, 'ssl_set_private_key_file')
     def test__check_and_set_ssl_files(
             self, mock_ssl_priv_key, mock_ssl_cert, mock_ssl_ca_cert):
-        CONF.set_override('ovn_sb_private_key', 'fake-priv-key')
-        CONF.set_override('ovn_sb_certificate', 'fake-cert')
-        CONF.set_override('ovn_sb_ca_cert', 'fake-ca-cert')
+        CONF.set_override('ovn_sb_private_key', 'fake-priv-key', group='ovn')
+        CONF.set_override('ovn_sb_certificate', 'fake-cert', group='ovn')
+        CONF.set_override('ovn_sb_ca_cert', 'fake-ca-cert', group='ovn')
 
         self.sb_idl._check_and_set_ssl_files('fake-schema')
 

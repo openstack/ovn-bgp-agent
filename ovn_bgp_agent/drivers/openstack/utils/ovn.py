@@ -70,9 +70,9 @@ class OvnNbIdl(OvnIdl):
         return idlutils.get_schema_helper(connection_string, self.SCHEMA)
 
     def _check_and_set_ssl_files(self, schema_name):
-        priv_key_file = CONF.ovn_nb_private_key
-        cert_file = CONF.ovn_nb_certificate
-        ca_cert_file = CONF.ovn_nb_ca_cert
+        priv_key_file = CONF.ovn.ovn_nb_private_key
+        cert_file = CONF.ovn.ovn_nb_certificate
+        ca_cert_file = CONF.ovn.ovn_nb_ca_cert
 
         if priv_key_file:
             Stream.ssl_set_private_key_file(priv_key_file)
@@ -117,9 +117,9 @@ class OvnSbIdl(OvnIdl):
         return idlutils.get_schema_helper(connection_string, self.SCHEMA)
 
     def _check_and_set_ssl_files(self, schema_name):
-        priv_key_file = CONF.ovn_sb_private_key
-        cert_file = CONF.ovn_sb_certificate
-        ca_cert_file = CONF.ovn_sb_ca_cert
+        priv_key_file = CONF.ovn.ovn_sb_private_key
+        cert_file = CONF.ovn.ovn_sb_certificate
+        ca_cert_file = CONF.ovn.ovn_sb_ca_cert
 
         if priv_key_file:
             Stream.ssl_set_private_key_file(priv_key_file)
