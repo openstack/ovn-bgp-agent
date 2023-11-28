@@ -100,7 +100,9 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             if hasattr(old, 'up'):
                 if not bool(old.up[0]):
                     return False
-                if not bool(row.up[0]):
+                # Assumes chassis and status are not changed at the same time
+                if (not bool(row.up[0]) and
+                        current_chassis == self.agent.chassis):
                     return True
             else:
                 # If there is no change on the status, and it was already down
@@ -237,7 +239,9 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                 # check port status change
                 if not bool(old.up[0]):
                     return False
-                if not bool(row.up[0]) and current_port_fip:
+                # Assumes chassis and status are not changed at the same time
+                if (not bool(row.up[0]) and current_port_fip and
+                        current_chassis == self.agent.chassis):
                     return True
 
             # NOTE(ltomasbo): This can be updated/removed once neutron has

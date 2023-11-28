@@ -76,10 +76,15 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
                         (not row.chassis or row.chassis != old.chassis)):
                     return True
             if hasattr(old, 'up'):
-                if bool(old.up[0]) and not bool(row.up[0]):
+                # this requires to have unchanged chassis and being the local
+                # one. If there was a chassis change, then it was already
+                # processed before
+                if (row.chassis[0].name == self.agent.chassis and
+                        bool(old.up[0]) and not bool(row.up[0])):
                     return True
         except (IndexError, AttributeError):
             return False
+        return False
 
     def _run(self, event, row, old):
         if row.type not in constants.OVN_VIF_PORT_TYPES:
