@@ -573,6 +573,10 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             pass
         return False
 
+    def is_port_without_chassis(self, port_name):
+        port_info = self.get_port_by_name(port_name)
+        return (port_info and not port_info.chassis)
+
     def is_port_deleted(self, port_name):
         return False if self.get_port_by_name(port_name) else True
 
