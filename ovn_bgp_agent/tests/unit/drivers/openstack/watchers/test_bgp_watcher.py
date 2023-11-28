@@ -167,6 +167,15 @@ class TestPortBindingChassisDeletedEvent(test_base.TestCase):
                                up=[True])
         self.assertTrue(self.event.match_fn(event, row, old))
 
+    def test_match_fn_update_different_chassis_set_up_false(self):
+        event = self.event.ROW_UPDATE
+        ch = utils.create_row(name='other-chassis')
+        row = utils.create_row(chassis=[ch],
+                               mac=['aa:bb:cc:dd:ee:ff 10.10.1.16'],
+                               up=[False])
+        old = utils.create_row(up=[True])
+        self.assertFalse(self.event.match_fn(event, row, old))
+
     def test_match_fn_update_no_chassis(self):
         event = self.event.ROW_UPDATE
         ch = utils.create_row(name=self.chassis)
