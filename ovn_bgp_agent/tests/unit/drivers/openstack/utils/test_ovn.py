@@ -351,6 +351,22 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
             self.assertFalse(self.sb_idl.is_port_on_chassis(
                 'fake-port', 'fake-chassis'))
 
+    def test_is_port_without_chassis(self):
+        chassis_name = 'fake-chassis'
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
+            ch = fakes.create_object({'name': chassis_name})
+            mock_p.return_value = fakes.create_object(
+                {'type': constants.OVN_VM_VIF_PORT_TYPE,
+                 'chassis': [ch]})
+            self.assertFalse(self.sb_idl.is_port_without_chassis('fake-port'))
+
+    def test_is_port_without_chassis_no_chassis(self):
+        with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:
+            mock_p.return_value = fakes.create_object(
+                {'type': constants.OVN_VM_VIF_PORT_TYPE,
+                 'chassis': []})
+            self.assertTrue(self.sb_idl.is_port_without_chassis('fake-port'))
+
     def _test_is_port_deleted(self, port_exist=True):
         ret_value = mock.Mock() if port_exist else []
         with mock.patch.object(self.sb_idl, 'get_port_by_name') as mock_p:

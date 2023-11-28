@@ -761,6 +761,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             if (associated_port and (
                     self.sb_idl.is_port_on_chassis(
                         associated_port, self.chassis) or
+                    self.sb_idl.is_port_without_chassis(associated_port) or
                     self.sb_idl.is_port_deleted(associated_port))):
                 if not self.sb_idl.is_provider_network(row.datapath):
                     # Only exposing IPs if the associated network is a
