@@ -182,8 +182,8 @@ class TestLinuxNet(test_base.TestCase):
         calls = [mock.call(ipv4, 'fake-bridge'),
                  mock.call(ipv6, 'fake-bridge')]
         mock_add_ip_to_dev.assert_has_calls(calls)
-        mock_ndp.assert_not_called()
-        mock_arp.assert_not_called()
+        mock_ndp.assert_called_once_with('fake-bridge')
+        mock_arp.assert_called_once_with('fake-bridge')
 
     def test_ensure_routing_table_for_bridge(self):
         # TODO(lucasagomes): This method is massive and complex, perhaps
