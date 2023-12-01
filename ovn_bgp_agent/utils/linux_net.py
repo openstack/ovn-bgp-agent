@@ -154,9 +154,9 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
                       "Exception: %s", bridge, e)
             raise
 
-    if not vlan_tag:
-        enable_proxy_arp(bridge)
-        enable_proxy_ndp(bridge)
+    # also enable the arp/ndp on the bridge in case there are flat networks
+    enable_proxy_arp(bridge)
+    enable_proxy_ndp(bridge)
 
 
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
