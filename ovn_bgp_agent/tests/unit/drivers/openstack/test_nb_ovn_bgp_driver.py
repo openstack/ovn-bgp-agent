@@ -495,7 +495,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                 ips_info['cidrs'])
         else:
             mock_expose_provider_port.assert_called_once_with(
-                ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet')
+                ips, 'fake-mac', 'test-ls', 'br-ex', 10, 'fake-localnet', [])
 
         if (ips_info.get('router') and
                 ips_info['type'] == constants.OVN_CR_LRP_PORT_TYPE):
@@ -559,6 +559,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver, '_get_ls_localnet_info').start()
         mock_ip_version.return_value = constants.IP_VERSION_6
         self.nb_idl.ls_has_virtual_ports.return_value = False
+        self.nb_idl.get_active_lsp_on_chassis.return_value = False
         if provider:
             mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex',
                                                       10)
@@ -606,7 +607,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                 ips, 'test-ls', 'br-ex', 10, ips_info['cidrs'])
         else:
             mock_withdraw_provider_port.assert_called_once_with(
-                ips, 'test-ls', 'br-ex', 10)
+                ips, 'test-ls', 'br-ex', 10, [])
 
         if ips_info.get('router'):
             mock_withdraw_subnet.assert_called_once_with(
