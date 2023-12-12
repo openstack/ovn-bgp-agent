@@ -13,7 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import imp
+import importlib
 from unittest import mock
 
 from oslo_concurrency import processutils
@@ -24,7 +24,7 @@ from ovn_bgp_agent.tests import base as test_base
 # Mock the privsep decorator and reload the module
 mock.patch('ovn_bgp_agent.privileged.ovs_vsctl_cmd.entrypoint',
            lambda x: x).start()
-imp.reload(ovs_vsctl)
+importlib.reload(ovs_vsctl)
 
 
 class FakeException(Exception):
