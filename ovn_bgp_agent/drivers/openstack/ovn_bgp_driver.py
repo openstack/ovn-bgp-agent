@@ -325,6 +325,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_provider_port(self, port_ips, provider_datapath,
                               bridge_device=None, bridge_vlan=None,
                               lladdr=None, proxy_cidrs=None):
+        if proxy_cidrs is None:
+            proxy_cidrs = []
         if not bridge_device and not bridge_vlan:
             bridge_device, bridge_vlan = self._get_bridge_for_datapath(
                 provider_datapath)
@@ -416,6 +418,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
     def _withdraw_provider_port(self, port_ips, provider_datapath,
                                 bridge_device=None, bridge_vlan=None,
                                 lladdr=None, proxy_cidrs=None):
+        if proxy_cidrs is None:
+            proxy_cidrs = []
         # Withdraw IP before disconnecting it
         bgp_utils.withdraw_ips(port_ips)
 

@@ -281,6 +281,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_provider_port(self, port_ips, mac, logical_switch,
                               bridge_device, bridge_vlan, localnet,
                               proxy_cidrs=None):
+        if proxy_cidrs is None:
+            proxy_cidrs = []
         # Connect to OVN
         try:
             if wire_utils.wire_provider_port(
@@ -302,6 +304,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
     def _withdraw_provider_port(self, port_ips, logical_switch, bridge_device,
                                 bridge_vlan, proxy_cidrs=None):
+        if proxy_cidrs is None:
+            proxy_cidrs = []
         # Withdraw IP before disconnecting it
         bgp_utils.withdraw_ips(port_ips)
 
@@ -393,44 +397,36 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         LOG.debug("Adding BGP route for logical port with ip %s", ips)
         localnet = self.ovn_provider_ls[logical_switch]['localnet']
 
-        if cidrs and port_type in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
-                                   constants.OVN_CR_LRP_PORT_TYPE]:
-            # NOTE: For Amphora Load Balancer with IPv6 VIP on the provider
-            # network, we need a NDP Proxy so that the traffic from the
-            # amphora can properly be redirected back
-            if not self._expose_provider_port(ips, mac, logical_switch,
-                                              bridge_device, bridge_vlan,
-                                              localnet, cidrs):
-                return []
-            if router and port_type == constants.OVN_CR_LRP_PORT_TYPE:
-                # Store information about local CR-LRPs that will later be used
-                # to expose networks
-                self.ovn_local_cr_lrps[router] = {
-                    'bridge_device': bridge_device,
-                    'bridge_vlan': bridge_vlan,
-                    'provider_switch': logical_switch,
-                    'ips': ips,
-                }
-                # Expose associated subnets
-                ports = self.nb_idl.get_active_local_lrps([router])
-                for port in ports:
-                    ips = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
-                                                "").split()
-                    subnet_info = {
-                        'associated_router': port.external_ids.get(
-                            constants.OVN_DEVICE_ID_EXT_ID_KEY),
-                        'network': port.external_ids.get(
-                            constants.OVN_LS_NAME_EXT_ID_KEY),
-                        'address_scopes': driver_utils.get_addr_scopes(port)}
-                    self._expose_subnet(ips, subnet_info)
+        if not self._expose_provider_port(ips, mac, logical_switch,
+                                          bridge_device, bridge_vlan,
+                                          localnet, cidrs):
+            return []
 
-                # add missing routes/ips for OVN loadbalancers
-                self._expose_lbs([router])
-        else:
-            if not self._expose_provider_port(ips, mac, logical_switch,
-                                              bridge_device, bridge_vlan,
-                                              localnet):
-                return []
+        if router and port_type == constants.OVN_CR_LRP_PORT_TYPE:
+            # Store information about local CR-LRPs that will later be used
+            # to expose networks
+            self.ovn_local_cr_lrps[router] = {
+                'bridge_device': bridge_device,
+                'bridge_vlan': bridge_vlan,
+                'provider_switch': logical_switch,
+                'ips': ips,
+            }
+            # Expose associated subnets
+            ports = self.nb_idl.get_active_local_lrps([router])
+            for port in ports:
+                ips = port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                            "").split()
+                subnet_info = {
+                    'associated_router': port.external_ids.get(
+                        constants.OVN_DEVICE_ID_EXT_ID_KEY),
+                    'network': port.external_ids.get(
+                        constants.OVN_LS_NAME_EXT_ID_KEY),
+                    'address_scopes': driver_utils.get_addr_scopes(port)}
+                self._expose_subnet(ips, subnet_info)
+
+            # add missing routes/ips for OVN loadbalancers
+            self._expose_lbs([router])
+
         LOG.debug("Added BGP route for logical port with ip %s", ips)
         return ips
 
@@ -456,21 +452,18 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # This means it is not a provider network
             return
 
-        proxy_cidr = None
-
-        if ips_info['type'] in [constants.OVN_VIRTUAL_VIF_PORT_TYPE,
-                                constants.OVN_CR_LRP_PORT_TYPE]:
-            for n_cidr in ips_info['cidrs']:
-                if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
-                    if not self.nb_idl.ls_has_virtual_ports(logical_switch):
-                        proxy_cidr = n_cidr
+        proxy_cidr = []
+        if ips_info['cidrs']:
+            if not (self.nb_idl.ls_has_virtual_ports(logical_switch) or
+                    self.nb_idl.get_active_lsp_on_chassis(self.chassis)):
+                for n_cidr in ips_info['cidrs']:
+                    if (linux_net.get_ip_version(n_cidr) ==
+                            constants.IP_VERSION_6):
+                        proxy_cidr.append(n_cidr)
         LOG.debug("Deleting BGP route for logical port with ip %s", ips)
-        if proxy_cidr:
-            self._withdraw_provider_port(ips, logical_switch, bridge_device,
-                                         bridge_vlan, [proxy_cidr])
-        else:
-            self._withdraw_provider_port(ips, logical_switch, bridge_device,
-                                         bridge_vlan)
+        self._withdraw_provider_port(ips, logical_switch, bridge_device,
+                                     bridge_vlan, proxy_cidr)
+
         if ips_info.get('router'):
             # It is a Logical Router Port (CR-LRP)
             # Withdraw associated subnets
