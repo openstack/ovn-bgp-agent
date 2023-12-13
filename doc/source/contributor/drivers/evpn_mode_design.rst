@@ -12,9 +12,9 @@
       '''''''  Heading 4
       (Avoid deeper levels because they do not render well.)
 
-========================================
-Design of OVN BGP Agent with EVPN Driver
-========================================
+=========================================================
+Design of OVN BGP Agent with EVPN Driver (kernel routing)
+=========================================================
 
 Purpose
 -------
@@ -96,7 +96,7 @@ watcher detects it).
 The overall arquitecture and integration between the ``networking-bgpvpn``
 and the ``networking-bgp-ovn`` agent are shown in the next figure:
 
-.. image:: ../../images/networking-bgpvpn_integration.png
+.. image:: ../../../images/networking-bgpvpn_integration.png
    :alt: integration components
    :align: center
    :width: 100%
@@ -409,7 +409,7 @@ The next figure shows the N/S traffic flow through the VRF to the VM,
 including information regarding the OVS flows on the provider bridge (br-ex),
 and the routes on the VRF routing table.
 
-.. image:: ../../images/evpn_traffic_flow.png
+.. image:: ../../../images/evpn_traffic_flow.png
    :alt: integration components
    :align: center
    :width: 100%

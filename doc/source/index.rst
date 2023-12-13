@@ -10,10 +10,11 @@ Welcome to the documentation of OVN BGP Agent
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
 
    readme
    contributor/index
+   bgp_supportability_matrix
 
 Indices and tables
 ==================
