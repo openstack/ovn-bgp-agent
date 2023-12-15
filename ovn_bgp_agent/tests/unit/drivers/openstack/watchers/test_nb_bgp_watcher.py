@@ -1198,7 +1198,7 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
         self.agent.expose_ovn_lb_fip.assert_not_called()
 
-    def test_run_vip_added_extra_ext_id_info(self):
+    def test_run_vip_added_router(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
@@ -1208,13 +1208,12 @@ class TestOVNLBCreateEvent(test_base.TestCase):
             vips={'vip': 'member', 'fip': 'member'})
         old = utils.create_row(
             external_ids={
-                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
                 constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})
 
         self.event.run(None, row, old)
 
-        self.agent.expose_ovn_lb_vip.assert_not_called()
+        self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
         self.agent.expose_ovn_lb_fip.assert_not_called()
 
     def test_run_fip(self):

@@ -665,9 +665,8 @@ class OVNLBCreateEvent(base_watcher.OVNLBEvent):
         vip_fip = self._get_vip_fip(row)
         old_vip_fip = self._get_vip_fip(old)
         with _SYNC_STATE_LOCK.read_lock():
-            if hasattr(old, 'external_ids'):
-                if vip_fip and vip_fip != old_vip_fip:
-                    self.agent.expose_ovn_lb_fip(row)
+            if hasattr(old, 'external_ids') and vip_fip != old_vip_fip:
+                self.agent.expose_ovn_lb_fip(row)
             else:
                 self.agent.expose_ovn_lb_vip(row)
 
