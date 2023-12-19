@@ -495,11 +495,10 @@ def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
         linux_net.add_ip_route(routing_tables_routes, ip,
                                routing_table[bridge_device], bridge_device,
                                vlan=bridge_vlan)
-    if proxy_cidrs:
-        # add proxy ndp config for ipv6
-        for n_cidr in proxy_cidrs:
-            if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
-                linux_net.add_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
+    # add proxy ndp config for ipv6
+    for n_cidr in proxy_cidrs:
+        if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
+            linux_net.add_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
     # NOTE(ltomasbo): This is needed as the patch ports are not created
     # until the first VM/FIP in that provider network is created in a node
     try:
@@ -556,10 +555,9 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
         linux_net.del_ip_route(routing_tables_routes, ip,
                                routing_table[bridge_device], bridge_device,
                                vlan=bridge_vlan)
-    if proxy_cidrs:
-        for n_cidr in proxy_cidrs:
-            if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
-                linux_net.del_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
+    for n_cidr in proxy_cidrs:
+        if linux_net.get_ip_version(n_cidr) == constants.IP_VERSION_6:
+            linux_net.del_ndp_proxy(n_cidr, bridge_device, bridge_vlan)
     return True
 
 
