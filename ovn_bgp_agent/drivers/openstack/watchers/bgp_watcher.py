@@ -18,6 +18,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
+from ovn_bgp_agent.utils import helpers
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -399,12 +400,8 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
             row_dp = row.datapaths
         except AttributeError:
             row_dp = []
-        if hasattr(row, 'datapath_group'):
-            if row.datapath_group:
-                dp_datapaths = row.datapath_group[0].datapaths
-                if dp_datapaths:
-                    row_dp = dp_datapaths
 
+        row_dp, router_dps = helpers.get_lb_datapath_groups(row)
         if not row_dp:
             # No need to continue. There is no need to expose it as there is
             # no datapaths (aka members).
@@ -418,9 +415,8 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
         vip_ip = vip_ip.strip().split(" ")[0].split("/")[0]
         associated_cr_lrp_port = None
 
-        router_dps = []
-        if not (CONF.expose_tenant_networks or
-                CONF.expose_ipv6_gua_tenant_networks):
+        if not router_dps and not (CONF.expose_tenant_networks or
+                                   CONF.expose_ipv6_gua_tenant_networks):
             # assume all the members are connected through the same router
             # so only one member needs to be checked
             member_dp = row_dp[0]

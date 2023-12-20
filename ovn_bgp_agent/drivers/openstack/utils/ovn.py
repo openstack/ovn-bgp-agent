@@ -29,6 +29,7 @@ from ovsdbapp.schema.ovn_southbound import impl_idl as sb_impl_idl
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions
+from ovn_bgp_agent.utils import helpers
 
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
@@ -769,20 +770,24 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             lb = self.get_ovn_lb(lb_name)
             if not lb:
                 continue
-            if hasattr(lb, 'datapath_group'):
-                lb_dp = lb.datapath_group[0].datapaths
-            else:
+            lb_dp, lr_dp = helpers.get_lb_datapath_groups(lb)
+            if not lb_dp:
                 lb_dp = lb.datapaths
 
-            # assume all the members are connected through the same router
-            # so only one datapath needs to be checked
-            router_lrps = self.get_lrps_for_datapath(lb_dp[0])
-            for lrp in router_lrps:
-                router_lrp_dp = self.get_port_datapath(lrp)
-                if router_lrp_dp == router_dp:
-                    lb_ip = ip_info.split(" ")[0].split("/")[0]
-                    lbs[lb.name] = lb_ip
-                    break
+            if not lr_dp:
+                # assume all the members are connected through the same router
+                # so only one datapath needs to be checked
+                router_lrps = self.get_lrps_for_datapath(lb_dp[0])
+                for lrp in router_lrps:
+                    router_lrp_dp = self.get_port_datapath(lrp)
+                    if router_lrp_dp == router_dp:
+                        lb_ip = ip_info.split(" ")[0].split("/")[0]
+                        lbs[lb.name] = lb_ip
+                        break
+            elif lr_dp == router_dp:
+                lb_ip = ip_info.split(" ")[0].split("/")[0]
+                lbs[lb.name] = lb_ip
+
         return lbs
 
     def get_ovn_vip_port(self, name):
