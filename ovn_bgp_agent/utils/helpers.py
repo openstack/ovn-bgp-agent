@@ -25,3 +25,23 @@ def parse_bridge_mapping(bridge_mapping):
                     bridge_mapping)
         return None, None
     return network, bridge
+
+
+def _get_lb_datapath_group(lb, attr):
+    try:
+        dp = getattr(lb, attr)[0].datapaths
+        if dp:
+            return dp
+    except (AttributeError, IndexError):
+        pass
+    return []
+
+
+def get_lb_datapath_groups(lb):
+    for attr in ('ls_datapath_group', 'datapath_group'):
+        ls_dp = _get_lb_datapath_group(lb, attr)
+        if ls_dp:
+            break
+
+    lr_dp = _get_lb_datapath_group(lb, 'lr_datapath_group')
+    return (ls_dp, lr_dp)
