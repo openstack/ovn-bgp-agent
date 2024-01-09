@@ -83,6 +83,21 @@ function cleanup_frr {
     sudo rm -rf $FRR_CONF_DIR
 }
 
+function install_vrf_kernel_module_if_needed {
+    # If the kernel vrf was compiled separately as a module
+    if [ "$(grep CONFIG_NET_VRF /boot/config-$(uname -r) | cut -d = -f 2)" == "m" ]; then
+        if is_ubuntu; then
+            apt_get install linux-modules-extra-$(uname -r)
+        fi
+
+        if is_fedora; then
+            sudo dnf install -y kernel-modules-core-$(uname -r)
+        fi
+
+        sudo modprobe vrf
+    fi
+}
+
 function install_ovn_bgp_agent {
     echo_summary "Installing OVN BGP Agent"
 
@@ -95,6 +110,8 @@ function install_ovn_bgp_agent {
     write_user_unit_file $OVN_BGP_AGENT_SYSTEMD_SERVICE "$cmd" "" "root"
     $SYSTEMCTL daemon-reload
     enable_service $OVN_BGP_AGENT_SYSTEMD_SERVICE
+
+    install_vrf_kernel_module_if_needed
 }
 
 function configure_ovn_bgp_agent {
