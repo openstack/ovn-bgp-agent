@@ -29,13 +29,7 @@ function install_frr {
 
     setup_develop $OVN_BGP_AGENT_DIR
 
-    if is_ubuntu; then
-        apt_get install frr
-    fi
-
-    if is_fedora; then
-        sudo dnf install frr -y
-    fi
+    install_package frr
 }
 
 function configure_frr {
@@ -71,13 +65,7 @@ function cleanup_frr {
 
     # Remove FRR
     disable_service $$FRR_SYSTEMD_SERVICE
-    if is_ubuntu; then
-        apt_get remove frr
-    fi
-
-    if is_fedora; then
-        sudo dnf remove frr -y
-    fi
+    uninstall_package frr
 
     # Clean the FRRt configuration dir
     sudo rm -rf $FRR_CONF_DIR
@@ -87,11 +75,11 @@ function install_vrf_kernel_module_if_needed {
     # If the kernel vrf was compiled separately as a module
     if [ "$(grep CONFIG_NET_VRF /boot/config-$(uname -r) | cut -d = -f 2)" == "m" ]; then
         if is_ubuntu; then
-            apt_get install linux-modules-extra-$(uname -r)
+            install_package linux-modules-extra-$(uname -r)
         fi
 
         if is_fedora; then
-            sudo dnf install -y kernel-modules-core-$(uname -r)
+            install_package kernel-modules-core-$(uname -r)
         fi
 
         sudo modprobe vrf
