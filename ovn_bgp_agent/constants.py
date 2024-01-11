@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import socket
+
+
 OVN_VIF_PORT_TYPES = ("", "chassisredirect", "virtual")
 
 OVN_VIRTUAL_VIF_PORT_TYPE = "virtual"
@@ -100,3 +103,7 @@ POLICY_ACTION_TYPES = (POLICY_ACTION_REROUTE)
 LR_POLICY_PRIORITY_MAX = 32767
 
 ROUTE_DISCARD = 'discard'
+
+# Family constants
+AF_INET = socket.AF_INET
+AF_INET6 = socket.AF_INET6

@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import socket
-
 import netaddr
 from neutron_lib.utils import net as net_utils
 from oslo_utils import uuidutils
@@ -23,10 +21,8 @@ from ovn_bgp_agent.privileged import linux_net as priv_linux_net
 from ovn_bgp_agent.tests.functional import base as base_functional
 from ovn_bgp_agent.tests.functional.privileged import test_linux_net as \
     test_priv_linux_net
+from ovn_bgp_agent.utils import common as common_utils
 from ovn_bgp_agent.utils import linux_net
-
-
-_IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 
 
 class GetInterfaceTestCase(base_functional.BaseFunctionalTestCase):
@@ -139,12 +135,12 @@ class GetRulesTestCase(base_functional.BaseFunctionalTestCase):
             rule = {'dst': str(_ip.ip),
                     'dst_len': _ip.netmask.netmask_bits(),
                     'table': table,
-                    'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+                    'family': common_utils.IP_VERSION_FAMILY_MAP[ip_version]}
             dst = "{}/{}".format(str(_ip.ip), _ip.netmask.netmask_bits())
             rules_added.append(rule)
             expected_rules[dst] = {
                 'table': table,
-                'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+                'family': common_utils.IP_VERSION_FAMILY_MAP[ip_version]}
         self.addCleanup(self._delete_rules, rules_added)
         for rule in rules_added:
             priv_linux_net.rule_create(rule)
