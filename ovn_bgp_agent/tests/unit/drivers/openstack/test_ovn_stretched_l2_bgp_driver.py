@@ -610,7 +610,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         }
         self.bgp_driver.ovn_local_cr_lrps = {
             self.cr_lrp0.logical_port: {
-                "lrp_ports": set([row.logical_port, "another_lrp_port"])
+                "lrp_ports": {row.logical_port, "another_lrp_port"}
             }
         }
 
@@ -629,7 +629,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
             self.bgp_driver.ovn_local_cr_lrps,
             {
                 self.cr_lrp0.logical_port: {
-                    "lrp_ports": set(["another_lrp_port"])
+                    "lrp_ports": {"another_lrp_port"}
                 }
             }
         )
@@ -879,7 +879,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
             for ip in ["10.0.0.10/26", "fd51:f4b3:872:eda::10/64"]
         ]
         gateway["address_scopes"] = self.addr_scope
-        gateway["lrp_ports"] = set([""])
+        gateway["lrp_ports"] = {""}
         self.bgp_driver.ovn_local_cr_lrps = {"gateway_port": gateway}
         port_info = {
             "cr_lrp": self.cr_lrp0.logical_port,
@@ -1020,23 +1020,23 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         self.bgp_driver.ovn_local_cr_lrps = {
             self.cr_lrp0.logical_port: gateway
         }
-        gateway["lrp_ports"] = set([
+        gateway["lrp_ports"] = {
             "lrp-lrp_port0",
             "lrp-lrp_port1",
             "lrp-lrp_port2",
-        ])
+        }
 
         lrp_port0 = {
             "cr_lrp": self.cr_lrp0.logical_port,
-            "subnets": set([
+            "subnets": {
                 "fdcc:8cf2:d40c:1::/64",
-                "192.168.0.0/24"])
+                "192.168.0.0/24"}
         }
         lrp_port1 = {
             "cr_lrp": self.cr_lrp0.logical_port,
-            "subnets": set([
+            "subnets": {
                 "fdcc:8cf2:d40c:2::/64",
-                "192.168.1.0/24"])
+                "192.168.1.0/24"}
         }
 
         self.bgp_driver.propagated_lrp_ports = {
@@ -1075,11 +1075,11 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
                 constants.IP_VERSION_6: '',
             }
         }
-        gateway["lrp_ports"] = set([
+        gateway["lrp_ports"] = {
             "lrp-lrp_port0",
             "lrp-lrp_port1",
             "lrp-lrp_port2",
-        ])
+        }
         self.bgp_driver.propagated_lrp_ports = {
             "lrp-lrp_port0": {},
             "lrp-lrp_port1": {},
