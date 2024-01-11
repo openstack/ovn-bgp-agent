@@ -182,9 +182,8 @@ def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
         # pick a number between 1 and 252
         try:
             table_number = random.choice(list(
-                set([x for x in range(1, 253)
-                    if x != int(vrf_table)]).difference(
-                        set(existing_routes))))
+                {x for x in range(1, 253) if x != int(vrf_table)}.difference(
+                    set(existing_routes))))
         except IndexError:
             LOG.error("No more routing tables available for bridge %s "
                       "at /etc/iproute2/rt_tables", bridge)
@@ -211,12 +210,10 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
     bridge_idx = get_interface_index(bridge)
 
     with pyroute2.IPRoute() as ip:
-        table_route_dsts = set(
-            [
-                (r.get_attr('RTA_DST'), r['dst_len'])
-                for r in ip.get_routes(table=ovn_routing_tables[bridge])
-            ]
-        )
+        table_route_dsts = {
+            (r.get_attr('RTA_DST'), r['dst_len'])
+            for r in ip.get_routes(table=ovn_routing_tables[bridge])
+        }
 
         if not table_route_dsts:
             r1 = {'dst': 'default', 'oif': bridge_idx,
@@ -296,12 +293,10 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
     extra_routes = []
     bridge_idx = get_interface_index(bridge)
     with pyroute2.IPRoute() as ip:
-        table_route_dsts = set(
-            [
-                (r.get_attr('RTA_DST'), r['dst_len'])
-                for r in ip.get_routes(table=ovn_routing_tables[bridge])
-            ]
-        )
+        table_route_dsts = {
+            (r.get_attr('RTA_DST'), r['dst_len'])
+            for r in ip.get_routes(table=ovn_routing_tables[bridge])
+        }
 
         if not table_route_dsts:
             return extra_routes

@@ -59,7 +59,7 @@ def _ensure_base_wiring_config_underlay(idl, ovs_idl, routing_tables):
                                                     vlan_tags)
         if not flows_info.get(bridge):
             mac = linux_net.get_interface_address(bridge)
-            flows_info[bridge] = {'mac': mac, 'in_port': set([])}
+            flows_info[bridge] = {'mac': mac, 'in_port': set()}
             flows_info[bridge]['in_port'] = ovs.get_ovs_patch_ports_info(
                 bridge)
             ovs.ensure_mac_tweak_flows(bridge, mac,
@@ -107,7 +107,7 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
 
         if not flows_info.get(bridge):
             mac = linux_net.get_interface_address(bridge)
-            flows_info[bridge] = {'mac': mac, 'in_port': set([])}
+            flows_info[bridge] = {'mac': mac, 'in_port': set()}
             flows_info[bridge]['in_port'] = ovs.get_ovs_patch_ports_info(
                 bridge)
         _ensure_egress_flows(bridge, flows_info[bridge]['in_port'])
