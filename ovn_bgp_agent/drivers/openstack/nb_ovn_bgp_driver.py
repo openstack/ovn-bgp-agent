@@ -119,10 +119,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             LOG.info("Configured allowed address scopes: %s",
                      ", ".join(self.allowed_address_scopes))
 
-        events = ()
-        for event in self._get_events():
-            event_class = getattr(watcher, event)
-            events += (event_class(self),)
+        events = self._get_events()
 
         self._post_start_event.clear()
         self.nb_idl = ovn.OvnNbIdl(
@@ -142,20 +139,20 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._post_start_event.set()
 
     def _get_events(self):
-        events = {"LogicalSwitchPortProviderCreateEvent",
-                  "LogicalSwitchPortProviderDeleteEvent",
-                  "LogicalSwitchPortFIPCreateEvent",
-                  "LogicalSwitchPortFIPDeleteEvent",
-                  "LocalnetCreateDeleteEvent",
-                  "OVNLBCreateEvent",
-                  "OVNLBDeleteEvent"}
+        events = {watcher.LogicalSwitchPortProviderCreateEvent(self),
+                  watcher.LogicalSwitchPortProviderDeleteEvent(self),
+                  watcher.LogicalSwitchPortFIPCreateEvent(self),
+                  watcher.LogicalSwitchPortFIPDeleteEvent(self),
+                  watcher.LocalnetCreateDeleteEvent(self),
+                  watcher.OVNLBCreateEvent(self),
+                  watcher.OVNLBDeleteEvent(self)}
         if self._expose_tenant_networks:
-            events.update({"ChassisRedirectCreateEvent",
-                           "ChassisRedirectDeleteEvent",
-                           "LogicalSwitchPortSubnetAttachEvent",
-                           "LogicalSwitchPortSubnetDetachEvent",
-                           "LogicalSwitchPortTenantCreateEvent",
-                           "LogicalSwitchPortTenantDeleteEvent"})
+            events.update({watcher.ChassisRedirectCreateEvent(self),
+                           watcher.ChassisRedirectDeleteEvent(self),
+                           watcher.LogicalSwitchPortSubnetAttachEvent(self),
+                           watcher.LogicalSwitchPortSubnetDetachEvent(self),
+                           watcher.LogicalSwitchPortTenantCreateEvent(self),
+                           watcher.LogicalSwitchPortTenantDeleteEvent(self)})
         return events
 
     @lockutils.synchronized('nbbgp')
