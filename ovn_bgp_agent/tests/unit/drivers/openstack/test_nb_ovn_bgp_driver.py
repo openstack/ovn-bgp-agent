@@ -1286,6 +1286,55 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_withdraw_remote_ip.assert_not_called()
         mock_withdraw_provider_port.assert_not_called()
 
+    def test_expose_ovn_pf_lb_fip(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LR_NAME_EXT_ID_KEY: 'neutron-router1'},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_get_ls_localnet_info = mock.patch.object(
+            self.nb_bgp_driver, '_get_ls_localnet_info').start()
+        mock_get_ls_localnet_info.return_value = ('provider-ls', 'br-ex',
+                                                  100)
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+
+        self.nb_bgp_driver.expose_ovn_pf_lb_fip(lb)
+        kwargs = {
+            'port_ips': ['fip'],
+            'mac': None,
+            'logical_switch': 'provider-ls',
+            'bridge_device': 'br-ex',
+            'bridge_vlan': 100,
+            'localnet': 'provider-ls'}
+        mock_expose_provider_port.assert_called_once_with(**kwargs)
+
+    def test_expose_ovn_pf_lb_fip_no_router(self):
+        lb = utils.create_row(
+            external_ids={},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+
+        self.nb_bgp_driver.expose_ovn_pf_lb_fip(lb)
+        mock_expose_provider_port.assert_not_called()
+
+    def test_expose_ovn_pf_lb_fip_no_router_cr_lrp(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LR_NAME_EXT_ID_KEY: 'neutron-router2'},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_expose_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_expose_provider_port').start()
+
+        self.nb_bgp_driver.expose_ovn_pf_lb_fip(lb)
+        mock_expose_provider_port.assert_not_called()
+
     def test_expose_ovn_lb_fip(self):
         lb = utils.create_row(
             external_ids={
@@ -1390,4 +1439,51 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver, '_withdraw_provider_port').start()
 
         self.nb_bgp_driver.withdraw_ovn_lb_fip(lb)
+        mock_withdraw_provider_port.assert_not_called()
+
+    def test_withdraw_ovn_pf_lb_fip(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LR_NAME_EXT_ID_KEY: 'neutron-router1'},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_get_ls_localnet_info = mock.patch.object(
+            self.nb_bgp_driver, '_get_ls_localnet_info').start()
+        mock_get_ls_localnet_info.return_value = ('provider-ls', 'br-ex', 100)
+
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_pf_lb_fip(lb)
+        kwargs = {
+            'port_ips': ['fip'],
+            'logical_switch': 'provider-ls',
+            'bridge_device': 'br-ex',
+            'bridge_vlan': 100}
+        mock_withdraw_provider_port.assert_called_once_with(**kwargs)
+
+    def test_withdraw_ovn_pf_lb_fip_no_router(self):
+        lb = utils.create_row(
+            external_ids={},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_pf_lb_fip(lb)
+        mock_withdraw_provider_port.assert_not_called()
+
+    def test_withdraw_ovn_pf_lb_fip_no_cr_lrp(self):
+        lb = utils.create_row(
+            external_ids={
+                constants.OVN_LR_NAME_EXT_ID_KEY: 'neutron-router2'},
+            name='pf-floatingip-uuid-tcp',
+            vips={'fip:port': 'member:port'})
+
+        mock_withdraw_provider_port = mock.patch.object(
+            self.nb_bgp_driver, '_withdraw_provider_port').start()
+
+        self.nb_bgp_driver.withdraw_ovn_pf_lb_fip(lb)
         mock_withdraw_provider_port.assert_not_called()

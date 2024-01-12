@@ -36,10 +36,16 @@ OVN_DEVICE_OWNER_EXT_ID_KEY = 'neutron:device_owner'
 OVN_FIP_EXT_ID_KEY = 'neutron:port_fip'
 OVN_FIP_NET_EXT_ID_KEY = 'neutron:fip_network_id'
 LB_VIP_PORT_PREFIX = "ovn-lb-vip-"
+OVN_LB_PF_NAME_PREFIX = "pf-floatingip-"
 OVN_LB_VIP_IP_EXT_ID_KEY = 'neutron:vip'
 OVN_LB_VIP_FIP_EXT_ID_KEY = 'neutron:vip_fip'
 OVN_LB_VIP_PORT_EXT_ID_KEY = 'neutron:vip_port_id'
 OVN_LB_LR_REF_EXT_ID_KEY = 'lr_ref'
+
+OVN_LB_EXT_ID_ROUTER_KEY = [
+    OVN_LB_LR_REF_EXT_ID_KEY,
+    OVN_LR_NAME_EXT_ID_KEY
+]
 
 OVS_RULE_COOKIE = "999"
 OVS_VRF_RULE_COOKIE = "998"
