@@ -38,7 +38,8 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer"]
+OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Load_Balancer",
+              "Chassis_Private", "Logical_DP_Group"]
 
 
 class OVNBGPDriver(driver_api.AgentDriverBase):
@@ -98,30 +99,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             events += (event_class(self),)
 
         self._post_fork_event.clear()
-        # TODO(lucasagomes): The OVN package in the ubuntu LTS is old
-        # and does not support Chassis_Private. Once the package is updated
-        # we can remove this fallback mode.
-        try:
-            try:
-                self.sb_idl = ovn.OvnSbIdl(
-                    self.ovn_remote,
-                    chassis=self.chassis,
-                    tables=OVN_TABLES + ["Chassis_Private",
-                                         "Logical_DP_Group"],
-                    events=events).start()
-            except AssertionError:
-                self.sb_idl = ovn.OvnSbIdl(
-                    self.ovn_remote,
-                    chassis=self.chassis,
-                    tables=OVN_TABLES + ["Chassis_Private"],
-                    events=events).start()
-        except AssertionError:
-            events.remove("ChassisPrivateCreateEvent")
-            self.sb_idl = ovn.OvnSbIdl(
-                self.ovn_remote,
-                chassis=self.chassis,
-                tables=OVN_TABLES,
-                events=events).start()
+
+        self.sb_idl = ovn.OvnSbIdl(
+            self.ovn_remote,
+            chassis=self.chassis,
+            tables=OVN_TABLES,
+            events=events).start()
 
         # Now IDL connections can be safely used
         self._post_fork_event.set()
