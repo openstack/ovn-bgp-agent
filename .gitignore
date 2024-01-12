@@ -46,6 +46,8 @@ nosetests.xml
 # Translations
 *.mo
 
+etc/ovn-bgp-agent/*.sample
+
 # Complexity
 output/*.html
 output/*/index.html
