@@ -514,7 +514,8 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.add_ip_rule(
             self.ip, 7, dev=self.dev, lladdr=self.mac)
 
-        expected_args = {'dst': self.ip, 'table': 7, 'dst_len': 32}
+        expected_args = {'dst': self.ip, 'table': 7,
+                         'dst_len': 32, 'family': constants.AF_INET}
         mock_rule_create.assert_called_once_with(expected_args)
         mock_add_ip_nei.assert_called_once_with(self.ip, self.mac, self.dev)
 
@@ -545,7 +546,8 @@ class TestLinuxNet(test_base.TestCase):
     def test_del_ip_rule(self, mock_rule_delete, mock_del_ip_nei):
         linux_net.del_ip_rule(self.ip, 7, dev=self.dev, lladdr=self.mac)
 
-        expected_args = {'dst': self.ip, 'table': 7, 'dst_len': 32}
+        expected_args = {'dst': self.ip, 'table': 7,
+                         'dst_len': 32, 'family': constants.AF_INET}
         mock_rule_delete.assert_called_once_with(expected_args)
         mock_del_ip_nei.assert_called_once_with(self.ip, self.mac, self.dev)
 

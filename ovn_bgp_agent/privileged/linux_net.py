@@ -192,10 +192,7 @@ def rule_delete(rule):
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_ip_rules(ip_rules):
     for rule_ip, rule_info in ip_rules.items():
-        rule = {'dst': rule_ip.split("/")[0],
-                'dst_len': int(rule_ip.split("/")[1]),
-                'table': int(rule_info['table']),
-                'family': rule_info['family']}
+        rule = l_net.create_rule_from_ip(rule_ip, int(rule_info['table']))
         _run_iproute_rule('del', **rule)
 
 
@@ -260,11 +257,12 @@ def add_ip_nei(ip, lladdr, dev):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_nei(ip, lladdr, dev):
-    ip_version = l_net.get_ip_version(ip)
-    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
+    ip_network = netaddr.IPNetwork(ip)
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_network.version]
+
     _run_iproute_neigh('del',
                        dev,
-                       dst=ip.split("/")[0],
+                       dst=str(ip_network.ip),
                        lladdr=lladdr,
                        family=family,
                        state=ndmsg.states['permanent'])
