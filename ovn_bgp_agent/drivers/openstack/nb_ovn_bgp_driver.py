@@ -119,9 +119,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             LOG.info("Configured allowed address scopes: %s",
                      ", ".join(self.allowed_address_scopes))
 
-        events = self._get_events()
-
         self._post_start_event.clear()
+
+        events = self._get_events()
         self.nb_idl = ovn.OvnNbIdl(
             self.ovn_remote,
             tables=OVN_TABLES,

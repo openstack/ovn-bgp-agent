@@ -93,13 +93,9 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             LOG.info("Configured allowed address scopes: %s",
                      ", ".join(self.allowed_address_scopes))
 
-        events = ()
-        for event in self._get_events():
-            event_class = getattr(watcher, event)
-            events += (event_class(self),)
-
         self._post_fork_event.clear()
 
+        events = self._get_events()
         self.sb_idl = ovn.OvnSbIdl(
             self.ovn_remote,
             chassis=self.chassis,
@@ -110,21 +106,21 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
         self._post_fork_event.set()
 
     def _get_events(self):
-        events = set(["PortBindingChassisCreatedEvent",
-                      "PortBindingChassisDeletedEvent",
-                      "FIPSetEvent",
-                      "FIPUnsetEvent",
-                      "OVNLBMemberCreateEvent",
-                      "OVNLBMemberDeleteEvent",
-                      "ChassisCreateEvent",
-                      "ChassisPrivateCreateEvent",
-                      "LocalnetCreateDeleteEvent"])
+        events = {watcher.PortBindingChassisCreatedEvent(self),
+                  watcher.PortBindingChassisDeletedEvent(self),
+                  watcher.FIPSetEvent(self),
+                  watcher.FIPUnsetEvent(self),
+                  watcher.OVNLBMemberCreateEvent(self),
+                  watcher.OVNLBMemberDeleteEvent(self),
+                  watcher.ChassisCreateEvent(self),
+                  watcher.ChassisPrivateCreateEvent(self),
+                  watcher.LocalnetCreateDeleteEvent(self)}
         if self._expose_tenant_networks:
-            events.update(["SubnetRouterAttachedEvent",
-                           "SubnetRouterDetachedEvent",
-                           "TenantPortCreatedEvent",
-                           "TenantPortDeletedEvent",
-                           "OVNLBVIPPortEvent"])
+            events.update({watcher.SubnetRouterAttachedEvent(self),
+                           watcher.SubnetRouterDetachedEvent(self),
+                           watcher.TenantPortCreatedEvent(self),
+                           watcher.TenantPortDeletedEvent(self),
+                           watcher.OVNLBVIPPortEvent(self)})
         return events
 
     @lockutils.synchronized('bgp')

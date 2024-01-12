@@ -72,13 +72,9 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         self.ovn_remote = self.ovs_idl.get_ovn_remote()
         LOG.debug("Loaded chassis %s.", self.chassis)
 
-        events = ()
-        for event in self._get_events():
-            event_class = getattr(watcher, event)
-            events += (event_class(self),)
-
         self._post_fork_event.clear()
 
+        events = self._get_events()
         self.sb_idl = ovn.OvnSbIdl(
             self.ovn_remote,
             chassis=self.chassis,
@@ -89,15 +85,15 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         self._post_fork_event.set()
 
     def _get_events(self):
-        return {"PortBindingChassisCreatedEvent",
-                "PortBindingChassisDeletedEvent",
-                "SubnetRouterAttachedEvent",
-                "SubnetRouterDetachedEvent",
-                "TenantPortCreatedEvent",
-                "TenantPortDeletedEvent",
-                "ChassisCreateEvent",
-                "ChassisPrivateCreateEvent",
-                "LocalnetCreateDeleteEvent"}
+        return {watcher.PortBindingChassisCreatedEvent(self),
+                watcher.PortBindingChassisDeletedEvent(self),
+                watcher.SubnetRouterAttachedEvent(self),
+                watcher.SubnetRouterDetachedEvent(self),
+                watcher.TenantPortCreatedEvent(self),
+                watcher.TenantPortDeletedEvent(self),
+                watcher.ChassisCreateEvent(self),
+                watcher.ChassisPrivateCreateEvent(self),
+                watcher.LocalnetCreateDeleteEvent(self)}
 
     @lockutils.synchronized('evpn')
     def frr_sync(self):
