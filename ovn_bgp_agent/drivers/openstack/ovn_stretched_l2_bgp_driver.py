@@ -87,13 +87,9 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
             LOG.debug("Configured allowed address scopes: %s",
                       ", ".join(self.allowed_address_scopes))
 
-        events = ()
-        for event in self._get_events():
-            event_class = getattr(watcher, event)
-            events += (event_class(self),)
-
         self._post_fork_event.clear()
 
+        events = self._get_events()
         self.sb_idl = ovn.OvnSbIdl(
             self.ovn_remote,
             chassis=self.chassis,
@@ -105,15 +101,13 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         self._post_fork_event.set()
 
     def _get_events(self):
-        return set(
-            [
-                "SubnetRouterAttachedEvent",
-                "SubnetRouterUpdateEvent",
-                "SubnetRouterDetachedEvent",
-                "PortBindingChassisCreatedEvent",
-                "PortBindingChassisDeletedEvent",
-            ]
-        )
+        return {
+            watcher.SubnetRouterAttachedEvent(self),
+            watcher.SubnetRouterUpdateEvent(self),
+            watcher.SubnetRouterDetachedEvent(self),
+            watcher.PortBindingChassisCreatedEvent(self),
+            watcher.PortBindingChassisDeletedEvent(self),
+        }
 
     @lockutils.synchronized('bgp')
     def frr_sync(self):
