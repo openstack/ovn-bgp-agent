@@ -17,6 +17,7 @@ import random
 import re
 import sys
 
+import netaddr
 from oslo_log import log as logging
 import pyroute2
 from pyroute2.netlink import exceptions as netlink_exceptions
@@ -25,12 +26,15 @@ import tenacity
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
 import ovn_bgp_agent.privileged.linux_net
+from ovn_bgp_agent.utils import common as common_utils
 
 LOG = logging.getLogger(__name__)
 
 
 def get_ip_version(ip):
-    return ipaddress.ip_address(ip.split('/')[0]).version
+    # IP network can consume both an IP address and a network with cidr
+    # notation
+    return netaddr.IPNetwork(ip).version
 
 
 @tenacity.retry(
@@ -586,21 +590,22 @@ def del_ips_from_dev(nic, ips):
         ovn_bgp_agent.privileged.linux_net.del_ip_from_dev(ip, nic)
 
 
-def add_ip_rule(ip, table, dev=None, lladdr=None):
-    ip_version = get_ip_version(ip)
-    ip_info = ip.split("/")
-
-    if len(ip_info) == 1:
-        rule = {'dst': ip_info[0], 'table': table, 'dst_len': 32}
-        if ip_version == constants.IP_VERSION_6:
-            rule['dst_len'] = 128
-            rule['family'] = constants.AF_INET6
-    elif len(ip_info) == 2:
-        rule = {'dst': ip_info[0], 'table': table, 'dst_len': int(ip_info[1])}
-        if ip_version == constants.IP_VERSION_6:
-            rule['family'] = constants.AF_INET6
-    else:
+def create_rule_from_ip(ip, table):
+    try:
+        ip_network = netaddr.IPNetwork(ip)
+    except (netaddr.AddrFormatError, ValueError):
         raise agent_exc.InvalidPortIP(ip=ip)
+
+    return {
+        'dst': str(ip_network.ip),
+        'table': table,
+        'dst_len': ip_network.prefixlen,
+        'family': common_utils.IP_VERSION_FAMILY_MAP[ip_network.version],
+    }
+
+
+def add_ip_rule(ip, table, dev=None, lladdr=None):
+    rule = create_rule_from_ip(ip, table)
 
     ovn_bgp_agent.privileged.linux_net.rule_create(rule)
 
@@ -619,20 +624,7 @@ def add_ip_nei(ip, lladdr, dev):
 
 
 def del_ip_rule(ip, table, dev=None, lladdr=None):
-    ip_version = get_ip_version(ip)
-    ip_info = ip.split("/")
-
-    if len(ip_info) == 1:
-        rule = {'dst': ip_info[0], 'table': table, 'dst_len': 32}
-        if ip_version == constants.IP_VERSION_6:
-            rule['dst_len'] = 128
-            rule['family'] = constants.AF_INET6
-    elif len(ip_info) == 2:
-        rule = {'dst': ip_info[0], 'table': table, 'dst_len': int(ip_info[1])}
-        if ip_version == constants.IP_VERSION_6:
-            rule['family'] = constants.AF_INET6
-    else:
-        raise agent_exc.InvalidPortIP(ip=ip)
+    rule = create_rule_from_ip(ip, table)
 
     ovn_bgp_agent.privileged.linux_net.rule_delete(rule)
 
