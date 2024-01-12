@@ -738,3 +738,43 @@ class OVNLBDeleteEvent(base_watcher.OVNLBEvent):
 
                 if hasattr(old, 'vips'):
                     self.agent.withdraw_ovn_lb_vip(row)
+
+
+class OVNPFBaseEvent(base_watcher.OVNLBEvent):
+
+    event = None
+
+    def __init__(self, bgp_agent):
+        super(OVNPFBaseEvent, self).__init__(
+            bgp_agent, (self.event,))
+
+    def match_fn(self, event, row, old):
+        # The ovn port forwarding are manage as OVN lb balancers and they are
+        # exposed through the cr-lrp, so if the local agent does not have the
+        # matching router there is no need to process the event
+        if not driver_utils.check_name_prefix(row,
+                                              constants.OVN_LB_PF_NAME_PREFIX):
+            return False
+
+        if not row.vips:
+            return False
+        lb_router = self._get_router(row, constants.OVN_LR_NAME_EXT_ID_KEY)
+        return lb_router in self.agent.ovn_local_cr_lrps.keys()
+
+
+class OVNPFCreateEvent(OVNPFBaseEvent):
+
+    event = OVNPFBaseEvent.ROW_CREATE
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.expose_ovn_pf_lb_fip(row)
+
+
+class OVNPFDeleteEvent(OVNPFBaseEvent):
+
+    event = OVNPFBaseEvent.ROW_DELETE
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.withdraw_ovn_pf_lb_fip(row)

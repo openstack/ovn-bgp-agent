@@ -470,11 +470,17 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def get_active_local_lbs(self, local_gateway_ports):
         lbs = []
         cmd = self.db_find_rows('Load_Balancer', ('vips', '!=', {}))
+
         for row in cmd.execute(check_error=True):
-            if (row.vips and row.external_ids[
-                    constants.OVN_LB_LR_REF_EXT_ID_KEY].replace(
-                        'neutron-', "", 1) in local_gateway_ports):
-                lbs.append(row)
+            for ext_id_key in constants.OVN_LB_EXT_ID_ROUTER_KEY:
+                try:
+                    router_name = row.external_ids[ext_id_key].replace(
+                        'neutron-', '', 1)
+                    if router_name in local_gateway_ports:
+                        lbs.append(row)
+                        break
+                except KeyError:
+                    continue
         return lbs
 
     # FIXME(ltomasbo): This can be removed once ovsdbapp version is >=2.3.0

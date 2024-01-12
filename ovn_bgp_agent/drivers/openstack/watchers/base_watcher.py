@@ -50,10 +50,9 @@ class OVNLBEvent(Event):
             events, table, None)
         self.event_name = self.__class__.__name__
 
-    def _get_router(self, row):
+    def _get_router(self, row, key=constants.OVN_LB_LR_REF_EXT_ID_KEY):
         try:
-            return row.external_ids[
-                constants.OVN_LB_LR_REF_EXT_ID_KEY].replace('neutron-', "", 1)
+            return row.external_ids[key].replace('neutron-', "", 1)
         except (AttributeError, KeyError):
             return
 

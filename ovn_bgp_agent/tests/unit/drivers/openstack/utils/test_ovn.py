@@ -221,6 +221,19 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
         self.nb_idl.db_find_rows.assert_called_once_with(
             'Load_Balancer', ('vips', '!=', {}))
 
+        self.nb_idl.db_find_rows.reset_mock()
+
+        lb3 = fakes.create_object({
+            'vips': {'fip': 'member1'},
+            'external_ids': {
+                constants.OVN_LR_NAME_EXT_ID_KEY: "neutron-router1"}})
+        self.nb_idl.db_find_rows.return_value.execute.return_value = [
+            lb1, lb2, lb3]
+        ret = self.nb_idl.get_active_local_lbs(local_gateway_ports)
+        self.assertEqual([lb1, lb3], ret)
+        self.nb_idl.db_find_rows.assert_called_once_with(
+            'Load_Balancer', ('vips', '!=', {}))
+
 
 class TestOvsdbSbOvnIdl(test_base.TestCase):
 
