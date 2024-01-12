@@ -2272,7 +2272,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(driver_utils, 'get_addr_scopes')
     def test__address_scope_allowed(self, m_addr_scopes):
-        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        self.bgp_driver.allowed_address_scopes = {"fake_address_scope"}
         port_ip = self.ipv4
         port_name = "fake-port"
         sb_port = "fake-sb-port"
@@ -2288,7 +2288,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         m_addr_scopes.assert_called_once_with(sb_port)
 
     def test__address_scope_allowed_not_configured(self):
-        self.bgp_driver.allowed_address_scopes = set([])
+        self.bgp_driver.allowed_address_scopes = set()
         port_ip = self.ipv4
         port_name = "fake-port"
         sb_port = "fake-sb-port"
@@ -2300,7 +2300,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(driver_utils, 'get_addr_scopes')
     def test__address_scope_allowed_no_match(self, m_addr_scopes):
-        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        self.bgp_driver.allowed_address_scopes = {"fake_address_scope"}
         port_ip = self.ipv4
         port_name = "fake-port"
         sb_port = "fake-sb-port"
@@ -2317,7 +2317,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(driver_utils, 'get_addr_scopes')
     def test__address_scope_allowed_no_port(self, m_addr_scopes):
-        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        self.bgp_driver.allowed_address_scopes = {"fake_address_scope"}
         port_ip = self.ipv4
         port_name = "fake-port"
         self.sb_idl.get_port_by_name.return_value = []
@@ -2329,7 +2329,7 @@ class TestOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(driver_utils, 'get_addr_scopes')
     def test__address_scope_allowed_no_address_scope(self, m_addr_scopes):
-        self.bgp_driver.allowed_address_scopes = set(["fake_address_scope"])
+        self.bgp_driver.allowed_address_scopes = {"fake_address_scope"}
         port_ip = self.ipv4
         port_name = "fake-port"
         sb_port = "fake-sb-port"

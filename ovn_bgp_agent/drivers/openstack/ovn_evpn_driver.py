@@ -99,16 +99,15 @@ class OVNEVPNDriver(driver_api.AgentDriverBase):
         self._post_fork_event.set()
 
     def _get_events(self):
-        events = set(["PortBindingChassisCreatedEvent",
-                      "PortBindingChassisDeletedEvent",
-                      "SubnetRouterAttachedEvent",
-                      "SubnetRouterDetachedEvent",
-                      "TenantPortCreatedEvent",
-                      "TenantPortDeletedEvent",
-                      "ChassisCreateEvent",
-                      "ChassisPrivateCreateEvent",
-                      "LocalnetCreateDeleteEvent"])
-        return events
+        return {"PortBindingChassisCreatedEvent",
+                "PortBindingChassisDeletedEvent",
+                "SubnetRouterAttachedEvent",
+                "SubnetRouterDetachedEvent",
+                "TenantPortCreatedEvent",
+                "TenantPortDeletedEvent",
+                "ChassisCreateEvent",
+                "ChassisPrivateCreateEvent",
+                "LocalnetCreateDeleteEvent"}
 
     @lockutils.synchronized('evpn')
     def frr_sync(self):

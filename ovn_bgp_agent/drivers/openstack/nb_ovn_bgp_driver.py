@@ -142,20 +142,20 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._post_start_event.set()
 
     def _get_events(self):
-        events = set(["LogicalSwitchPortProviderCreateEvent",
-                      "LogicalSwitchPortProviderDeleteEvent",
-                      "LogicalSwitchPortFIPCreateEvent",
-                      "LogicalSwitchPortFIPDeleteEvent",
-                      "LocalnetCreateDeleteEvent",
-                      "OVNLBCreateEvent",
-                      "OVNLBDeleteEvent"])
+        events = {"LogicalSwitchPortProviderCreateEvent",
+                  "LogicalSwitchPortProviderDeleteEvent",
+                  "LogicalSwitchPortFIPCreateEvent",
+                  "LogicalSwitchPortFIPDeleteEvent",
+                  "LocalnetCreateDeleteEvent",
+                  "OVNLBCreateEvent",
+                  "OVNLBDeleteEvent"}
         if self._expose_tenant_networks:
-            events.update(["ChassisRedirectCreateEvent",
+            events.update({"ChassisRedirectCreateEvent",
                            "ChassisRedirectDeleteEvent",
                            "LogicalSwitchPortSubnetAttachEvent",
                            "LogicalSwitchPortSubnetDetachEvent",
                            "LogicalSwitchPortTenantCreateEvent",
-                           "LogicalSwitchPortTenantDeleteEvent"])
+                           "LogicalSwitchPortTenantDeleteEvent"})
         return events
 
     @lockutils.synchronized('nbbgp')
