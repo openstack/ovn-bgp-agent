@@ -36,7 +36,7 @@ from ovn_bgp_agent.utils import linux_net
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
-OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding"]
+OVN_TABLES = ["Port_Binding", "Chassis", "Datapath_Binding", "Chassis_Private"]
 
 
 @dataclasses.dataclass(frozen=True, eq=True)
@@ -93,23 +93,13 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
             events += (event_class(self),)
 
         self._post_fork_event.clear()
-        # TODO(lucasagomes): The OVN package in the ubuntu LTS is old
-        # and does not support Chassis_Private. Once the package is updated
-        # we can remove this fallback mode.
-        try:
-            self.sb_idl = ovn.OvnSbIdl(
-                self.ovn_remote,
-                chassis=self.chassis,
-                tables=OVN_TABLES + ["Chassis_Private"],
-                events=events,
-            ).start()
-        except AssertionError:
-            self.sb_idl = ovn.OvnSbIdl(
-                self.ovn_remote,
-                chassis=self.chassis,
-                tables=OVN_TABLES,
-                events=events,
-            ).start()
+
+        self.sb_idl = ovn.OvnSbIdl(
+            self.ovn_remote,
+            chassis=self.chassis,
+            tables=OVN_TABLES,
+            events=events,
+        ).start()
 
         # Now IDL connections can be safely used
         self._post_fork_event.set()
