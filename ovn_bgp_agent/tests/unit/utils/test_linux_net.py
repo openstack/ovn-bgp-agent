@@ -184,12 +184,6 @@ class TestLinuxNet(test_base.TestCase):
         mock_ndp.assert_called_once_with('fake-bridge')
         mock_arp.assert_called_once_with('fake-bridge')
 
-    def test_ensure_routing_table_for_bridge(self):
-        # TODO(lucasagomes): This method is massive and complex, perhaps
-        #  break it into helper methods for both readibility and maintenance
-        #  of it.
-        pass
-
     @mock.patch.object(linux_net, 'enable_proxy_arp')
     @mock.patch.object(linux_net, 'enable_proxy_ndp')
     @mock.patch(
@@ -778,3 +772,78 @@ class TestLinuxNet(test_base.TestCase):
 
         self.assertEqual({self.dev: []}, routes)
         mock_route_delete.assert_called_once_with(route)
+
+
+class TestEnsureRoutingTableForBridge(test_base.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.ovn_routing_tables = {}
+        self.bridge_name = "br-test"
+        self.vrf_table = 4
+        self.generated_number = 2
+
+        self.testing_multiline_file_content = [
+            "1 foo",
+            "# commented line",
+            "random garbage text",
+            "3	another bridge",
+            "2",
+        ]
+
+        self.m_ensure_rt_routes = mock.patch.object(
+            linux_net, '_ensure_routing_table_routes').start()
+
+        # The 'random' generator will always generate number 2 because the
+        # range is 1-4 while 1 and 3 are used in the file and 4 is the vrf
+        mock.patch.object(constants, 'ROUTING_TABLE_MIN', 1).start()
+        mock.patch.object(constants, 'ROUTING_TABLE_MAX', 4).start()
+
+    def _create_fake_file_content(self):
+        return "\n".join(self.testing_multiline_file_content)
+
+    def test_ensure_routing_table_for_bridge_table_missing(self):
+        self._test_ensure_routing_table_for_bridge_table_missing()
+
+    def _test_ensure_routing_table_for_bridge_table_missing(self):
+        with mock.patch(
+                'builtins.open',
+                mock.mock_open(read_data=self._create_fake_file_content())):
+            linux_net.ensure_routing_table_for_bridge(
+                self.ovn_routing_tables, self.bridge_name, self.vrf_table)
+
+        self.assertDictEqual(
+            {self.bridge_name: self.generated_number}, self.ovn_routing_tables)
+
+    def test_ensure_routing_table_for_bridge_table_present(self):
+        present_bridge_value = 5
+        self.testing_multiline_file_content.insert(
+            2, "%d %s" % (present_bridge_value, self.bridge_name))
+
+        with mock.patch(
+                'builtins.open',
+                mock.mock_open(read_data=self._create_fake_file_content())):
+            linux_net.ensure_routing_table_for_bridge(
+                self.ovn_routing_tables, self.bridge_name, self.vrf_table)
+
+        self.assertDictEqual(
+            {self.bridge_name: present_bridge_value}, self.ovn_routing_tables)
+
+    def test_ensure_routing_table_for_bridge_table_vrf_not_generated(self):
+        self.vrf_table = 2
+        self.generated_number = 4
+        self._test_ensure_routing_table_for_bridge_table_missing()
+
+    def test_ensure_routing_table_for_bridge_tables_depleted(self):
+        present_bridge_value = 2
+        self.testing_multiline_file_content.insert(
+            2, "%d %s" % (present_bridge_value, "foo"))
+
+        with mock.patch(
+                'builtins.open',
+                mock.mock_open(read_data=self._create_fake_file_content())):
+            self.assertRaises(
+                SystemExit,
+                linux_net.ensure_routing_table_for_bridge,
+                self.ovn_routing_tables, self.bridge_name, self.vrf_table)
+
+        self.assertDictEqual({}, self.ovn_routing_tables)
