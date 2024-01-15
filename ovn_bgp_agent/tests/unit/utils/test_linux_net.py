@@ -15,11 +15,10 @@
 
 import copy
 import ipaddress
-from socket import AF_INET
-from socket import AF_INET6
 
 from unittest import mock
 
+from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
@@ -381,13 +380,13 @@ class TestLinuxNet(test_base.TestCase):
         routing_tables_routes = {self.bridge: [route]}
         # extra_route0 matches with the route
         extra_route0 = IPRouteDict({
-            'dst_len': 32, 'family': AF_INET, 'table': 20,
+            'dst_len': 32, 'family': constants.AF_INET, 'table': 20,
             'attrs': [('RTA_DST', self.ip),
                       ('RTA_OIF', oif),
                       ('RTA_GATEWAY', gateway)]})
         # extra_route1 does not match with route and should be removed
         extra_route1 = IPRouteDict({
-            'dst_len': 32, 'family': AF_INET, 'table': 20,
+            'dst_len': 32, 'family': constants.AF_INET, 'table': 20,
             'attrs': [('RTA_DST', '10.10.1.17'),
                       ('RTA_OIF', oif),
                       ('RTA_GATEWAY', gateway)]})
@@ -398,7 +397,7 @@ class TestLinuxNet(test_base.TestCase):
 
         # Assert extra_route1 has been removed
         expected_route = {'dst': '10.10.1.17', 'dst_len': 32,
-                          'family': AF_INET, 'oif': oif,
+                          'family': constants.AF_INET, 'oif': oif,
                           'gateway': gateway, 'table': 20}
 
         mock_route_delete.assert_called_once_with(expected_route)
@@ -525,7 +524,8 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.add_ip_rule(self.ipv6, 7, dev=self.dev, lladdr=self.mac)
 
         expected_args = {'dst': self.ipv6,
-                         'table': 7, 'dst_len': 128, 'family': AF_INET6}
+                         'table': 7, 'dst_len': 128,
+                         'family': constants.AF_INET6}
         mock_rule_create.assert_called_once_with(expected_args)
         mock_add_ip_nei.assert_called_once_with(self.ipv6, self.mac, self.dev)
 
@@ -555,7 +555,7 @@ class TestLinuxNet(test_base.TestCase):
         linux_net.del_ip_rule(self.ipv6, 7, dev=self.dev, lladdr=self.mac)
 
         expected_args = {'dst': self.ipv6, 'table': 7,
-                         'dst_len': 128, 'family': AF_INET6}
+                         'dst_len': 128, 'family': constants.AF_INET6}
         mock_rule_delete.assert_called_once_with(expected_args)
         mock_del_ip_nei.assert_called_once_with(self.ipv6, self.mac, self.dev)
 
@@ -600,7 +600,7 @@ class TestLinuxNet(test_base.TestCase):
         expected_routes = {
             self.dev: [{'route': {'dst': self.ipv6,
                                   'dst_len': 128,
-                                  'family': AF_INET6,
+                                  'family': constants.AF_INET6,
                                   'oif': mock.ANY,
                                   'proto': 3,
                                   'table': 7},
@@ -715,7 +715,7 @@ class TestLinuxNet(test_base.TestCase):
         routes = {
             self.dev: [{'route': {'dst': self.ipv6,
                                   'dst_len': 128,
-                                  'family': AF_INET6,
+                                  'family': constants.AF_INET6,
                                   'oif': mock.ANY,
                                   'proto': 3,
                                   'table': 7},
