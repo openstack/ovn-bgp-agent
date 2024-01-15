@@ -9,6 +9,8 @@
     check:
       jobs:
         - openstack-tox-functional-with-sudo
+        - ovn-bgp-agent-tempest-plugin:
+            voting: false
     experimental:
       jobs:
         - openstack-tox-py310-with-oslo-master
