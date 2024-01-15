@@ -17,9 +17,6 @@ import random
 import re
 import sys
 
-from socket import AF_INET
-from socket import AF_INET6
-
 from oslo_log import log as logging
 import pyroute2
 from pyroute2.netlink import exceptions as netlink_exceptions
@@ -222,7 +219,8 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
             ovn_bgp_agent.privileged.linux_net.route_create(r1)
 
             r2 = {'dst': 'default', 'oif': bridge_idx,
-                  'table': ovn_routing_tables[bridge], 'family': AF_INET6,
+                  'table': ovn_routing_tables[bridge],
+                  'family': constants.AF_INET6,
                   'proto': 3}
             ovn_bgp_agent.privileged.linux_net.route_create(r2)
         else:
@@ -234,7 +232,7 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
                         route = [
                             r for r in ip.get_routes(
                                 table=ovn_routing_tables[bridge],
-                                family=AF_INET)
+                                family=constants.AF_INET)
                             if not r.get_attr('RTA_DST')][0]
                         if bridge_idx == route.get_attr('RTA_OIF'):
                             route_missing = False
@@ -246,7 +244,7 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
                         route_6 = [
                             r for r in ip.get_routes(
                                 table=ovn_routing_tables[bridge],
-                                family=AF_INET6)
+                                family=constants.AF_INET6)
                             if not r.get_attr('RTA_DST')][0]
                         if bridge_idx == route_6.get_attr('RTA_OIF'):
                             route6_missing = False
@@ -261,14 +259,14 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
                                 table=ovn_routing_tables[bridge],
                                 dst=dst,
                                 dst_len=dst_len,
-                                family=AF_INET6)[0])
+                                family=constants.AF_INET6)[0])
                     else:
                         extra_routes.append(
                             ip.get_routes(
                                 table=ovn_routing_tables[bridge],
                                 dst=dst,
                                 dst_len=dst_len,
-                                family=AF_INET)[0])
+                                family=constants.AF_INET)[0])
 
             if route_missing:
                 r = {'dst': 'default', 'oif': bridge_idx,
@@ -277,7 +275,8 @@ def _ensure_routing_table_routes(ovn_routing_tables, bridge):
                 ovn_bgp_agent.privileged.linux_net.route_create(r)
             if route6_missing:
                 r = {'dst': 'default', 'oif': bridge_idx,
-                     'table': ovn_routing_tables[bridge], 'family': AF_INET6,
+                     'table': ovn_routing_tables[bridge],
+                     'family': constants.AF_INET6,
                      'proto': 3}
                 ovn_bgp_agent.privileged.linux_net.route_create(r)
     return extra_routes
@@ -307,7 +306,7 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
                     route = [
                         r for r in ip.get_routes(
                             table=ovn_routing_tables[bridge],
-                            family=AF_INET)
+                            family=constants.AF_INET)
                         if not r.get_attr('RTA_DST')][0]
                     if bridge_idx != route.get_attr('RTA_OIF'):
                         extra_routes.append(route)
@@ -317,7 +316,7 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
                     route_6 = [
                         r for r in ip.get_routes(
                             table=ovn_routing_tables[bridge],
-                            family=AF_INET6)
+                            family=constants.AF_INET6)
                         if not r.get_attr('RTA_DST')][0]
                     if bridge_idx != route_6.get_attr('RTA_OIF'):
                         extra_routes.append(route_6)
@@ -330,14 +329,14 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
                             table=ovn_routing_tables[bridge],
                             dst=dst,
                             dst_len=dst_len,
-                            family=AF_INET6)[0])
+                            family=constants.AF_INET6)[0])
                 else:
                     extra_routes.append(
                         ip.get_routes(
                             table=ovn_routing_tables[bridge],
                             dst=dst,
                             dst_len=dst_len,
-                            family=AF_INET)[0])
+                            family=constants.AF_INET)[0])
     return extra_routes
 
 
@@ -449,7 +448,8 @@ def get_ovn_ip_rules(routing_tables):
              "{}/{}".format(rule.get_attr('FRA_DST'), rule['dst_len']),
              rule['family'])
             for rule in (
-                ipr.get_rules(family=AF_INET) + ipr.get_rules(family=AF_INET6))
+                ipr.get_rules(family=constants.AF_INET) +
+                ipr.get_rules(family=constants.AF_INET6))
             if rule.get_attr('FRA_TABLE') in routing_tables
         ]
         for table, dst, family in rules_info:
@@ -594,11 +594,11 @@ def add_ip_rule(ip, table, dev=None, lladdr=None):
         rule = {'dst': ip_info[0], 'table': table, 'dst_len': 32}
         if ip_version == constants.IP_VERSION_6:
             rule['dst_len'] = 128
-            rule['family'] = AF_INET6
+            rule['family'] = constants.AF_INET6
     elif len(ip_info) == 2:
         rule = {'dst': ip_info[0], 'table': table, 'dst_len': int(ip_info[1])}
         if ip_version == constants.IP_VERSION_6:
-            rule['family'] = AF_INET6
+            rule['family'] = constants.AF_INET6
     else:
         raise agent_exc.InvalidPortIP(ip=ip)
 
@@ -626,11 +626,11 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
         rule = {'dst': ip_info[0], 'table': table, 'dst_len': 32}
         if ip_version == constants.IP_VERSION_6:
             rule['dst_len'] = 128
-            rule['family'] = AF_INET6
+            rule['family'] = constants.AF_INET6
     elif len(ip_info) == 2:
         rule = {'dst': ip_info[0], 'table': table, 'dst_len': int(ip_info[1])}
         if ip_version == constants.IP_VERSION_6:
-            rule['family'] = AF_INET6
+            rule['family'] = constants.AF_INET6
     else:
         raise agent_exc.InvalidPortIP(ip=ip)
 
@@ -699,7 +699,7 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     else:
         route['scope'] = 253
     if get_ip_version(net_ip) == constants.IP_VERSION_6:
-        route['family'] = AF_INET6
+        route['family'] = constants.AF_INET6
         del route['scope']
 
     with pyroute2.IPRoute() as ipr:
@@ -750,7 +750,7 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
     else:
         route['scope'] = 253
     if get_ip_version(net_ip) == constants.IP_VERSION_6:
-        route['family'] = AF_INET6
+        route['family'] = constants.AF_INET6
         del route['scope']
 
     LOG.debug("Deleting route at table %s: %s", route_table, route)

@@ -14,7 +14,6 @@
 
 import functools
 import random
-import socket
 
 import netaddr
 from neutron_lib import constants as n_const
@@ -28,6 +27,7 @@ from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.privileged import linux_net
 from ovn_bgp_agent.tests.functional import base as base_functional
 from ovn_bgp_agent.tests import utils as test_utils
+from ovn_bgp_agent.utils import common as common_utils
 from ovn_bgp_agent.utils import linux_net as l_net
 
 
@@ -37,7 +37,6 @@ IP_ADDRESS_SCOPE = {rtnl.rtscopes['RT_SCOPE_UNIVERSE']: 'global',
                     rtnl.rtscopes['RT_SCOPE_SITE']: 'site',
                     rtnl.rtscopes['RT_SCOPE_LINK']: 'link',
                     rtnl.rtscopes['RT_SCOPE_HOST']: 'host'}
-_IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 
 
 def set_up(ifname):
@@ -447,7 +446,7 @@ class IpRouteTestCase(_LinuxNetTestCase):
                     continue
                 self.assertEqual(table, route['table'])
                 self.assertEqual(
-                    linux_net._IP_VERSION_FAMILY_MAP[ip_version],
+                    common_utils.IP_VERSION_FAMILY_MAP[ip_version],
                     route['family'])
                 ret_scope = linux_net.get_scope_name(route['scope'])
                 self.assertEqual(scope, ret_scope)
@@ -465,7 +464,7 @@ class IpRouteTestCase(_LinuxNetTestCase):
                                     proto='static'):
         for cidr in cidrs:
             ip_version = l_net.get_ip_version(cidr)
-            family = linux_net._IP_VERSION_FAMILY_MAP[ip_version]
+            family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
             route = {'dst': cidr,
                      'oif': self.device['index'],
                      'table': table,
@@ -479,7 +478,7 @@ class IpRouteTestCase(_LinuxNetTestCase):
                            proto=proto)
         for cidr in cidrs:
             ip_version = l_net.get_ip_version(cidr)
-            family = linux_net._IP_VERSION_FAMILY_MAP[ip_version]
+            family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
             route = {'dst': cidr,
                      'oif': self.device['index'],
                      'table': table,
@@ -547,7 +546,7 @@ class IpRuleTestCase(_LinuxNetTestCase):
             rule = {'dst': str(_ip.ip),
                     'dst_len': _ip.netmask.netmask_bits(),
                     'table': table,
-                    'family': _IP_VERSION_FAMILY_MAP[ip_version]}
+                    'family': common_utils.IP_VERSION_FAMILY_MAP[ip_version]}
             rules_added.append(rule)
             linux_net.rule_create(rule)
             # recreate the last rule, to ensure recreation does not fail

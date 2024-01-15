@@ -15,7 +15,6 @@
 import errno
 import ipaddress
 import os
-import socket
 
 import netaddr
 
@@ -32,11 +31,11 @@ import tenacity
 import ovn_bgp_agent
 from ovn_bgp_agent import constants
 from ovn_bgp_agent import exceptions as agent_exc
+from ovn_bgp_agent.utils import common as common_utils
 from ovn_bgp_agent.utils import linux_net as l_net
 
 LOG = logging.getLogger(__name__)
 
-_IP_VERSION_FAMILY_MAP = {4: socket.AF_INET, 6: socket.AF_INET6}
 NUD_STATES = {state[1]: state[0] for state in ndmsg.states.items()}
 
 
@@ -151,7 +150,7 @@ def route_create(route):
     scope = route.pop('scope', 'link')
     route['scope'] = get_scope_name(scope)
     if 'family' not in route:
-        route['family'] = socket.AF_INET
+        route['family'] = constants.AF_INET
     _run_iproute_route('replace', **route)
 
 
@@ -160,7 +159,7 @@ def route_delete(route):
     scope = route.pop('scope', 'link')
     route['scope'] = get_scope_name(scope)
     if 'family' not in route:
-        route['family'] = socket.AF_INET
+        route['family'] = constants.AF_INET
     _run_iproute_route('del', **route)
 
 
@@ -250,7 +249,7 @@ def del_ip_from_dev(ip, nic):
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_nei(ip, lladdr, dev):
     ip_version = l_net.get_ip_version(ip)
-    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_neigh('replace',
                        dev,
                        dst=ip,
@@ -262,7 +261,7 @@ def add_ip_nei(ip, lladdr, dev):
 @ovn_bgp_agent.privileged.default.entrypoint
 def del_ip_nei(ip, lladdr, dev):
     ip_version = l_net.get_ip_version(ip)
-    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_neigh('del',
                        dev,
                        dst=ip.split("/")[0],
@@ -288,7 +287,7 @@ def get_neigh_entries(device, ip_version, **kwargs):
                                'lladdr': mac_address,
                                'device': device_name}
     """
-    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     dump = _run_iproute_neigh('dump',
                               device,
                               family=family,
@@ -312,7 +311,7 @@ def add_unreachable_route(vrf_name):
     ifla_linkinfo = get_attr(device, 'IFLA_LINKINFO')
     ifla_data = get_attr(ifla_linkinfo, 'IFLA_INFO_DATA')
     vrf_table = get_attr(ifla_data, 'IFLA_VRF_TABLE')
-    for ip_version in (socket.AF_INET, socket.AF_INET6):
+    for ip_version in common_utils.IP_VERSION_FAMILY_MAP.values():
         kwargs = {'dst': 'default',
                   'family': ip_version,
                   'table': vrf_table,
@@ -551,7 +550,7 @@ def add_ip_address(ip_address, ifname):
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
     prefixlen = 32 if ip_version == 4 else 128
-    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_addr('add',
                       ifname,
                       address=address,
@@ -565,7 +564,7 @@ def delete_ip_address(ip_address, ifname):
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
     prefixlen = 32 if ip_version == 4 else 128
-    family = _IP_VERSION_FAMILY_MAP[ip_version]
+    family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_addr("delete",
                       ifname,
                       address=address,
@@ -592,7 +591,7 @@ def get_ip_addresses(**kwargs):
 @ovn_bgp_agent.privileged.default.entrypoint
 def list_ip_routes(ip_version, device=None, table=None, **kwargs):
     """List IP routes"""
-    kwargs['family'] = _IP_VERSION_FAMILY_MAP[ip_version]
+    kwargs['family'] = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     if device:
         kwargs['oif'] = _get_link_id(device)
     if table:
@@ -606,4 +605,4 @@ def list_ip_rules(ip_version, **kwargs):
     """List all IP rules"""
     with iproute.IPRoute() as ip:
         return make_serializable(ip.get_rules(
-            family=_IP_VERSION_FAMILY_MAP[ip_version], **kwargs))
+            family=common_utils.IP_VERSION_FAMILY_MAP[ip_version], **kwargs))
