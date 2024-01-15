@@ -107,3 +107,8 @@ ROUTE_DISCARD = 'discard'
 # Family constants
 AF_INET = socket.AF_INET
 AF_INET6 = socket.AF_INET6
+
+# Path to file containing routing tables
+ROUTING_TABLES_FILE = '/etc/iproute2/rt_tables'
+ROUTING_TABLE_MIN = 1
+ROUTING_TABLE_MAX = 252
