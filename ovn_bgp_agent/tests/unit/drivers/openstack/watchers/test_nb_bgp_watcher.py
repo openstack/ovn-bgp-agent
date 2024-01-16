@@ -1,4 +1,3 @@
-
 # Copyright 2023 Red Hat, Inc.
 # All Rights Reserved.
 #
@@ -1189,9 +1188,10 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(vips={})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
@@ -1199,9 +1199,10 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(external_ids={})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
@@ -1209,18 +1210,34 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
-        old = utils.create_row(external_ids={
-            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'},
+            vips={'192.168.1.50:80': '192.168.1.100:80'})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_vips_no_change(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'})
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_no_vips(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
             vips={})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
@@ -1229,18 +1246,19 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
     def test_run_vip(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80'})
         old = utils.create_row(vips={})
 
         self.event.run(None, row, old)
@@ -1248,19 +1266,37 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
         self.agent.expose_ovn_lb_fip.assert_not_called()
 
+    def test_run_vip_and_fip(self):
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
+        old = utils.create_row(vips={})
+
+        self.event.run(None, row, old)
+
+        self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
+        self.agent.expose_ovn_lb_fip.assert_called_once_with(row)
+
     def test_run_vip_added_router(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
                 'other': 'info'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(
             external_ids={
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'})
-
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.event.run(None, row, old)
 
         self.agent.expose_ovn_lb_vip.assert_called_once_with(row)
@@ -1270,9 +1306,10 @@ class TestOVNLBCreateEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(external_ids={
             constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'})
 
@@ -1300,10 +1337,12 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
             vips={})
-        old = utils.create_row(vips={'vip': 'member', 'fip': 'member'})
+        old = utils.create_row(
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_delete(self):
@@ -1311,9 +1350,10 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertTrue(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_delete_no_vips(self):
@@ -1321,7 +1361,7 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
             vips={})
         self.assertFalse(self.event.match_fn(event, row, mock.Mock()))
@@ -1331,17 +1371,19 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertFalse(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_router_deleted(self):
         row = utils.create_row(
             external_ids={
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(external_ids={
             constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1'
         })
@@ -1351,18 +1393,20 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(external_ids={})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_old_router_non_local(self):
         row = utils.create_row(
             external_ids={
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         old = utils.create_row(external_ids={
             constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router2',
         })
@@ -1372,41 +1416,48 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
-        old = utils.create_row(external_ids={
-            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-            constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip'})
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50'},
+            vips={'192.168.1.50:80': '192.168.1.100:80'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_vip_deleted_with_ext_id_update(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
             vips={})
         old = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
-                'other': 'info'},
-            vips={'vip': 'member', 'fip': 'member'})
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
 
-    def test_run_vip(self):
+    def test_run_vip_delete_without_external_ids_on_old(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
             vips={})
-        old = utils.create_row(vips={'vip': 'member'})
+        old = utils.create_row(vips={'192.168.1.50:80': '192.168.1.100:80'})
 
         self.event.run(None, row, old)
 
-        self.agent.withdraw_ovn_lb_vip.assert_called_once_with(row)
+        self.agent.withdraw_ovn_lb_vip.assert_not_called()
         self.agent.withdraw_ovn_lb_fip.assert_not_called()
 
     def test_run_vip_delete(self):
@@ -1414,43 +1465,47 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={})
-
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50'},
+            vips={'192.168.1.50:80': '192.168.1.100:80'})
         self.event.run(event, row, None)
 
         self.agent.withdraw_ovn_lb_vip.assert_called_once_with(row)
-        self.agent.withdraw_ovn_lb_fip.assert_called_once_with(row)
 
     def test_run_vip_deleted_extra_ext_id_info(self):
-        row = utils.create_row(
-            external_ids={
-                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
-                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
         old = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
+                constants.OVN_LB_VIP_IP_EXT_ID_KEY: '192.168.1.50',
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1',
-                'other': 'info'})
+                'other': 'info'},
+            vips={})
 
         self.event.run(None, row, old)
 
-        self.agent.withdraw_ovn_lb_vip.assert_not_called()
-        self.agent.withdraw_ovn_lb_fip.assert_not_called()
+        self.agent.withdraw_ovn_lb_vip.assert_called_once_with(old)
+        self.agent.withdraw_ovn_lb_fip.assert_called_once_with(old)
 
     def test_run_fip(self):
         row = utils.create_row(
             external_ids={
                 constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
-            vips={'vip': 'member', 'fip': 'member'})
-        old = utils.create_row(external_ids={
-            constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
-            constants.OVN_LB_VIP_FIP_EXT_ID_KEY: 'fip'})
+            vips={'192.168.1.50:80': '192.168.1.100:80'})
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-router1',
+                constants.OVN_LB_VIP_FIP_EXT_ID_KEY: '172.24.4.5'},
+            vips={'192.168.1.50:80': '192.168.1.100:80',
+                  '172.24.4.5:80': '192.168.1.100:80'})
 
         self.event.run(None, row, old)
 

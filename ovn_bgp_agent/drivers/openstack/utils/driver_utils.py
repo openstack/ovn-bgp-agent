@@ -59,3 +59,16 @@ def get_prefixes_from_ips(ips: 'list[str]') -> 'list[str]':
     return ['/'.join([ipaddress.ip_network(ip, strict=False)[0].compressed,
                       ip.split('/')[-1]])
             for ip in ips]
+
+
+def remove_port_from_ip(ip_address):
+    last_colon_index = ip_address.rfind(':')
+    # no port
+    if last_colon_index == -1:
+        return ip_address
+    # check if right side from index is a digit, in positive case remove it.
+    # For IPv6 it will come on format [ipv6]:port, so will also remove
+    # correctly just only the port
+    if ip_address[last_colon_index + 1:].isdigit():
+        return ip_address[:last_colon_index]
+    return ip_address

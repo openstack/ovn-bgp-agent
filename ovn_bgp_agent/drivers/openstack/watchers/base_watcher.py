@@ -16,6 +16,7 @@ from oslo_log import log as logging
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 
 
 LOG = logging.getLogger(__name__)
@@ -56,11 +57,32 @@ class OVNLBEvent(Event):
         except (AttributeError, KeyError):
             return
 
-    def _get_vip_fip(self, row):
+    def _get_ip_from_vips(self, row):
+        return [driver_utils.remove_port_from_ip(ipport)
+                for ipport in getattr(row, 'vips', {}).keys()]
+
+    def _get_diff_ip_from_vips(self, new, old):
+        """Returns a list of IPs that are present in 'new' but not in 'old'
+
+        Note: As LB VIP contains a port (e.g., '192.168.1.1:80'), the port part
+        is removed before comparison.
+        """
+        return list(set(self._get_ip_from_vips(new)) -
+                    set(self._get_ip_from_vips(old)))
+
+    def _is_vip_or_fip(self, row, ip, key):
         try:
-            return row.external_ids[constants.OVN_LB_VIP_FIP_EXT_ID_KEY]
-        except (AttributeError, KeyError):
-            return
+            return ip == row.external_ids.get(key)
+        except AttributeError:
+            pass
+
+    def _is_vip(self, row, ip):
+        return self._is_vip_or_fip(row, ip, constants.OVN_LB_VIP_IP_EXT_ID_KEY)
+
+    def _is_fip(self, row, ip):
+        return self._is_vip_or_fip(row,
+                                   ip,
+                                   constants.OVN_LB_VIP_FIP_EXT_ID_KEY)
 
 
 class LSPChassisEvent(Event):
