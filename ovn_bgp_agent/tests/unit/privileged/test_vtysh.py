@@ -43,7 +43,7 @@ class TestPrivilegedVtysh(test_base.TestCase):
         vtysh.run_vtysh_config('/fake/frr.config')
         self.mock_exc.assert_called_once_with(
             '/usr/bin/vtysh', '--vty_socket', constants.FRR_SOCKET_PATH,
-            '-c', 'copy /fake/frr.config running-config')
+            '-f', '/fake/frr.config')
 
     def test_run_vtysh_config_exception(self):
         self.mock_exc.side_effect = FakeException()
