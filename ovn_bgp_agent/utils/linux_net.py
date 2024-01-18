@@ -30,6 +30,8 @@ from ovn_bgp_agent.utils import common as common_utils
 
 LOG = logging.getLogger(__name__)
 
+RE_TABLE_ROW = re.compile(r"^(?P<table>[0-9]+)\s+(?P<bridge>\S+)")
+
 
 def get_ip_version(ip):
     # IP network can consume both an IP address and a network with cidr
@@ -157,38 +159,39 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
     # check a routing table with the bridge name exists on
     # /etc/iproute2/rt_tables
-    regex = r'^[0-9]*[\s]*{}$'.format(bridge)
-    matching_table = [line.replace('\t', ' ')
-                      for line in open('/etc/iproute2/rt_tables')
-                      if re.findall(regex, line)]
-    if matching_table:
-        table_info = matching_table[0].strip().split()
-        ovn_routing_tables[table_info[1]] = int(table_info[0])
-        LOG.debug("Found routing table for %s with: %s", bridge,
-                  table_info)
-    # if not configured, add random number for the table
-    else:
-        LOG.debug("Routing table for bridge %s not configured "
-                  "at /etc/iproute2/rt_tables", bridge)
-        regex = r'^[0-9]+[\s]*'
-        existing_routes = [int(line.replace('\t', ' ').split(' ')[0])
-                           for line in open('/etc/iproute2/rt_tables')
-                           if re.findall(regex, line)]
-        # pick a number between 1 and 252
-        try:
-            table_number = random.choice(list(
-                {x for x in range(1, 253) if x != int(vrf_table)}.difference(
-                    set(existing_routes))))
-        except IndexError:
-            LOG.error("No more routing tables available for bridge %s "
-                      "at /etc/iproute2/rt_tables", bridge)
-            sys.exit()
+    found_tables = {vrf_table}
 
-        ovn_bgp_agent.privileged.linux_net.create_routing_table_for_bridge(
-            table_number, bridge)
-        ovn_routing_tables[bridge] = int(table_number)
-        LOG.debug("Added routing table for %s with number: %s", bridge,
-                  table_number)
+    with open(constants.ROUTING_TABLES_FILE, 'r') as rt_file:
+        for line in rt_file.readlines():
+            match = RE_TABLE_ROW.match(line)
+            if match:
+                if match.group('bridge') == bridge:
+                    # We don't need to catch exception for TypeError because
+                    # the regular expression matches only integers
+                    ovn_routing_tables[match.group('bridge')] = int(
+                        match.group('table'))
+                    LOG.debug("Found routing table for %s with: %s",
+                              bridge, match.group('table'))
+                    break
+                else:
+                    found_tables.add(int(match.group('table')))
+        else:
+            LOG.debug("Routing table for bridge %s not configured at ", bridge)
+            try:
+                routing_table_range = set(
+                    range(constants.ROUTING_TABLE_MIN,
+                          constants.ROUTING_TABLE_MAX + 1))
+                table_number = random.choice(
+                    list(routing_table_range - found_tables))
+            except IndexError:
+                LOG.error("No more routing tables available for bridge %s "
+                          "at %s", constants.ROUTING_TABLES_FILE, bridge)
+                sys.exit(1)
+            ovn_bgp_agent.privileged.linux_net.create_routing_table_for_bridge(
+                table_number, bridge)
+            ovn_routing_tables[bridge] = int(table_number)
+            LOG.debug("Added routing table for %s with number: %s",
+                      bridge, table_number)
 
     return _ensure_routing_table_routes(ovn_routing_tables, bridge)
 
