@@ -18,6 +18,7 @@ from ovs.db import idl
 from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.backend.ovs_idl import idlutils
 from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
+import socket
 import tenacity
 
 from ovn_bgp_agent import constants
@@ -281,18 +282,19 @@ class OvsIdl(object):
     def get_own_chassis_id(self):
         """Return the external_ids:system-id value of the Open_vSwitch table.
 
-        As long as ovn-controller is running on this node, the key is
-        guaranteed to exist and will include the chassis name.
         """
         return self._get_from_ext_ids('system-id')
 
     def get_own_chassis_name(self):
         """Return the external_ids:hostname value of the Open_vSwitch table.
 
-        As long as ovn-controller is running on this node, the key is
-        guaranteed to exist and will include the chassis name.
+        If the value is not configured, it will fetch the hostname from the
+        current machine.
         """
-        return self._get_from_ext_ids('hostname')
+        try:
+            return self._get_from_ext_ids('hostname')
+        except KeyError:
+            return socket.gethostname()
 
     def get_ovn_remote(self, nb=False):
         """Return the external_ids:ovn-remote value of the Open_vSwitch table.
