@@ -31,51 +31,49 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
+        '''Match port updates to see if we should expose this lsp
+
+        If the event matches the following criteria, we should
+        totally ignore this event, since it is not meant for this host.
+
+        1. this host does not own this lsp
+        2. the lsp is not up
+        3. the logical switch is not exposed with agent, which means it
+           is not a provider network
+
+        When the event still has not been rejected, then the only thing to
+        do is to check if the ips for this lsp have not been exported yet.
+        '''
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
         try:
             # single and dual-stack format
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, chassis_location = self._get_chassis(row)
-            if current_chassis != self.agent.chassis:
-                return False
-            if not bool(row.up[0]):
+            current_chassis, _ = self._get_chassis(row)
+            logical_switch = self._get_network(row)
+
+            # Check for rejection criteria
+            if (current_chassis != self.agent.chassis or
+                    not bool(row.up[0]) or
+                    not self.agent.is_ls_provider(logical_switch)):
                 return False
 
-            if hasattr(old, 'up'):
-                if not bool(old.up[0]):
-                    return True
+            # At this point, the port is bound on this host, it is up and
+            # the logical switch is exposable by the agent.
+            # Only create the ips if not already exposed.
+            ips = row.addresses[0].split(' ')[1:]
+            return not self.agent.is_ip_exposed(logical_switch, ips)
 
-            # NOTE(ltomasbo): This can be updated/removed once neutron has
-            # chassis information on external ids
-            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
-                if hasattr(old, 'options'):
-                    old_chassis, _ = self._get_chassis(old)
-                    if not old_chassis or current_chassis != old_chassis:
-                        return True
-            else:
-                if hasattr(old, 'external_ids'):
-                    old_chassis, _ = self._get_chassis(old)
-                    if not old_chassis or current_chassis != old_chassis:
-                        return True
         except (IndexError, AttributeError):
             return False
-        return False
 
     def _run(self, event, row, old):
-        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
-                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
-            return
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            mac = row.addresses[0].strip().split(' ')[0]
-            ips_info = {
-                'mac': mac,
-                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
-                                              "").split(),
-                'type': row.type,
-                'logical_switch': self._get_network(row)
-            }
+            ips_info = self._get_ips_info(row)
             self.agent.expose_ip(ips, ips_info)
 
 
@@ -86,125 +84,127 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
+        '''Match port deletes or port downs or migrations
+
+        1. [DELETE] Port has been deleted, and we're hosting it
+        2. [UPDATE] Port went down, withdraw if we announced it
+        3. [UPDATE] Port has been migrated away and we're hosting it
+        '''
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
         try:
             # single and dual-stack format
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, chassis_location = self._get_chassis(row)
+            ips = row.addresses[0].split(' ')[1:]
+            logical_switch = self._get_network(row)
+
+            # Do nothing if we do not expose the current port
+            if not self.agent.is_ip_exposed(logical_switch, ips):
+                return False
+
+            # Delete event, always execute (since we expose it)
             if event == self.ROW_DELETE:
-                return (current_chassis == self.agent.chassis and
-                        bool(row.up[0]))
+                return True
 
-            # ROW_UPDATE EVENT
-            if hasattr(old, 'up'):
-                if not bool(old.up[0]):
-                    return False
-                # Assumes chassis and status are not changed at the same time
-                if (not bool(row.up[0]) and
-                        current_chassis == self.agent.chassis):
-                    return True
-            else:
-                # If there is no change on the status, and it was already down
-                # there is no need to remove it again
-                if not bool(row.up[0]):
-                    return False
+            current_chassis, _ = self._get_chassis(row)
+            # Delete the port from current chassis, if
+            # 1. port went down (while only attached here)
+            if (hasattr(old, 'up') and bool(old.up[0]) and   # port was up
+                    not bool(row.up[0]) and                  # is now down
+                    not self._has_additional_binding(row)):  # and bound here
+                return True
 
-            # NOTE(ltomasbo): This can be updated/removed once neutron has
-            # chassis information on external ids
-            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
-                if hasattr(old, 'options'):
-                    # check chassis change
-                    old_chassis, _ = self._get_chassis(old)
-                    if old_chassis != self.agent.chassis:
-                        return False
-                    if not current_chassis or current_chassis != old_chassis:
-                        return True
-            else:
-                if hasattr(old, 'external_ids'):
-                    # check chassis change
-                    old_chassis, _ = self._get_chassis(old)
-                    if old_chassis != self.agent.chassis:
-                        return False
-                    if not current_chassis or current_chassis != old_chassis:
-                        return True
+            # 2. port no longer bound here
+            return current_chassis != self.agent.chassis
+
         except (IndexError, AttributeError):
             return False
-        return False
 
     def _run(self, event, row, old):
-        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
-                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
-            return
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            mac = row.addresses[0].strip().split(' ')[0]
-            ips_info = {
-                'mac': mac,
-                'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
-                                              "").split(),
-                'type': row.type,
-                'logical_switch': row.external_ids.get(
-                    constants.OVN_LS_NAME_EXT_ID_KEY)
-            }
+            ips_info = self._get_ips_info(row)
             self.agent.withdraw_ip(ips, ips_info)
 
 
 class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
+    '''Floating IP create events based on the LogicalSwitchPort
+
+    The LSP has information about the host is should be exposed to, which
+    adds a bit of complexity in the event match, but saves a lot of queries
+    to the OVN NB DB.
+
+    Should trigger on:
+    - floating ip was attached to a lsp (external_ids.neutron:port_fip
+                                         appeared with information)
+    - port with floating ip attached was set to up (old.up = false and
+                                                    row.up = true)
+
+    During a migration of a lsp, the following events happen (chronologically):
+    1. options.requested_chassis is updated (now a comma separated list)
+       we also get external_ids, but only revision_number is updated.
+    2. update with only external_ids update (with only a revnum update)
+    3. port is set down (by ovn-controller on source host)
+    4. update with only external_ids update (with only a revnum update)
+    5. external_ids update (neutron:host_id is removed)
+    6. options.requested_chassis is updated (with only dest host)
+       and external_ids update which now includes neutron:host_id again
+    7. port is set up (by ovn-controller on dest host)
+    8 and 9 are only a revnum update in the external_ids
+
+    So for migration flow we are only interested in event 7.
+    Otherwise the floating ip would be added upon event 2, deleted with
+        event 3 and re-added with event 7.
+    '''
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE,)
         super(LogicalSwitchPortFIPCreateEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
         try:
             # single and dual-stack format
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, chassis_location = self._get_chassis(row)
+            current_chassis, _ = self._get_chassis(row)
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
-            if (current_chassis != self.agent.chassis or not bool(row.up[0]) or
-                    not current_port_fip):
+            if (current_chassis != self.agent.chassis or
+                    not bool(row.up[0]) or not current_port_fip):
+                # Port is not bound on this host, is down or does not have a
+                # floating ip attached.
                 return False
 
-            if hasattr(old, 'up'):
-                # check port status change
-                if not bool(old.up[0]):
-                    return True
+            if hasattr(old, 'up') and not bool(old.up[0]):
+                # Port changed up, which happens when the port is picked up
+                # on this host by the ovn-controller during migrations
+                return True
 
-            # NOTE(ltomasbo): This can be updated/removed once neutron has
-            # chassis information on external ids
-            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
-                if hasattr(old, 'options'):
-                    old_chassis, _ = self._get_chassis(old)
-                    if not old_chassis or current_chassis != old_chassis:
-                        return True
-                if hasattr(old, 'external_ids'):
-                    # check fips addition
-                    old_port_fip = old.external_ids.get(
-                        constants.OVN_FIP_EXT_ID_KEY)
-                    if not old_port_fip or current_port_fip != old_port_fip:
-                        return True
-            else:  # by default expect the chassis information at external-ids
-                if hasattr(old, 'external_ids'):
-                    # note the whole extenal-ids are included, even if only
-                    # one field inside it is updated
-                    old_chassis, _ = self._get_chassis(old)
-                    old_port_fip = old.external_ids.get(
-                        constants.OVN_FIP_EXT_ID_KEY)
-                    if (current_chassis != old_chassis or
-                            current_port_fip != old_port_fip):
-                        return True
+            old_port_fip = getattr(old, 'external_ids', {}).get(
+                constants.OVN_FIP_EXT_ID_KEY)
+            if old_port_fip == current_port_fip:
+                # Only if the floating ip has changed (for example from empty
+                # to something else) we need to process this update.
+                # If nothing else changed in the external_ids, we do not care
+                # as it would just cause unnecessary events during migrations.
+                # (see the docstring of this class)
+                return False
+
+            # Check if the current port_fip has not been exposed yet
+            return not self.agent.is_ip_exposed(self._get_network(row),
+                                                current_port_fip)
+
         except (IndexError, AttributeError):
             return False
-        return False
 
     def _run(self, event, row, old):
-        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
-                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
-            return
         external_ip, external_mac, ls_name = (
             self.agent.get_port_external_ip_and_ls(row.name))
         if not external_ip or not ls_name:
@@ -215,83 +215,86 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
 
 
 class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
+    '''Floating IP delete events based on the LogicalSwitchPort
+
+    The LSP has information about the host is should be exposed to, which
+    adds a bit of complexity in the event match, but saves a lot of queries
+    to the OVN NB DB.
+
+    Should trigger on:
+    - lsp deleted and bound on this host
+    - floating ip removed from a lsp (external_ids.neutron:port_fip
+                                      disappeared with information)
+    - port with floating ip attached was set to down (old.up = true and
+                                                      row.up = false)
+    - current floating ip is not the same as old floating ip
+    '''
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE, self.ROW_DELETE,)
         super(LogicalSwitchPortFIPDeleteEvent, self).__init__(
             bgp_agent, events)
 
     def match_fn(self, event, row, old):
+        '''Match port deletes or port downs or migrations or fip changes
+
+        1. [DELETE] Port has been deleted, and we're hosting it
+        2. [UPDATE] Port went down, withdraw if we announced it
+        3. [UPDATE] Floating IP has been disassociated (or re-associated
+                    with another floating ip)
+        4. [UPDATE] Port has been migrated away and we're hosting it
+        '''
+        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return
         try:
             # single and dual-stack format
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, chassis_location = self._get_chassis(row)
-            current_port_fip = row.external_ids.get(
-                constants.OVN_FIP_EXT_ID_KEY)
-            if event == self.ROW_DELETE:
-                if (current_chassis == self.agent.chassis and
-                        bool(row.up[0]) and current_port_fip):
-                    return True
+            current_port_fip = self._get_port_fip(row)
+            old_port_fip = self._get_port_fip(old)
+            if not current_port_fip and not old_port_fip:
+                # This port is not a floating ip update
                 return False
 
-            if hasattr(old, 'up'):
-                # check port status change
-                if not bool(old.up[0]):
-                    return False
-                # Assumes chassis and status are not changed at the same time
-                if (not bool(row.up[0]) and current_port_fip and
-                        current_chassis == self.agent.chassis):
-                    return True
+            logical_switch = self._get_network(row)
+            is_exposed = self.agent.is_ip_exposed(logical_switch,
+                                                  old_port_fip or
+                                                  current_port_fip)
+            if not is_exposed:
+                # already deleted or not exposed.
+                return False
 
-            # NOTE(ltomasbo): This can be updated/removed once neutron has
-            # chassis information on external ids
-            if chassis_location == constants.OVN_CHASSIS_AT_OPTIONS:
-                if hasattr(old, 'options'):
-                    # check chassis change
-                    old_chassis, _ = self._get_chassis(old)
-                    if (not old_chassis or old_chassis != self.agent.chassis):
-                        return False
-                    if current_chassis != old_chassis and current_port_fip:
-                        return True
-                # There was no change in chassis, so only progress if the
-                # chassis matches
-                if current_chassis != self.agent.chassis:
-                    return False
-                if hasattr(old, 'external_ids'):
-                    # check fips deletion
-                    old_port_fip = old.external_ids.get(
-                        constants.OVN_FIP_EXT_ID_KEY)
-                    if not old_port_fip:
-                        return False
-                    if old_port_fip != current_port_fip:
-                        return True
-            else:  # by default expect the chassis information at external-ids
-                if hasattr(old, 'external_ids'):
-                    # check chassis change
-                    old_chassis, _ = self._get_chassis(old)
-                    if (not old_chassis or old_chassis != self.agent.chassis):
-                        return False
-                    if current_chassis != old_chassis and current_port_fip:
-                        return True
-                    # check fips deletion
-                    old_port_fip = old.external_ids.get(
-                        constants.OVN_FIP_EXT_ID_KEY)
-                    if not old_port_fip:
-                        return False
-                    if old_port_fip != current_port_fip:
-                        return True
+            # From here on we know we are exposing a FIP (either old or
+            #                                             current)
+
+            if event == self.ROW_DELETE:
+                # Port is deleting
+                return True
+
+            if (hasattr(old, 'up') and bool(old.up[0]) and  # port was up
+                    not bool(row.up[0])):                   # is now down
+                return True
+
+            if old_port_fip is not None and current_port_fip != old_port_fip:
+                # fip has changed, we should remove the old one.
+                return True
+
+            # If we reach here, just check if host changed
+            current_chassis, _ = self._get_chassis(row)
+            return current_chassis != self.agent.chassis
+
         except (IndexError, AttributeError):
             return False
-        return False
 
     def _run(self, event, row, old):
-        if row.type not in [constants.OVN_VM_VIF_PORT_TYPE,
-                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
-            return
-        fip = row.external_ids.get(constants.OVN_FIP_EXT_ID_KEY)
+        # First check to remove the fip provided in old (since this might
+        # have been updated)
+        fip = self._get_port_fip(old)
         if not fip:
-            fip = old.external_ids.get(constants.OVN_FIP_EXT_ID_KEY)
+            # Remove the fip provided in the current row, probably a
+            # disassociate of the fip (or a down or a move)
+            fip = self._get_port_fip(row)
         if not fip:
             return
         with _SYNC_STATE_LOCK.read_lock():
