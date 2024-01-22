@@ -23,9 +23,8 @@ LOG = logging.getLogger(__name__)
 
 @ovn_bgp_agent.privileged.vtysh_cmd.entrypoint
 def run_vtysh_config(frr_config_file):
-    vtysh_command = "copy {} running-config".format(frr_config_file)
     full_args = ['/usr/bin/vtysh', '--vty_socket', constants.FRR_SOCKET_PATH,
-                 '-c', vtysh_command]
+                 '-f', frr_config_file]
     try:
         return processutils.execute(*full_args)
     except Exception as e:
