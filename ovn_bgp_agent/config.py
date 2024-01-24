@@ -34,6 +34,13 @@ agent_opts = [
                      'expose_ipv6_gua_tenant_networks flag and all tenant '
                      'network IPs will be exposed.',
                 default=False),
+    cfg.StrOpt('advertisement_method_tenant_networks',
+               help='The NB driver is capable of advertising the tenant '
+                    'networks either per host or per subnet. '
+                    'So either per /32 or /128 or per subnet like /24. '
+                    'Choose "host" as value for this option to advertise per '
+                    'host or choose "subnet" to announce per subnet prefix.',
+               default='host', choices=['host', 'subnet']),
     cfg.BoolOpt('expose_ipv6_gua_tenant_networks',
                 help='Expose only VM IPv6 IPs on tenant networks if they are '
                      'GUA. The expose_tenant_networks parameter takes '

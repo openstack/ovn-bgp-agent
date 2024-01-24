@@ -41,6 +41,10 @@ def ensure_base_bgp_configuration(template=frr.LEAK_VRF_TEMPLATE):
     # Create VRF
     linux_net.ensure_vrf(CONF.bgp_vrf, CONF.bgp_vrf_table_id)
 
+    # If we expose subnet routes, we should add kernel routes too.
+    if CONF.advertisement_method_tenant_networks == 'subnet':
+        frr.set_default_redistribute(['connected', 'kernel'])
+
     # Ensure FRR is configure to leak the routes
     frr.vrf_leak(CONF.bgp_vrf, CONF.bgp_AS, CONF.bgp_router_id,
                  template=template)

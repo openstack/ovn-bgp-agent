@@ -72,9 +72,9 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         self.ovs_idl.start(CONF.ovsdb_connection)
 
         # Base BGP configuration
-        # Ensure FRR is configured to leak the routes
-        bgp_utils.ensure_base_bgp_configuration(
-            template=frr.LEAK_VRF_KERNEL_TEMPLATE)
+        # Ensure FRR is configured to leak only kernel routes by default
+        frr.set_default_redistribute(['kernel'])
+        bgp_utils.ensure_base_bgp_configuration()
 
         # Clear vrf routing table
         if CONF.clear_vrf_routes_on_startup:
@@ -114,8 +114,7 @@ class OVNBGPStretchedL2Driver(driver_api.AgentDriverBase):
         LOG.debug("Ensuring VRF configuration for advertising routes")
         # Base BGP configuration
         # Ensure FRR is configured to leak the routes
-        bgp_utils.ensure_base_bgp_configuration(
-            template=frr.LEAK_VRF_KERNEL_TEMPLATE)
+        bgp_utils.ensure_base_bgp_configuration()
 
     @lockutils.synchronized("bgp")
     def sync(self):
