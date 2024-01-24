@@ -152,9 +152,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             events.update({watcher.ChassisRedirectCreateEvent(self),
                            watcher.ChassisRedirectDeleteEvent(self),
                            watcher.LogicalSwitchPortSubnetAttachEvent(self),
-                           watcher.LogicalSwitchPortSubnetDetachEvent(self),
-                           watcher.LogicalSwitchPortTenantCreateEvent(self),
-                           watcher.LogicalSwitchPortTenantDeleteEvent(self)})
+                           watcher.LogicalSwitchPortSubnetDetachEvent(self)})
+            if CONF.advertisement_method_tenant_networks == 'host':
+                events.update({
+                    watcher.LogicalSwitchPortTenantCreateEvent(self),
+                    watcher.LogicalSwitchPortTenantDeleteEvent(self)
+                })
         return events
 
     @lockutils.synchronized('nbbgp')
@@ -603,6 +606,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._withdraw_remote_ip(ips, ips_info)
 
     def _expose_remote_ip(self, ips, ips_info):
+        if CONF.advertisement_method_tenant_networks == 'subnet':
+            # Ip should already be exported via cr-lrp subnet announcement.
+            return
+
         ips_to_expose = ips
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
@@ -621,6 +628,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   ips_to_expose, self.chassis)
 
     def _withdraw_remote_ip(self, ips, ips_info):
+        if CONF.advertisement_method_tenant_networks == 'subnet':
+            return
+
         ips_to_withdraw = ips
         if not CONF.expose_tenant_networks:
             # This means CONF.expose_ipv6_gua_tenant_networks is enabled
@@ -665,6 +675,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "and they have not been properly exposed", ips)
             return
 
+        if CONF.advertisement_method_tenant_networks == 'subnet':
+            # Networks have been exposed via self._expose_router_lsp
+            return
+
         ports = self.nb_idl.get_active_lsp(subnet_info['network'])
         for port in ports:
             ips = port.addresses[0].split(' ')[1:]
@@ -695,6 +709,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return
 
         self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
+
+        if CONF.advertisement_method_tenant_networks == 'subnet':
+            # Expose the routes per prefix, rather than per port.
+            return
+
         ports = self.nb_idl.get_active_lsp(subnet_info['network'])
         for port in ports:
             ips = port.addresses[0].split(' ')[1:]
@@ -712,6 +731,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_router_lsp(self, ips, subnet_info, cr_lrp_info):
         if not self._expose_tenant_networks:
             return True
+
+        # Fix ips to be the network address, instead of the lrp address
+        # so the cleanup will not remove them, since they match what's
+        # in the kernel
+        ips = driver_utils.get_prefixes_from_ips(ips)
+
         success = True
         for ip in ips:
             if not CONF.expose_tenant_networks:
@@ -727,15 +752,15 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                         cr_lrp_info.get('bridge_device'),
                         cr_lrp_info.get('bridge_vlan'),
                         self.ovn_routing_tables, cr_lrp_info.get('ips')):
-                    self._exposed_ips.setdefault(
-                        subnet_info['associated_router'], {}).update(
+
+                    logical_switch = cr_lrp_info['provider_switch']
+                    self._exposed_ips.setdefault(logical_switch, {}).update(
                         {ip: {
                             'bridge_device': cr_lrp_info.get('bridge_device'),
                             'bridge_vlan': cr_lrp_info.get('bridge_vlan')}})
-                    if self.ovn_local_lrps.get(subnet_info['network']):
-                        self.ovn_local_lrps[subnet_info['network']].append(ip)
-                    else:
-                        self.ovn_local_lrps[subnet_info['network']] = [ip]
+
+                    self.ovn_local_lrps.setdefault(
+                        subnet_info['network'], []).append(ip)
                 else:
                     success = False
 
@@ -748,6 +773,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _withdraw_router_lsp(self, ips, subnet_info, cr_lrp_info):
         if not self._expose_tenant_networks:
             return
+
+        # Fix ips to be the network address, instead of the lrp address
+        # so the cleanup will not remove them, since they match what's
+        # in the kernel
+        ips = driver_utils.get_prefixes_from_ips(ips)
+
         for ip in ips:
             if (not CONF.expose_tenant_networks and
                     not driver_utils.is_ipv6_gua(ip)):
@@ -762,10 +793,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                         cr_lrp_info.get('bridge_device'),
                         cr_lrp_info.get('bridge_vlan'),
                         self.ovn_routing_tables, cr_lrp_info.get('ips')):
-                    if self._exposed_ips.get(
-                            subnet_info['associated_router'], {}).get(ip):
-                        self._exposed_ips[
-                            subnet_info['associated_router']].pop(ip)
+
+                    logical_switch = cr_lrp_info['provider_switch']
+                    self._exposed_ips.get(logical_switch, {}).pop(ip, None)
                 else:
                     return False
             except Exception as e:
