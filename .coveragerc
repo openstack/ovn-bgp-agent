@@ -1,6 +1,9 @@
 [run]
 branch = True
 source = ovn_bgp_agent
+omit = ovn_bgp_agent/tests/*,
+       ovn_bgp_agent/privileged/linux_net.py,
+       ovn_bgp_agent/utils/linux_net.py
 
 [report]
 ignore_errors = True
