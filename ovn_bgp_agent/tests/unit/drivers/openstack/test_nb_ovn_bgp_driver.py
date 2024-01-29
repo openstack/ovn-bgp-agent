@@ -975,6 +975,87 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.nb_idl.get_active_lsp.assert_not_called()
         mock_expose_remote_ip.assert_not_called()
 
+    def _test_expose_subnet_require_snat_disabled(self,
+                                                  partial_continue=False):
+        CONF.set_override('require_snat_disabled_for_tenant_networks', True)
+        self.addCleanup(CONF.clear_override,
+                        'require_snat_disabled_for_tenant_networks')
+
+        ips = ['10.0.0.1/24']
+        if partial_continue:
+            ips.append(self.ipv6 + '/64')
+
+        subnet_info = {
+            'associated_router': 'router1',
+            'network': 'network1',
+            'address_scopes': {4: None, 6: None}}
+        mock_expose_router_lsp = mock.patch.object(
+            self.nb_bgp_driver, '_expose_router_lsp').start()
+        mock_expose_remote_ip = mock.patch.object(
+            self.nb_bgp_driver, '_expose_remote_ip').start()
+
+        router = utils.create_row(
+            nat=[utils.create_row(
+                type=constants.OVN_SNAT,
+                logical_ip='10.0.0.0/24',
+            )],
+        )
+        self.nb_idl.get_router.return_value = router
+
+        self.nb_bgp_driver.expose_subnet(ips, subnet_info)
+
+        gateway_router = subnet_info['associated_router']
+        self.nb_idl.get_router.assert_called_once_with(gateway_router)
+
+        if not partial_continue:
+            self.nb_idl.get_active_lsp.assert_not_called()
+            mock_expose_remote_ip.assert_not_called()
+            mock_expose_router_lsp.assert_not_called()
+        else:
+            # partial continue scenario is when SNAT is not enabled for the
+            # router, so only the ipv6 should match
+            mock_expose_router_lsp.assert_called_once_with(
+                [self.ipv6 + '/64'], subnet_info, self.router1_info)
+
+            ips_info0 = {'mac': 'mac',
+                         'cidrs': ['192.168.0.5/24'],
+                         'type': constants.OVN_VM_VIF_PORT_TYPE,
+                         'logical_switch': 'network1'}
+            ips_info1 = {'mac': 'mac',
+                         'cidrs': ['192.168.0.6/24'],
+                         'type': constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+                         'logical_switch': 'network1'}
+            expected_calls = [mock.call(['192.168.0.5'], ips_info0),
+                              mock.call(['192.168.0.6'], ips_info1)]
+            mock_expose_remote_ip.assert_has_calls(expected_calls)
+
+    def test_expose_subnet_require_snat_disabled(self):
+        self._test_expose_subnet_require_snat_disabled(
+            partial_continue=False,
+        )
+
+    def test_expose_subnet_require_snat_disabled_partial_continue(self):
+        # Setup get_active_lsp for partial_continue scenario
+        port0 = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.5'],
+            external_ids={
+                constants.OVN_CIDRS_EXT_ID_KEY: "192.168.0.5/24",
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1'
+            })
+        port1 = utils.create_row(
+            type=constants.OVN_VIRTUAL_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.6'],
+            external_ids={
+                constants.OVN_CIDRS_EXT_ID_KEY: "192.168.0.6/24",
+                constants.OVN_LS_NAME_EXT_ID_KEY: 'network1'
+            })
+        self.nb_idl.get_active_lsp.return_value = [port0, port1]
+
+        self._test_expose_subnet_require_snat_disabled(
+            partial_continue=True,
+        )
+
     def test_withdraw_subnet(self):
         ips = ['10.0.0.1/24']
         subnet_info = {

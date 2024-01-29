@@ -509,6 +509,10 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
     def static_mac_binding_del(self, port, ip, if_exists=False):
         return StaticMACBindingDelCommand(self, port, ip, if_exists)
 
+    def get_router(self, router):
+        router_name = 'neutron-' + router
+        return self.lr_get(router_name).execute(check_error=True)
+
 
 class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
     def __init__(self, connection):
