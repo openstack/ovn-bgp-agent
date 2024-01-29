@@ -562,6 +562,14 @@ class TestChassisRedirectCreateEvent(test_base.TestCase):
                                status={'hosting-chassis': 'other_chassis'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, mock.Mock()))
 
+    def test_match_fn_no_networks(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=[],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        self.assertFalse(self.event.match_fn(None, row, None))
+
     def test_run(self):
         row = utils.create_row(
             mac='fake-mac',
@@ -575,15 +583,6 @@ class TestChassisRedirectCreateEvent(test_base.TestCase):
                     'router': None}
         self.event.run(None, row, None)
         self.agent.expose_ip.assert_called_once_with(['192.168.0.2'], ips_info)
-
-    def test_run_no_networks(self):
-        row = utils.create_row(
-            mac='fake-mac',
-            networks=[],
-            status={'hosting-chassis': self.chassis_id},
-            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
-        self.event.run(None, row, None)
-        self.agent.expose_ip.assert_not_called()
 
 
 class TestChassisRedirectDeleteEvent(test_base.TestCase):
@@ -635,6 +634,14 @@ class TestChassisRedirectDeleteEvent(test_base.TestCase):
                                status={'hosting-chassis': 'different_chassis'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
+    def test_match_fn_no_networks(self):
+        row = utils.create_row(
+            mac='fake-mac',
+            networks=[],
+            status={'hosting-chassis': self.chassis_id},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
+        self.assertFalse(self.event.match_fn(None, row, None))
+
     def test_run(self):
         row = utils.create_row(
             mac='fake-mac',
@@ -649,15 +656,6 @@ class TestChassisRedirectDeleteEvent(test_base.TestCase):
         self.event.run(None, row, None)
         self.agent.withdraw_ip.assert_called_once_with(['192.168.0.2'],
                                                        ips_info)
-
-    def test_run_no_networks(self):
-        row = utils.create_row(
-            mac='fake-mac',
-            networks=[],
-            status={'hosting-chassis': self.chassis_id},
-            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-ls'})
-        self.event.run(None, row, None)
-        self.agent.withdraw_ip.assert_not_called()
 
 
 class TestLogicalSwitchPortSubnetAttachEvent(test_base.TestCase):
