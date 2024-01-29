@@ -295,6 +295,36 @@ To accomplish the network configuration and advertisement, the driver ensures:
 .. include:: ../bgp_advertising.rst
 
 
+Traffic flow from tenant networks
++++++++++++++++++++++++++++++++++
+
+By default neutron enables SNAT on routers (because that is typically
+what you'd use the routers for). This has some side effects that might not
+be all that convenient; for one, all connections initiated from VMs in
+tenant networks will be externally identified with the IP of the cr-lrp.
+
+The VMs in the tenant networks are reachable through their own ip and
+return traffic will flow as expected as well, but it is just not really
+what one would expect.
+
+To prevent tenant networks from being exposed if SNAT is enabled, one can set
+the configuration option ``require_snat_disabled_for_tenant_networks`` to ``True``
+
+This will check if the cr-lrp has SNAT disabled for that subnet, and prevent
+announcement of those tenant networks.
+
+.. note::
+  Neutron will add IPv6 subnets are without NAT, so even though the IPv4 of
+  those tenant networks might have NAT enabled, the IPv6 subnet might still
+  be exposed, as this has no NAT enabled.
+
+To disable the SNAT on a neutron router, one could simply run this command:
+
+.. code-block:: ini
+
+  $ openstack router set --disable-snat --external-gateway <provider_network> <router>
+
+
 .. include:: ../bgp_traffic_redirection.rst
 
 

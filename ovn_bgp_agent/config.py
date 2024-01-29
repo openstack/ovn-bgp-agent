@@ -45,6 +45,15 @@ agent_opts = [
                default=constants.ADVERTISEMENT_METHOD_HOST,
                choices=[constants.ADVERTISEMENT_METHOD_HOST,
                         constants.ADVERTISEMENT_METHOD_SUBNET]),
+    cfg.BoolOpt('require_snat_disabled_for_tenant_networks',
+                help='Require SNAT on the router port to be disabled before '
+                     'exposing the tenant networks. Otherwise the exposed '
+                     'tenant networks will be reachable from the outside, but'
+                     'the connections set up from within the tenant vm will '
+                     'always be SNAT-ed by the router, thus be the router ip. '
+                     'When SNAT is disabled, OVN will do pure routing without '
+                     'SNAT',
+                default=False),
     cfg.BoolOpt('expose_ipv6_gua_tenant_networks',
                 help='Expose only VM IPv6 IPs on tenant networks if they are '
                      'GUA. The expose_tenant_networks parameter takes '

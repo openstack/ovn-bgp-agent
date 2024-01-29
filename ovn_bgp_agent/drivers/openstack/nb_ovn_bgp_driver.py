@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import collections
+import ipaddress
 import threading
 
 from oslo_concurrency import lockutils
@@ -35,7 +36,7 @@ LOG = logging.getLogger(__name__)
 # LOG.setLevel(logging.DEBUG)
 # logging.basicConfig(level=logging.DEBUG)
 
-OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch',
+OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch', 'Logical_Router',
               'Logical_Router_Port', 'Load_Balancer']
 LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
                             'Logical_Router', 'Logical_Router_Port',
@@ -685,6 +686,30 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Subnet CIDRs %s not exposed as there is no local "
                       "cr-lrp matching %s", ips, gateway_router)
             return
+
+        if CONF.require_snat_disabled_for_tenant_networks:
+            # Check if there is a SNAT entry for this LRP
+            router = self.nb_idl.get_router(gateway_router)
+
+            ips_without_snat = set(ips)
+            for nat in router.nat:
+                if nat.type == constants.OVN_SNAT:
+                    net = ipaddress.ip_network(nat.logical_ip, strict=False)
+                    for ip in list(ips_without_snat):
+                        if ipaddress.ip_address(ip.split('/')[0]) in net:
+                            ips_without_snat.discard(ip)
+
+            if len(ips_without_snat) == 0:
+                LOG.info('All ips (%s) were removed due to SNAT requirement '
+                         'when exposing subnet %s for router %s', ips,
+                         subnet_info['network'], gateway_router)
+                return
+
+            if len(set(ips)) != len(ips_without_snat):
+                LOG.info('When exposing subnet %s for router %s, these ips '
+                         'were removed for SNAT: %s', subnet_info['network'],
+                         gateway_router, set(ips) - ips_without_snat)
+                ips = list(ips_without_snat)
 
         if not self._expose_router_lsp(ips, subnet_info, cr_lrp_info):
             LOG.debug("Something happen while exposing the Subnet CIRDs %s "

@@ -23,6 +23,7 @@ OVN_PATCH_VIF_PORT_TYPE = "patch"
 OVN_ROUTER_PORT_TYPE = "router"
 OVN_CHASSISREDIRECT_VIF_PORT_TYPE = "chassisredirect"
 OVN_LOCALNET_VIF_PORT_TYPE = "localnet"
+OVN_SNAT = "snat"
 OVN_DNAT_AND_SNAT = "dnat_and_snat"
 OVN_CR_LRP_PORT_TYPE = 'crlrp'
 OVN_ROUTER_INTERFACE = 'network:router_interface'
