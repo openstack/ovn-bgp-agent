@@ -106,3 +106,12 @@ class LRPChassisEvent(Event):
             return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
         except (AttributeError, KeyError):
             return
+
+    def _get_ips_info(self, row):
+        return {
+            'mac': row.mac,
+            'cidrs': row.networks,
+            'type': constants.OVN_CR_LRP_PORT_TYPE,
+            'logical_switch': self._get_network(row),
+            'router': row.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY),
+        }
