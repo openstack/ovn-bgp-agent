@@ -59,7 +59,13 @@ class TestOVNLBEvent(test_base.TestCase):
     def test__get_router(self):
         row = utils.create_row(
             external_ids={constants.OVN_LB_LR_REF_EXT_ID_KEY: 'neutron-net'})
+        self.assertEqual('net', self.ovnlb_event._get_router(
+            row, constants.OVN_LB_LR_REF_EXT_ID_KEY))
         self.assertEqual('net', self.ovnlb_event._get_router(row))
+        row = utils.create_row(
+            external_ids={constants.OVN_LR_NAME_EXT_ID_KEY: 'neutron-router1'})
+        self.assertEqual('router1', self.ovnlb_event._get_router(
+            row, constants.OVN_LR_NAME_EXT_ID_KEY))
         row = utils.create_row(external_ids={})
         self.assertEqual(None, self.ovnlb_event._get_router(row))
 

@@ -38,3 +38,14 @@ def get_addr_scopes(port):
         constants.IP_VERSION_6: port.external_ids.get(
             constants.SUBNET_POOL_ADDR_SCOPE6),
         }
+
+
+def check_name_prefix(entity, prefix):
+    try:
+        return entity.name.startswith(prefix)
+    except AttributeError:
+        return False
+
+
+def is_pf_lb(lb):
+    return check_name_prefix(lb, constants.OVN_LB_PF_NAME_PREFIX)

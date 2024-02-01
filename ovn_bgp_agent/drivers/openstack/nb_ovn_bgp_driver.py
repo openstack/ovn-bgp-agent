@@ -145,7 +145,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   watcher.LogicalSwitchPortFIPDeleteEvent(self),
                   watcher.LocalnetCreateDeleteEvent(self),
                   watcher.OVNLBCreateEvent(self),
-                  watcher.OVNLBDeleteEvent(self)}
+                  watcher.OVNLBDeleteEvent(self),
+                  watcher.OVNPFCreateEvent(self),
+                  watcher.OVNPFDeleteEvent(self)}
         if self._expose_tenant_networks:
             events.update({watcher.ChassisRedirectCreateEvent(self),
                            watcher.ChassisRedirectDeleteEvent(self),
@@ -332,18 +334,24 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _expose_lbs(self, router_list):
         lbs = self.nb_idl.get_active_local_lbs(router_list)
         for lb in lbs:
-            self._expose_ovn_lb_vip(lb)
-            # if vip-fip expose fip too
-            if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
-                self._expose_ovn_lb_fip(lb)
+            if driver_utils.is_pf_lb(lb):
+                self._expose_ovn_pf_lb_fip(lb)
+            else:
+                self._expose_ovn_lb_vip(lb)
+                # if vip-fip expose fip too
+                if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
+                    self._expose_ovn_lb_fip(lb)
 
     def _withdraw_lbs(self, router_list):
         lbs = self.nb_idl.get_active_local_lbs(router_list)
         for lb in lbs:
-            self._withdraw_ovn_lb_vip(lb)
-            # if vip-fip withdraw fip too
-            if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
-                self._withdraw_ovn_lb_fip(lb)
+            if driver_utils.is_pf_lb(lb):
+                self._withdraw_ovn_pf_lb_fip(lb)
+            else:
+                self._withdraw_ovn_lb_vip(lb)
+                # if vip-fip withdraw fip too
+                if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
+                    self._withdraw_ovn_lb_fip(lb)
 
     @lockutils.synchronized('nbbgp')
     def expose_ip(self, ips, ips_info):
@@ -840,6 +848,50 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       vip_port)
             return
         self._expose_fip(external_ip, external_mac, ls_name, vip_lsp)
+
+    def _get_parameters_from_lb(self, lb, include_mac_and_localnet=False):
+        for fipport in lb.vips.keys():
+            fip, port = fipport.split(':')
+            break
+        else:
+            return
+
+        router = lb.external_ids.get(
+            constants.OVN_LR_NAME_EXT_ID_KEY, '').replace('neutron-', "", 1)
+        if not router:
+            return
+        cr_lrp_info = self.ovn_local_cr_lrps.get(router)
+        if not cr_lrp_info:
+            return
+        net, bridge_device, bridge_vlan = self._get_ls_localnet_info(
+            cr_lrp_info['provider_switch'])
+        kwargs = {
+            'port_ips': [fip],
+            'logical_switch': cr_lrp_info['provider_switch'],
+            'bridge_device': bridge_device,
+            'bridge_vlan': bridge_vlan}
+
+        if include_mac_and_localnet:
+            kwargs['mac'] = None
+            kwargs['localnet'] = net
+
+        return kwargs
+
+    @lockutils.synchronized('nbbgp')
+    def expose_ovn_pf_lb_fip(self, lb):
+        self._expose_ovn_pf_lb_fip(lb)
+
+    @lockutils.synchronized('nbbgp')
+    def withdraw_ovn_pf_lb_fip(self, lb):
+        self._withdraw_ovn_pf_lb_fip(lb)
+
+    def _withdraw_ovn_pf_lb_fip(self, lb):
+        kwargs = self._get_parameters_from_lb(lb)
+        self._withdraw_provider_port(**kwargs) if kwargs else None
+
+    def _expose_ovn_pf_lb_fip(self, lb):
+        kwargs = self._get_parameters_from_lb(lb, True)
+        self._expose_provider_port(**kwargs) if kwargs else None
 
     @lockutils.synchronized('nbbgp')
     def withdraw_ovn_lb_fip(self, lb):
