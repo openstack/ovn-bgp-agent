@@ -25,6 +25,7 @@ from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
+from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests.unit import fakes
 from ovn_bgp_agent.tests import utils
@@ -43,6 +44,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.nb_bgp_driver = nb_ovn_bgp_driver.NBOVNBGPDriver()
         self.nb_bgp_driver._post_start_event = mock.Mock()
         self.nb_bgp_driver.nb_idl = mock.Mock()
+        self.nb_bgp_driver.allowed_address_scopes = None
         self.nb_idl = self.nb_bgp_driver.nb_idl
         self.nb_bgp_driver.chassis = 'fake-chassis'
         self.nb_bgp_driver.chassis_id = 'fake-chassis-id'
@@ -1175,10 +1177,10 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
-        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
-                                                    self.router1_info)
+        self.assertRaises(exceptions.WireFailure,
+                          self.nb_bgp_driver._expose_router_lsp,
+                          ips, subnet_info, self.router1_info)
 
-        self.assertFalse(ret)
         mock_wire.assert_called_once_with(
             mock.ANY, '10.0.0.0/24', self.router1_info['bridge_device'],
             self.router1_info['bridge_vlan'], mock.ANY,
@@ -1281,10 +1283,10 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
-        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
-                                                      self.router1_info)
+        self.assertRaises(
+            exceptions.UnwireFailure, self.nb_bgp_driver._withdraw_router_lsp,
+            ips, subnet_info, self.router1_info)
 
-        self.assertFalse(ret)
         mock_unwire.assert_called_once_with(
             mock.ANY, '10.0.0.0/24', self.router1_info['bridge_device'],
             self.router1_info['bridge_vlan'], mock.ANY,
@@ -1339,6 +1341,59 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             mock.ANY, '2002::/64', self.router1_info['bridge_device'],
             self.router1_info['bridge_vlan'], mock.ANY,
             self.router1_info['ips'])
+
+    def test__ips_in_address_scope(self):
+        subnet_pool_addr_scope4 = '88e8aec3-da29-402d-becf-9fa2c38e69b8'
+        subnet_pool_addr_scope6 = 'b7834aeb-2aa2-40ac-a8b5-2cded713cb58'
+        _scopes = {
+            constants.IP_VERSION_4: subnet_pool_addr_scope4,
+            constants.IP_VERSION_6: subnet_pool_addr_scope6,
+        }
+
+        self.nb_bgp_driver.allowed_address_scopes = [subnet_pool_addr_scope4]
+
+        ips = ['10.0.0.1/24', '2002::1/64']
+
+        # Allowed address scope is v4, so v6 should be removed.
+        ret = self.nb_bgp_driver._ips_in_address_scope(ips, _scopes)
+        self.assertListEqual(ret, ['10.0.0.1/24'])
+
+    def test__address_scope_allowed(self):
+        subnet_pool_addr_scope4 = '88e8aec3-da29-402d-becf-9fa2c38e69b8'
+        subnet_pool_addr_scope6 = 'b7834aeb-2aa2-40ac-a8b5-2cded713cb58'
+        _scopes = {
+            constants.IP_VERSION_4: subnet_pool_addr_scope4,
+            constants.IP_VERSION_6: subnet_pool_addr_scope6,
+        }
+
+        # Configure ipv4 scope to be allowed
+        self.nb_bgp_driver.allowed_address_scopes = [subnet_pool_addr_scope4]
+
+        # Check if ipv4 address with correct scope matches
+        self.assertTrue(self.nb_bgp_driver._address_scope_allowed(self.ipv4,
+                                                                  _scopes))
+
+    def test__address_scope_allowed_not_configured(self):
+        # Check not configured (should always return True)
+        self.assertTrue(self.nb_bgp_driver._address_scope_allowed(self.ipv4,
+                                                                  {}))
+
+    def test__address_scope_allowed_no_match(self):
+        subnet_pool_addr_scope4 = '88e8aec3-da29-402d-becf-9fa2c38e69b8'
+        subnet_pool_addr_scope6 = 'b7834aeb-2aa2-40ac-a8b5-2cded713cb58'
+        _scopes = {
+            constants.IP_VERSION_4: subnet_pool_addr_scope4,
+            constants.IP_VERSION_6: subnet_pool_addr_scope6,
+        }
+
+        self.nb_bgp_driver.allowed_address_scopes = [subnet_pool_addr_scope4]
+
+        # Make sure ipv6 address with scope not in list fails
+        self.assertFalse(self.nb_bgp_driver._address_scope_allowed(self.ipv6,
+                                                                   _scopes))
+        # Check IPv4 address without scope given, should fail
+        self.assertFalse(self.nb_bgp_driver._address_scope_allowed(self.ipv4,
+                                                                   {}))
 
     def test_expose_ovn_lb_vip_tenant(self):
         self.nb_bgp_driver.ovn_local_lrps = {'net1': ['ip1']}

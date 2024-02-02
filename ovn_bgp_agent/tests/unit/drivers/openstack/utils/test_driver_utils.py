@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils
@@ -27,6 +28,45 @@ class TestDriverUtils(test_base.TestCase):
         self.assertFalse(driver_utils.is_ipv6_gua('1.1.1.1'))
         self.assertFalse(driver_utils.is_ipv6_gua('fe80::1337'))
         self.assertTrue(driver_utils.is_ipv6_gua('2a01:db8::1337'))
+
+    def test_get_addr_scopes(self):
+        subnet_pool_addr_scope4 = '88e8aec3-da29-402d-becf-9fa2c38e69b8'
+        subnet_pool_addr_scope6 = 'b7834aeb-2aa2-40ac-a8b5-2cded713cb58'
+
+        # Both address pools set
+        port = utils.create_row(external_ids={
+            constants.SUBNET_POOL_ADDR_SCOPE4: subnet_pool_addr_scope4,
+            constants.SUBNET_POOL_ADDR_SCOPE6: subnet_pool_addr_scope6,
+        })
+        self.assertDictEqual(driver_utils.get_addr_scopes(port), {
+            constants.IP_VERSION_4: subnet_pool_addr_scope4,
+            constants.IP_VERSION_6: subnet_pool_addr_scope6,
+        })
+
+        # Only IPv4
+        port = utils.create_row(external_ids={
+            constants.SUBNET_POOL_ADDR_SCOPE4: subnet_pool_addr_scope4,
+        })
+        self.assertDictEqual(driver_utils.get_addr_scopes(port), {
+            constants.IP_VERSION_4: subnet_pool_addr_scope4,
+            constants.IP_VERSION_6: None,
+        })
+
+        # Only IPv6
+        port = utils.create_row(external_ids={
+            constants.SUBNET_POOL_ADDR_SCOPE6: subnet_pool_addr_scope6,
+        })
+        self.assertDictEqual(driver_utils.get_addr_scopes(port), {
+            constants.IP_VERSION_4: None,
+            constants.IP_VERSION_6: subnet_pool_addr_scope6,
+        })
+
+        # No Address pools
+        port = utils.create_row(external_ids={})
+        self.assertDictEqual(driver_utils.get_addr_scopes(port), {
+            constants.IP_VERSION_4: None,
+            constants.IP_VERSION_6: None,
+        })
 
     def test_check_name_prefix(self):
         lb = utils.create_row(name='some-name')
