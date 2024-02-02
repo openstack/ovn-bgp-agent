@@ -922,7 +922,7 @@ class TestOVNLBMemberCreateEvent(test_base.TestCase):
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapath_group=[dpg1],
+                               ls_datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.agent.ovn_local_cr_lrps = {
             'cr-lrp1': {'provider_datapath': 'dp1',
@@ -945,7 +945,7 @@ class TestOVNLBMemberCreateEvent(test_base.TestCase):
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapath_group=[dpg1],
+                               lr_datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         self.agent.sb_idl.get_ovn_vip_port.return_value = []
         self.event.run(self.event.ROW_CREATE, row, mock.Mock())
@@ -973,7 +973,7 @@ class TestOVNLBMemberCreateEvent(test_base.TestCase):
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp2'])
         row = utils.create_row(name='ovn-lb1',
-                               datapath_group=[dpg1],
+                               ls_datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         vip_port = utils.create_row(
             datapath='dp1',
@@ -990,7 +990,7 @@ class TestOVNLBMemberCreateEvent(test_base.TestCase):
         dpg1 = utils.create_row(_uuid='fake_dp_group',
                                 datapaths=['s_dp1'])
         row = utils.create_row(name='ovn-lb1',
-                               datapath_group=[dpg1],
+                               lr_datapath_group=[dpg1],
                                vips={'172.24.100.66:80': '10.0.0.5:8080'})
         vip_port = utils.create_row(
             datapath='dp1',
