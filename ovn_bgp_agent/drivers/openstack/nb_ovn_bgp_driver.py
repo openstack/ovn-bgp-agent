@@ -28,6 +28,7 @@ from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
 from ovn_bgp_agent.drivers.openstack.watchers import nb_bgp_watcher as watcher
+from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.utils import linux_net
 
 
@@ -48,8 +49,6 @@ LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
 class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
     def __init__(self):
-        self._expose_tenant_networks = (CONF.expose_tenant_networks or
-                                        CONF.expose_ipv6_gua_tenant_networks)
         self.allowed_address_scopes = set(CONF.address_scopes or [])
 
         self._init_vars()
@@ -57,6 +56,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._nb_idl = None
         self._local_nb_idl = None
         self._post_start_event = threading.Event()
+
+    @property
+    def _expose_tenant_networks(self):
+        return (CONF.expose_tenant_networks or
+                CONF.expose_ipv6_gua_tenant_networks)
 
     @property
     def nb_idl(self) -> ovn.OvsdbNbOvnIdl:
@@ -169,8 +173,6 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
     @lockutils.synchronized('nbbgp')
     def sync(self):
-        self._expose_tenant_networks = (CONF.expose_tenant_networks or
-                                        CONF.expose_ipv6_gua_tenant_networks)
         self._init_vars()
 
         LOG.debug("Configuring default wiring for each provider network")
@@ -711,9 +713,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                          gateway_router, set(ips) - ips_without_snat)
                 ips = list(ips_without_snat)
 
-        if not self._expose_router_lsp(ips, subnet_info, cr_lrp_info):
-            LOG.debug("Something happen while exposing the Subnet CIRDs %s "
-                      "and they have not been properly exposed", ips)
+        try:
+            self._expose_router_lsp(ips, subnet_info, cr_lrp_info)
+        except (exceptions.ExposeDeniedForAddressScope,
+                exceptions.WireFailure) as e:
+            LOG.debug("Not exposing subnet CIDR's %s: %s", ips, e)
             return
 
         if (CONF.advertisement_method_tenant_networks ==
@@ -723,7 +727,15 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         ports = self.nb_idl.get_active_lsp(subnet_info['network'])
         for port in ports:
-            ips = port.addresses[0].split(' ')[1:]
+            # Check if the ip's on this port match the address scope. As the
+            # port can be dual-stack, it could be that v4 is not allowed, but
+            # v6 is allowed, so then only v6 address should be exposed.
+            ips = self._ips_in_address_scope(port.addresses[0].split(' ')[1:],
+                                             subnet_info['address_scopes'])
+            if not ips:
+                # All ip's have been removed due to address scope requirement
+                continue
+
             mac = port.addresses[0].strip().split(' ')[0]
             ips_info = {
                 'mac': mac,
@@ -750,7 +762,13 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "cr-lrp matching %s", ips, gateway_router)
             return
 
-        self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
+        try:
+            self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
+        except (exceptions.ExposeDeniedForAddressScope,
+                exceptions.UnwireFailure) as e:
+            # Log a message, but silently continue, to make sure we have
+            # it all withdrawn
+            LOG.debug("Withdraw router lsp failure for CIDR's %s: %s", ips, e)
 
         if (CONF.advertisement_method_tenant_networks ==
                 constants.ADVERTISEMENT_METHOD_SUBNET):
@@ -772,6 +790,15 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             self._withdraw_remote_ip(ips, ips_info)
 
     def _expose_router_lsp(self, ips, subnet_info, cr_lrp_info):
+        '''Expose the tenant router ip address (cidr) for given router
+
+        Will raise WireException if wire_lrp_port raises an exception or
+        if it returns False
+
+        Will raise ExposeDeniedForAddressScope if configured address scopes
+        do not match the ones in configuration (if configured)
+        (and execution should stop)
+        '''
         if not self._expose_tenant_networks:
             return True
 
@@ -782,15 +809,31 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # in the kernel
             ips = driver_utils.get_prefixes_from_ips(ips)
 
-        success = True
+        ips_to_process = []
         for ip in ips:
             if not CONF.expose_tenant_networks:
                 # This means CONF.expose_ipv6_gua_tenant_networks is enabled
                 if not driver_utils.is_ipv6_gua(ip):
                     continue
-            if not self._address_scope_allowed(ip,
-                                               subnet_info['address_scopes']):
-                continue
+
+            ips_to_process.append(ip)
+
+        if not ips_to_process:
+            # Silently return, since there are no ip's left to process and
+            # the address_scope has nothing to do with it.
+            return True
+
+        ips = self._ips_in_address_scope(ips_to_process,
+                                         subnet_info['address_scopes'])
+        if not ips:
+            # All ip's failed address scope test, so stop processing this lsp
+            raise exceptions.ExposeDeniedForAddressScope(
+                addresses=','.join(ips_to_process),
+                address_scopes=subnet_info['address_scopes'],
+                configured_scopes=self.allowed_address_scopes,
+            )
+
+        for ip in ips:
             try:
                 if wire_utils.wire_lrp_port(
                         self.ovn_routing_tables_routes, ip,
@@ -807,17 +850,27 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     self.ovn_local_lrps.setdefault(
                         subnet_info['network'], []).append(ip)
                 else:
-                    success = False
+                    error_msg = ("Something happen while exposing the subnet"
+                                 "and they have not been properly exposed")
+                    raise exceptions.WireFailure(cidr=ip, message=error_msg)
 
             except Exception as e:
-                LOG.exception("Unexpected exception while wiring subnet CIDRs"
-                              " %s: %s", ip, e)
-                success = False
-        return success
+                raise exceptions.WireFailure(cidr=ip, message=str(e)) from e
+
+        return True
 
     def _withdraw_router_lsp(self, ips, subnet_info, cr_lrp_info):
+        '''Withdraw the tenant router ip address (cidr) for given router
+
+        Will raise UnwireException if wire_lrp_port raises an exception or
+        if it returns False
+
+        Will raise ExposeDeniedForAddressScope if configured address scopes
+        do not match the ones in configuration (if configured)
+        (and execution should stop)
+        '''
         if not self._expose_tenant_networks:
-            return
+            return True
 
         if (CONF.advertisement_method_tenant_networks ==
                 constants.ADVERTISEMENT_METHOD_SUBNET):
@@ -826,14 +879,31 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # in the kernel
             ips = driver_utils.get_prefixes_from_ips(ips)
 
+        ips_to_process = []
         for ip in ips:
             if (not CONF.expose_tenant_networks and
                     not driver_utils.is_ipv6_gua(ip)):
                 # This means CONF.expose_ipv6_gua_tenant_networks is enabled
                 continue
-            if not self._address_scope_allowed(ip,
-                                               subnet_info['address_scopes']):
-                continue
+
+            ips_to_process.append(ip)
+
+        if not ips_to_process:
+            # Silently return, since there are no ip's left to process and
+            # the address_scope has nothing to do with it.
+            return True
+
+        ips = self._ips_in_address_scope(ips_to_process,
+                                         subnet_info['address_scopes'])
+        if not ips:
+            # All ip's failed address scope test, so stop processing this lsp
+            raise exceptions.ExposeDeniedForAddressScope(
+                addresses=','.join(ips_to_process),
+                address_scopes=subnet_info['address_scopes'],
+                configured_scopes=self.allowed_address_scopes,
+            )
+
+        for ip in ips:
             try:
                 if wire_utils.unwire_lrp_port(
                         self.ovn_routing_tables_routes, ip,
@@ -844,16 +914,18 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     logical_switch = cr_lrp_info['provider_switch']
                     self._exposed_ips.get(logical_switch, {}).pop(ip, None)
                 else:
-                    return False
+                    error_msg = ("Something happened while withdrawing subnet"
+                                 "and they have not been properly removed")
+                    raise exceptions.UnwireFailure(cidr=ip, message=error_msg)
             except Exception as e:
-                LOG.exception("Unexpected exception while unwiring subnet "
-                              "CIDRs %s: %s", ip, e)
-                return False
+                raise exceptions.UnwireFailure(cidr=ip, message=str(e)) from e
+
         try:
             del self.ovn_local_lrps[subnet_info['network']]
         except KeyError:
             # Router port for subnet already cleanup
             pass
+
         return True
 
     @lockutils.synchronized('nbbgp')
@@ -988,6 +1060,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                                      cr_lrp_info['provider_switch'],
                                      cr_lrp_info['bridge_device'],
                                      cr_lrp_info['bridge_vlan'])
+
+    def _ips_in_address_scope(self, ips, address_scopes):
+        return [ip
+                for ip in ips
+                if self._address_scope_allowed(ip, address_scopes)]
 
     def _address_scope_allowed(self, ip, address_scopes):
         if not self.allowed_address_scopes:
