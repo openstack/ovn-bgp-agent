@@ -24,8 +24,8 @@ it is common to use pure Layer 3 spine and leaf network deployments in data
 centers. The benefits of this practice reduce scaling complexities,
 failure domains, and broadcast traffic limits.
 
-The southbound OVN BGP agent is a Python-based daemon that runs on each
-OpenStack Controller and Compute node.
+The Southbound driver for OVN BGP Agent is a Python-based daemon that runs on
+each OpenStack Controller and Compute node.
 The agent monitors the Open Virtual Network (OVN) southbound database
 for certain VM and floating IP (FIP) events.
 When these events occur, the agent notifies the FRR BGP daemon (bgpd)
@@ -137,11 +137,11 @@ watched for BGP use as the base (inherit from).
 The BGP watcher reacts to the following events:
 
 - ``PortBindingChassisCreatedEvent``: Detects when a port of type
-  ``""`` (empty double-qoutes), ``virtual``, or ``chassisredirect`` gets
+  ``""`` (empty double-quotes), ``virtual``, or ``chassisredirect`` gets
   attached to the OVN chassis where the agent is running. This is the case for
   VM or amphora LB ports on the provider networks, VM or amphora LB ports on
   tenant networks with a FIP associated, and neutron gateway router ports
-  (CR-LRPs). It calls ``expose_ip`` driver method to perform the needed
+  (cr-lrps). It calls ``expose_ip`` driver method to perform the needed
   actions to expose it.
 
 - ``PortBindingChassisDeletedEvent``: Detects when a port of type
@@ -149,7 +149,7 @@ The BGP watcher reacts to the following events:
   detached from the OVN chassis where the agent is running. This is the case
   for VM or amphora LB ports on the provider networks, VM or amphora LB ports
   on tenant networks with a FIP associated, and neutron gateway router ports
-  (CR-LRPs). It calls ``withdraw_ip`` driver method to perform the needed
+  (cr-lrps). It calls ``withdraw_ip`` driver method to perform the needed
   actions to withdraw the exposed BGP route.
 
 - ``FIPSetEvent``: Detects when a Port_Binding entry of type ``patch`` gets
@@ -301,10 +301,10 @@ The following limitations apply:
 
 - In OpenStack with OVN networking the N/S traffic to the ovn-octavia VIPs on
   the provider or the FIPs associated to the VIPs on tenant networks needs to
-  go through the networking nodes (the ones hosting the Neutron Router Gateway
-  Ports, i.e., the chassisredirect cr-lrp ports, for the router connecting the
-  load balancer members to the provider network). Therefore, the entry point
-  into the OVN overlay needs to be one of those networking nodes, and
-  consequently the VIPs (or FIPs to VIPs) are exposed through them. From those
-  nodes the traffic follows the normal tunneled path (Geneve tunnel) to
-  the OpenStack compute node where the selected member is located.
+  go through the networking nodes (the ones hosting the Distributed Router
+  Gateway Ports, i.e., the chassisredirect cr-lrp ports, for the router
+  connecting the load balancer members to the provider network). Therefore,
+  the entry point into the OVN overlay needs to be one of those networking
+  nodes, and consequently the VIPs (or FIPs to VIPs) are exposed through them.
+  From those nodes the traffic follows the normal tunneled path (Geneve
+  tunnel) to the OpenStack compute node where the selected member is located.

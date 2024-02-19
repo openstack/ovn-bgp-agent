@@ -34,9 +34,10 @@ BGP Driver (SB)
 BGP Driver (NB)
 ---------------
 
-OVN version 23.09 is required to expose tenant networks and ovn-lb, because
-CR-LRP port chassis information in the NB DB is only available in that
-version (https://bugzilla.redhat.com/show_bug.cgi?id=2107515).
+OVN version 23.09 is required to expose tenant networks and ovn Load Balancers,
+because Distributed Gateway port (cr-lrp) chassis information in the NB DB is
+only available in that version
+(https://bugzilla.redhat.com/show_bug.cgi?id=2107515).
 
 The following table lists the various methods you can use to expose the
 networks/IPS, how they expose the IPs and the tenant networks, and whether

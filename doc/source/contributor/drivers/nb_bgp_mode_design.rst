@@ -25,17 +25,18 @@ it is common to use pure Layer 3 spine and leaf network deployments in
 data centers. The benefits of this practice reduce scaling complexities,
 failure domains, and broadcast traffic limits
 
-The northbound OVN BGP agent is a Python-based daemon that runs on each
-OpenStack Controller and Compute node.
+The Northbound driver for OVN BGP agent is a Python-based daemon that runs
+on each OpenStack Controller and Compute node.
 The agent monitors the Open Virtual Network (OVN) northbound database
 for certain VM and floating IP (FIP) events.
 When these events occur, the agent notifies the FRR BGP daemon (bgpd)
 to advertise the IP address or FIP associated with the VM.
 The agent also triggers actions that route the external traffic to the OVN
 overlay.
-Unlike its predecessor, the (southbound) OVN BGP agent, the northbound OVN BGP
-agent uses the northbound database API which is more stable than the southbound
-database API because the former is isolated from internal changes to core OVN.
+Unlike its predecessor, the Southbound driver for OVN BGP agent, the
+Northbound driver uses the northbound database API which is more stable than
+the southbound database API because the former is isolated from internal
+changes to core OVN.
 
  .. note::
 
@@ -120,7 +121,7 @@ for now you can select:
   as supported by the driver at :ref:`bgp_driver`.
 
 - ``ovn``: using an extra OVN cluster per node to perform the routing at
-  OVN/OVS level instead of kernel, therefore enabling datapath acceleration
+  OVN/OVS level instead of kernel, enabling datapath acceleration
   (Hardware Offloading and OVS-DPDK). More information about this mechanism
   at :ref:`bgp_driver`.
 
@@ -204,23 +205,25 @@ The specific defined events to react to are:
 
 - ``ChassisRedirectCreateEvent``: Similar to
   ``LogicalSwitchPortProviderCreateEvent`` but with the focus on logical router
-  ports, such as the OVN gateway ports (cr-lrps), instead of logical switch
-  ports. The driver calls ``expose_ip`` which performs additional steps to also
+  ports, such as the Distributed Router Ports (cr-lrps), instead of logical
+  switch ports.
+  The driver calls ``expose_ip`` which performs additional steps to also
   expose IPs related to the cr-lrps, such as the ovn-lb or IPs in tenant
   networks. The watcher ``match`` checks the chassis information in the
   ``status`` field, which must be ovn23.09 or later.
 
 - ``ChassisRedirectDeleteEvent``: Similar to
   ``LogicalSwitchPortProviderDeleteEvent`` but with the focus on logical router
-  ports, such as the OVN gateway ports (cr-lrps), instead of logical switch
-  ports. The driver calls ``withdraw_ip`` which performs additional steps to
+  ports, such as the Distributed Router Ports (cr-lrps), instead of logical
+  switch ports.
+  The driver calls ``withdraw_ip`` which performs additional steps to
   also withdraw IPs related to the cr-lrps, such as the ovn-lb or IPs in tenant
   networks. The watcher ``match`` checks the chassis information in the
   ``status`` field, which must be ovn23.09 or later.
 
 - ``LogicalSwitchPortSubnetAttachEvent``: Detects Logical Switch Ports of type
   ``router`` (connecting Logical Switch to Logical Router) and checks if the
-  associated router is associated to the local chassis, i.e., if the CR-LRP of
+  associated router is associated to the local chassis, i.e., if the cr-lrp of
   the router is located in the local chassis. If that is the case, the
   ``expose_subnet`` driver method is called which is in charge of the wiring
   needed for the IPs on that subnet (set of IP routes and rules).
@@ -274,8 +277,8 @@ exposed.
 
   .. note::
 
-    To be able to expose tenant networks a ovn version ovn23.09 or newer is
-    needed
+    To be able to expose tenant networks a OVN version OVN 23.09 or newer is
+    required.
 
 To accomplish the network configuration and advertisement, the driver ensures:
 

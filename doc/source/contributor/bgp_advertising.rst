@@ -61,6 +61,6 @@ the route:
      As we also want to be able to expose VM connected to tenant networks
      (when ``expose_tenant_networks`` or ``expose_ipv6_gua_tenant_networks``
      configuration options are enabled), there is a need to expose the Neutron
-     router gateway port (CR-LRP on OVN) so that the traffic to VMs in tenant
+     router gateway port (cr-lrp on OVN) so that the traffic to VMs in tenant
      networks is injected into OVN overlay through the node that is hosting
      that port.
