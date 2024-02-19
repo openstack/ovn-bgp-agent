@@ -45,9 +45,9 @@ Then, either upon events or due to (re)sync (regularly or during start up), it:
       *IP dev br-ex scope link*  # IPs on provider or FIPs
 
 
-- Adds a static ARP entry for the OVN router gateway ports (CR-LRP) so that the
-  traffic is steered to OVN via br-int -- this is because OVN does not reply
-  to ARP requests outside its L2 network:
+- Adds a static ARP entry for the OVN Distributed Gateway Ports (cr-lrps) so
+  that the traffic is steered to OVN via br-int -- this is because OVN does
+  not reply to ARP requests outside its L2 network:
 
      .. code-block:: ini
 

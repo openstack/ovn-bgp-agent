@@ -19,10 +19,11 @@ allocated):
   needs to be running on the networker nodes. In OpenStack, with OVN
   networking, the N/S traffic to the tenant VMs (without FIPs) needs to go
   through the networking nodes, more specifically the one hosting the
-  chassisredirect OVN port (cr-lrp), connecting the provider network to the
-  OVN virtual router. Hence, the VM IPs are advertised through BGP in that
-  node, and from there it follows the normal path to the OpenStack compute
-  node where the VM is located — through the tunnel.
+  Distributed Gateway Port (chassisredirect OVN port (cr-lrp)),
+  connecting the provider network to the OVN virtual router.
+  Hence, the VM IPs are advertised through BGP in that node, and from there it
+  follows the normal path to the OpenStack compute node where the VM is
+  located — through the tunnel.
 
 - Similarly, for OVN load balancer the IPs are exposed on the networker node.
   In this case the ARP request for the VIP is replied by the OVN router

@@ -89,7 +89,7 @@ The driver react specifically to the following events:
   attached to the OVN chassis where the agent is running. This is the case for
   VM or amphora LB ports on the provider networks, VM or amphora LB ports on
   tenant networks with a FIP associated, and neutron gateway router ports
-  (CR-LRPs). It calls ``expose_ip`` driver method to perform the needed
+  (cr-lrps). It calls ``expose_ip`` driver method to perform the needed
   actions to expose it.
 
 - ``PortBindingChassisDeletedEvent``: Detects when a port of type
@@ -97,7 +97,7 @@ The driver react specifically to the following events:
   detached from the OVN chassis where the agent is running. This is the case
   for VM or amphora LB ports on the provider networks, VM or amphora LB ports
   on tenant networks with a FIP associated, and neutron gateway router ports
-  (CR-LRPs). It calls ``withdraw_ip`` driver method to perform the needed
+  (cr-lrps). It calls ``withdraw_ip`` driver method to perform the needed
   actions to withdraw the exposed BGP route.
 
 - ``SubnetRouterAttachedEvent``: Detects when a patch port gets created.

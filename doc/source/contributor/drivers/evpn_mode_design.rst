@@ -180,14 +180,14 @@ The specific defined events to react to are:
 - ``PortBindingChassisCreatedEvent`` (set gateway port for router):
   Detects when a port of type ``chassisredirect`` gets attached to the OVN
   chassis where the agent is running. This is the case for neutron gateway
-  router ports (CR-LRPs). It calls ``expose_ip`` driver method to decide if
+  router ports (cr-lrps). It calls ``expose_ip`` driver method to decide if
   it needs to expose it through EVPN (in case it has related EVPN info
   annotated).
 
 - ``PortBindingChassisDeletedEvent``  (unset gateway port for router):
   Detects when a port of type ``chassisredirect`` gets detached from the OVN
   chassis where teh agent is running. This is the case for neutron gateway
-  router ports (CR-LRPs). It calls ``withdraw_ip`` driver method to decide if
+  router ports (cr-lrps). It calls ``withdraw_ip`` driver method to decide if
   it needs to withdraw the exposed EVPN route (in case it had EVPN info
   annotated).
 
@@ -426,7 +426,7 @@ gateway port (cr-lrp on OVN).
 However this is not enough as the traffic needs to be redirected to the OVN
 Overlay. To do that the VRF is added to the br-ex OVS provider bridge (br-ex),
 and two routes are added to the VRF routing table to redirect the traffic
-going to the network (20.0.0.0/24) through the CR-LRP port to the br-ex OVS
+going to the network (20.0.0.0/24) through the cr-lrp port to the br-ex OVS
 bridge.
 That injects the traffic properly into the OVN overlay, which will redirect
 it through the geneve tunnel (by the br-int ovs flows) to the compute node

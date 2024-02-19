@@ -11,13 +11,6 @@ relying on Kernel routing.
 Purpose
 -------
 
-The addition of a BGP driver enables the OVN BGP agent to expose virtual
-machine (VMs) and load balancer (LBs) IP addresses through the BGP dynamic
-protocol when these IP addresses are either associated with a floating IP
-(FIP) or are booted or created on a provider network.
-The same functionality is available on project networks, when a special
-flag is set.
-
 This document presents the design decision behind the extensions on the
 NB OVN BGP Driver to support OVN routing instead of kernel routing,
 and therefore enabling datapath acceleartion.
@@ -250,10 +243,10 @@ Limitations
 
 The following limitations apply:
 
-- OVN 23.06 or later is needed
+- OVN 23.06 or later is required
 
-- Tenant networks, subnet and ovn-loadbalancer are not yet supported, and will
-  require OVN 23.09 or nlaterewer.
+- Tenant networks, subnet and OVN load balancers are not yet supported, and
+  will require OVN vesion 23.09 or newer.
 
 - IPv6 not yet supported
 
