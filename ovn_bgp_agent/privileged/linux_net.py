@@ -534,16 +534,19 @@ def create_interface(ifname, kind, **kwargs):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_interface(ifname, **kwargs):
+    ifname = ifname[:15]
     _run_iproute_link('del', ifname, **kwargs)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def set_link_attribute(ifname, **kwargs):
+    ifname = ifname[:15]
     _run_iproute_link("set", ifname, **kwargs)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_address(ip_address, ifname):
+    ifname = ifname[:15]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
@@ -558,6 +561,7 @@ def add_ip_address(ip_address, ifname):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_ip_address(ip_address, ifname):
+    ifname = ifname[:15]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
