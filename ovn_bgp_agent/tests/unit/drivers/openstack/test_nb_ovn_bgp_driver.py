@@ -937,7 +937,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
     def test_expose_subnet_not_per_lsp(self):
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1033,7 +1034,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'network': 'network1',
             'address_scopes': {4: None, 6: None}}
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1047,6 +1049,23 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.router1_info['ips'])
 
     @mock.patch.object(wire_utils, 'wire_lrp_port')
+    def test__expose_router_lsp_per_host(self, mock_wire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'network': 'network1',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._expose_router_lsp(ips, subnet_info,
+                                                    self.router1_info)
+
+        self.assertTrue(ret)
+        mock_wire.assert_called_once_with(
+            mock.ANY, '10.0.0.1/24', self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'wire_lrp_port')
     def test__expose_router_lsp_exception(self, mock_wire):
         ips = ['10.0.0.1/24']
         subnet_info = {
@@ -1055,7 +1074,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'address_scopes': {4: None, 6: None}}
         mock_wire.side_effect = Exception
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1091,7 +1111,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
         CONF.set_override('expose_ipv6_gua_tenant_networks', True)
         self.addCleanup(CONF.clear_override, 'expose_ipv6_gua_tenant_networks')
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1119,7 +1140,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'network': 'network1',
             'address_scopes': {4: None, 6: None}}
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1133,6 +1155,23 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.router1_info['ips'])
 
     @mock.patch.object(wire_utils, 'unwire_lrp_port')
+    def test__withdraw_router_lsp_per_host(self, mock_unwire):
+        ips = ['10.0.0.1/24']
+        subnet_info = {
+            'associated_router': 'other-router',
+            'network': 'network1',
+            'address_scopes': {4: None, 6: None}}
+
+        ret = self.nb_bgp_driver._withdraw_router_lsp(ips, subnet_info,
+                                                      self.router1_info)
+
+        self.assertTrue(ret)
+        mock_unwire.assert_called_once_with(
+            mock.ANY, '10.0.0.1/24', self.router1_info['bridge_device'],
+            self.router1_info['bridge_vlan'], mock.ANY,
+            self.router1_info['ips'])
+
+    @mock.patch.object(wire_utils, 'unwire_lrp_port')
     def test__withdraw_router_lsp_exception(self, mock_unwire):
         ips = ['10.0.0.1/24']
         subnet_info = {
@@ -1141,7 +1180,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'address_scopes': {4: None, 6: None}}
         mock_unwire.side_effect = Exception
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1164,7 +1204,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'network': 'network1',
             'address_scopes': {4: None, 6: None}}
 
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 
@@ -1182,7 +1223,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.addCleanup(CONF.clear_override, 'expose_tenant_networks')
         CONF.set_override('expose_ipv6_gua_tenant_networks', True)
         self.addCleanup(CONF.clear_override, 'expose_ipv6_gua_tenant_networks')
-        CONF.set_override('advertisement_method_tenant_networks', 'subnet')
+        CONF.set_override('advertisement_method_tenant_networks',
+                          constants.ADVERTISEMENT_METHOD_SUBNET)
         self.addCleanup(CONF.clear_override,
                         'advertisement_method_tenant_networks')
 

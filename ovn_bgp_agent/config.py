@@ -18,6 +18,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_privsep import priv_context
 
+from ovn_bgp_agent import constants
+
 LOG = logging.getLogger(__name__)
 
 agent_opts = [
@@ -40,7 +42,9 @@ agent_opts = [
                     'So either per /32 or /128 or per subnet like /24. '
                     'Choose "host" as value for this option to advertise per '
                     'host or choose "subnet" to announce per subnet prefix.',
-               default='host', choices=['host', 'subnet']),
+               default=constants.ADVERTISEMENT_METHOD_HOST,
+               choices=[constants.ADVERTISEMENT_METHOD_HOST,
+                        constants.ADVERTISEMENT_METHOD_SUBNET]),
     cfg.BoolOpt('expose_ipv6_gua_tenant_networks',
                 help='Expose only VM IPv6 IPs on tenant networks if they are '
                      'GUA. The expose_tenant_networks parameter takes '
