@@ -100,6 +100,10 @@ EXPOSE_METHOD_VRF = 'vrf'
 EXPOSE_METHOD_OVN = 'ovn'
 EXPOSE_METHOD_DYNAMIC = 'dynamic'
 
+# Advertisement method names for tenant networks
+ADVERTISEMENT_METHOD_HOST = 'host'
+ADVERTISEMENT_METHOD_SUBNET = 'subnet'
+
 # OVN Cluster related constants
 OVN_CLUSTER_BRIDGE = 'bgp'
 OVN_CLUSTER_ROUTER = 'bgp-router'
