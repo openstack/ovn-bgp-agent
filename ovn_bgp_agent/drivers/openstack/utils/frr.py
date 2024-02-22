@@ -23,6 +23,8 @@ import ovn_bgp_agent.privileged.vtysh
 
 LOG = logging.getLogger(__name__)
 
+DEFAULT_REDISTRIBUTE = {'connected'}
+
 ADD_VRF_TEMPLATE = '''
 vrf {{ vrf_name }}
   vni {{ vni }}
@@ -30,10 +32,14 @@ exit-vrf
 
 router bgp {{ bgp_as }} vrf {{ vrf_name }}
   address-family ipv4 unicast
-    redistribute connected
+{% for redist in redistribute %}
+    redistribute {{ redist }}
+{% endfor %}
   exit-address-family
   address-family ipv6 unicast
-    redistribute connected
+{% for redist in redistribute %}
+    redistribute {{ redist }}
+{% endfor %}
   exit-address-family
   address-family l2vpn evpn
     advertise ipv4 unicast
@@ -61,33 +67,15 @@ router bgp {{ bgp_as }}
 router bgp {{ bgp_as }} vrf {{ vrf_name }}
   bgp router-id {{ bgp_router_id }}
   address-family ipv4 unicast
-    redistribute connected
+{% for redist in redistribute %}
+    redistribute {{ redist }}
+{% endfor %}
   exit-address-family
 
   address-family ipv6 unicast
-    redistribute connected
-  exit-address-family
-
-'''
-
-LEAK_VRF_KERNEL_TEMPLATE = '''
-router bgp {{ bgp_as }}
-  address-family ipv4 unicast
-    import vrf {{ vrf_name }}
-  exit-address-family
-
-  address-family ipv6 unicast
-    import vrf {{ vrf_name }}
-  exit-address-family
-
-router bgp {{ bgp_as }} vrf {{ vrf_name }}
-  bgp router-id {{ bgp_router_id }}
-  address-family ipv4 unicast
-    redistribute kernel
-  exit-address-family
-
-  address-family ipv6 unicast
-    redistribute kernel
+{% for redist in redistribute %}
+    redistribute {{ redist }}
+{% endfor %}
   exit-address-family
 
 '''
@@ -118,6 +106,18 @@ def _run_vtysh_config_with_tempfile(vrf_config):
             f.close()
 
 
+def set_default_redistribute(redist_opts):
+    if not isinstance(redist_opts, set):
+        redist_opts = set(redist_opts)
+
+    if redist_opts == DEFAULT_REDISTRIBUTE:
+        # no update required.
+        return
+
+    DEFAULT_REDISTRIBUTE.clear()
+    DEFAULT_REDISTRIBUTE.update(redist_opts)
+
+
 def vrf_leak(vrf, bgp_as, bgp_router_id=None, template=LEAK_VRF_TEMPLATE):
     LOG.info("Add VRF leak for VRF %s on router bgp %s", vrf, bgp_as)
     if not bgp_router_id:
@@ -128,6 +128,7 @@ def vrf_leak(vrf, bgp_as, bgp_router_id=None, template=LEAK_VRF_TEMPLATE):
 
     vrf_template = Template(template)
     vrf_config = vrf_template.render(vrf_name=vrf, bgp_as=bgp_as,
+                                     redistribute=DEFAULT_REDISTRIBUTE,
                                      bgp_router_id=bgp_router_id)
     _run_vtysh_config_with_tempfile(vrf_config)
 
@@ -141,6 +142,7 @@ def vrf_reconfigure(evpn_info, action):
             vrf_name="{}{}".format(constants.OVN_EVPN_VRF_PREFIX,
                                    evpn_info['vni']),
             bgp_as=evpn_info['bgp_as'],
+            redistribute=DEFAULT_REDISTRIBUTE,
             vni=evpn_info['vni'])
     elif action == "del-vrf":
         vrf_template = Template(DEL_VRF_TEMPLATE)
