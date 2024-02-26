@@ -99,6 +99,65 @@ class TestLSPChassisEvent(test_base.TestCase):
         self.assertTrue(self.lsp_event._check_ip_associated(
             'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
 
+    def test__check_chassis_from_options(self):
+        my_host = 'foo-host'
+
+        # it is a VM port type, should use options field.
+        row = utils.create_row(
+            external_ids={constants.OVN_HOST_ID_EXT_ID_KEY: 'bar-host'},
+            options={constants.OVN_REQUESTED_CHASSIS: my_host})
+
+        self.assertEqual(self.lsp_event._get_chassis(row),
+                         (my_host, constants.OVN_CHASSIS_AT_OPTIONS))
+
+    def test__check_chassis_from_external_ids(self):
+        my_host = 'foo-host'
+
+        # it is a VM port type, should use options field.
+        row = utils.create_row(
+            external_ids={constants.OVN_HOST_ID_EXT_ID_KEY: my_host})
+
+        self.assertEqual(self.lsp_event._get_chassis(row),
+                         (my_host, constants.OVN_CHASSIS_AT_EXT_IDS))
+
+    def test__check_chassis_from_external_ids_virtual_port(self):
+        my_host = 'foo-host'
+
+        # it is a VM port type, should use options field.
+        row = utils.create_row(
+            external_ids={constants.OVN_HOST_ID_EXT_ID_KEY: my_host},
+            options={constants.OVN_REQUESTED_CHASSIS: 'bar-host'},
+            type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
+
+        self.assertEqual(self.lsp_event._get_chassis(row),
+                         (my_host, constants.OVN_CHASSIS_AT_EXT_IDS))
+
+    def test__check_chassis_no_information(self):
+        row = utils.create_row()
+        self.assertEqual(self.lsp_event._get_chassis(row),
+                         (None, None))
+
+    def test__check_chassis_no_information_virtual_port(self):
+        row = utils.create_row(
+            options={constants.OVN_REQUESTED_CHASSIS: 'bar-host'},
+            type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
+        self.assertEqual(self.lsp_event._get_chassis(row),
+                         (None, None))
+
+    def test__has_additional_binding(self):
+        row = utils.create_row(
+            options={constants.OVN_REQUESTED_CHASSIS: 'host1,host2'})
+        self.assertTrue(self.lsp_event._has_additional_binding(row))
+
+    def test__has_additional_binding_no_options(self):
+        row = utils.create_row()
+        self.assertFalse(self.lsp_event._has_additional_binding(row))
+
+    def test__has_additional_binding_single_host(self):
+        row = utils.create_row(
+            options={constants.OVN_REQUESTED_CHASSIS: 'host1'})
+        self.assertFalse(self.lsp_event._has_additional_binding(row))
+
     def test__get_network(self):
         row = utils.create_row(
             external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-net'})

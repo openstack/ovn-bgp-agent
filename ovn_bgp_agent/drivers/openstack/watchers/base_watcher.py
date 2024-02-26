@@ -74,22 +74,60 @@ class LSPChassisEvent(Event):
     def _check_ip_associated(self, mac):
         return len(mac.strip().split(' ')) > 1
 
-    def _get_chassis(self, row):
-        if (hasattr(row, 'external_ids') and
+    def _get_chassis(self, row, default_type=constants.OVN_VM_VIF_PORT_TYPE):
+        # row.options['requested-chassis'] superseeds the id in external_ids.
+        # Since it is not used for virtual ports by ovn, this option will be
+        # ignored for virtual ports.
+
+        # since 'old' rows could be used, it will not hold the type information
+        # if that is the case, please supply a default in the arguments.
+        row_type = getattr(row, 'type', default_type)
+        if (row_type not in [constants.OVN_VIRTUAL_VIF_PORT_TYPE] and
+                hasattr(row, 'options') and
+                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
+
+            # requested-chassis can be a comma separated list,
+            # so lets only return our chassis if it is a list, to be able to
+            # do a == equal comparison
+            req_chassis = row.options[constants.OVN_REQUESTED_CHASSIS]
+            if self.agent.chassis in req_chassis.split(','):
+                req_chassis = self.agent.chassis
+
+            return (req_chassis, constants.OVN_CHASSIS_AT_OPTIONS)
+        elif (hasattr(row, 'external_ids') and
                 row.external_ids.get(constants.OVN_HOST_ID_EXT_ID_KEY)):
             return (row.external_ids[constants.OVN_HOST_ID_EXT_ID_KEY],
                     constants.OVN_CHASSIS_AT_EXT_IDS)
-        elif (hasattr(row, 'options') and
-                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
-            return (row.options[constants.OVN_REQUESTED_CHASSIS],
-                    constants.OVN_CHASSIS_AT_OPTIONS)
         return None, None
+
+    def _has_additional_binding(self, row):
+        if (hasattr(row, 'options') and
+                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
+
+            # requested-chassis can be a comma separated list, so if there
+            # is a comma in the string, there is an additional binding.
+            return ',' in row.options[constants.OVN_REQUESTED_CHASSIS]
+
+        return False
 
     def _get_network(self, row):
         try:
             return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
         except (AttributeError, KeyError):
             return
+
+    def _get_ips_info(self, row):
+        return {
+            'mac': row.addresses[0].strip().split(' ')[0],
+            'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                          "").split(),
+            'type': row.type,
+            'logical_switch': self._get_network(row),
+        }
+
+    def _get_port_fip(self, row):
+        return getattr(row, 'external_ids', {}).get(
+            constants.OVN_FIP_EXT_ID_KEY)
 
 
 class LRPChassisEvent(Event):
