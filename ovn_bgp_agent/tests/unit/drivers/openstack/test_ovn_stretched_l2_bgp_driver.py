@@ -143,13 +143,18 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
                    *args):
         CONF.set_override("clear_vrf_routes_on_startup", True)
 
+        mock_redistribute = mock.patch.object(
+            frr, "set_default_redistribute"
+        ).start()
+
         self.bgp_driver.start()
 
+        mock_redistribute.assert_called_with(['kernel'])
         mock_vrf.assert_called_once_with(
             CONF.bgp_vrf,
             CONF.bgp_AS,
             CONF.bgp_router_id,
-            template=frr.LEAK_VRF_KERNEL_TEMPLATE,
+            template=frr.LEAK_VRF_TEMPLATE,
         )
         # Assert connections were started
         self.mock_ovs_idl().start.assert_called_once_with(
@@ -168,13 +173,18 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
         self, mock_vrf, mock_delete_routes, mock_ensure_ovn_device, *args):
         CONF.set_override("clear_vrf_routes_on_startup", False)
 
+        mock_redistribute = mock.patch.object(
+            frr, "set_default_redistribute"
+        ).start()
+
         self.bgp_driver.start()
 
+        mock_redistribute.assert_called_with(['kernel'])
         mock_vrf.assert_called_once_with(
             CONF.bgp_vrf,
             CONF.bgp_AS,
             CONF.bgp_router_id,
-            template=frr.LEAK_VRF_KERNEL_TEMPLATE,
+            template=frr.LEAK_VRF_TEMPLATE,
         )
         # Assert connections were started
         self.mock_ovs_idl().start.assert_called_once_with(

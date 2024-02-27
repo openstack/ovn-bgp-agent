@@ -49,3 +49,13 @@ def check_name_prefix(entity, prefix):
 
 def is_pf_lb(lb):
     return check_name_prefix(lb, constants.OVN_LB_PF_NAME_PREFIX)
+
+
+def get_prefixes_from_ips(ips: 'list[str]') -> 'list[str]':
+    '''Return the network address for any given ip (with mask)
+
+    For a list like ['192.168.0.1/24'] it will return ['192.168.0.0/24']
+    '''
+    return ['/'.join([ipaddress.ip_network(ip, strict=False)[0].compressed,
+                      ip.split('/')[-1]])
+            for ip in ips]
