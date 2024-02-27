@@ -273,11 +273,11 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
     @mock.patch.object(linux_net, 'get_ip_version')
     def test__ensure_lsp_exposed_no_fip_no_tenant_ls(self, mock_ip_version):
-        port0 = fakes.create_object({
-            'name': 'port-0',
-            'addresses': ["fake_mac 192.168.0.10"],
-            'type': constants.OVN_VM_VIF_PORT_TYPE,
-            'external_ids': {constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"}})
+        port0 = utils.create_row(
+            name='port-0',
+            addresses=["fake_mac 192.168.0.10"],
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: "test-ls"})
 
         self.nb_bgp_driver.ovn_tenant_ls = {}
         self.nb_bgp_driver.ovn_provider_ls = {}
@@ -289,6 +289,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_expose_ip = mock.patch.object(
             self.nb_bgp_driver, '_expose_ip').start()
         mock_expose_ip.return_value = ['192.168.0.10']
+        mock_is_ls_provider = mock.patch.object(
+            self.nb_bgp_driver, 'is_ls_provider', return_value=True).start()
         mock_get_ls_localnet_info = mock.patch.object(
             self.nb_bgp_driver, '_get_ls_localnet_info').start()
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
@@ -297,6 +299,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.nb_bgp_driver._ensure_lsp_exposed(port0)
 
         mock_get_port_external_ip_and_ls.assert_not_called()
+        mock_is_ls_provider.assert_called_once_with('test-ls')
         mock_get_ls_localnet_info.assert_called_once_with('test-ls')
         mock_expose_fip.assert_not_called()
         mock_expose_ip.assert_called_once_with(
@@ -315,9 +318,12 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_get_ls_localnet_info.return_value = ('fake-localnet', 'br-ex', 10)
         mock_expose_ip = mock.patch.object(
             self.nb_bgp_driver, '_expose_ip').start()
+        mock_is_ls_provider = mock.patch.object(
+            self.nb_bgp_driver, 'is_ls_provider', return_value=True).start()
 
         self.nb_bgp_driver._ensure_crlrp_exposed(port)
 
+        mock_is_ls_provider.assert_called_once_with('test-ls')
         mock_expose_ip.assert_called_once_with(
             ['172.24.16.2'], 'fake_mac', 'test-ls', 'br-ex', 10,
             constants.OVN_CR_LRP_PORT_TYPE, ['172.24.16.2/24'], router=None)
@@ -445,6 +451,15 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             self.nb_bgp_driver._get_bridge_for_localnet_port(localnet))
         self.assertEqual(bridge_device, None)
         self.assertEqual(bridge_vlan, None)
+
+    def test_is_ip_exposed(self):
+        self.nb_bgp_driver._exposed_ips['fake-switch'] = {'fake-ip': {}}
+        self.assertTrue(self.nb_bgp_driver.is_ip_exposed('fake-switch',
+                                                         'fake-ip'))
+        self.assertFalse(self.nb_bgp_driver.is_ip_exposed('no-switch',
+                                                          'fake-ip'))
+        self.assertFalse(self.nb_bgp_driver.is_ip_exposed('fake-switch',
+                                                          'other-ip'))
 
     def _test_expose_ip(self, ips, ips_info):
         mock_expose_provider_port = mock.patch.object(
