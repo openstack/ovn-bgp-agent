@@ -579,6 +579,60 @@ class TestLogicalSwitchPortFIPDeleteEvent(test_base.TestCase):
         self.agent.withdraw_fip.assert_not_called()
 
 
+class TestLogicalSwitchUpdateEvent(test_base.TestCase):
+
+    def setUp(self):
+        super(TestLogicalSwitchUpdateEvent, self).setUp()
+        self.agent = mock.Mock()
+        self.event = nb_bgp_watcher.LogicalSwitchUpdateEvent(
+            self.agent)
+        self.row = utils.create_row(external_ids={
+            constants.OVN_EVPN_TYPE_EXT_ID_KEY: constants.OVN_EVPN_TYPE_L3,
+            constants.OVN_EVPN_VNI_EXT_ID_KEY: 1001,
+        })
+
+    def test_match_fn(self):
+        # ls had no conf in external_ids, does have it now.
+        old = utils.create_row(external_ids={})
+        self.assertTrue(self.event.match_fn(None, self.row, old))
+
+    def test_match_fn_changed_vni(self):
+        old = utils.create_row(external_ids={
+            constants.OVN_EVPN_TYPE_EXT_ID_KEY: constants.OVN_EVPN_TYPE_L3,
+            constants.OVN_EVPN_VNI_EXT_ID_KEY: 1002,
+        })
+        self.assertTrue(self.event.match_fn(None, self.row, old))
+
+    def test_match_fn_deleted_ls(self):
+        self.assertTrue(self.event.match_fn(self.event.ROW_DELETE, self.row,
+                                            None))
+
+    def test_match_fn_no_match(self):
+        # no vrf update in old, should return False
+        old = utils.create_row()
+        self.assertFalse(self.event.match_fn(None, self.row, old))
+
+    def test_match_fn_no_match_same_vni(self):
+        # same update in old, should return False
+        self.assertFalse(self.event.match_fn(None, self.row, self.row))
+
+    def test_match_fn_no_match_incomplete_row(self):
+        # incomplete configuration, should return False
+        row = utils.create_row(external_ids={
+            constants.OVN_EVPN_TYPE_EXT_ID_KEY: constants.OVN_EVPN_TYPE_L3,
+        })
+        self.assertFalse(self.event.match_fn(None, row, None))
+
+        row = utils.create_row(external_ids={
+            constants.OVN_EVPN_VNI_EXT_ID_KEY: 1001,
+        })
+        self.assertFalse(self.event.match_fn(None, row, None))
+
+    def test_run(self):
+        self.event.run(None, None, None)
+        self.agent.sync.assert_called_once()
+
+
 class TestLocalnetCreateDeleteEvent(test_base.TestCase):
 
     def setUp(self):

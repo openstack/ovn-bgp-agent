@@ -85,6 +85,15 @@ class OVNLBEvent(Event):
                                    constants.OVN_LB_VIP_FIP_EXT_ID_KEY)
 
 
+class LogicalSwitchChassisEvent(Event):
+    def __init__(self, bgp_agent, events):
+        self.agent = bgp_agent
+        table = 'Logical_Switch'
+        super(LogicalSwitchChassisEvent, self).__init__(
+            events, table, None)
+        self.event_name = self.__class__.__name__
+
+
 class LSPChassisEvent(Event):
     def __init__(self, bgp_agent, events):
         self.agent = bgp_agent

@@ -56,6 +56,9 @@ FRR_SOCKET_PATH = "/run/frr/"
 IP_VERSION_6 = 6
 IP_VERSION_4 = 4
 
+# initial mac address to generate anycast addresses for (vni and vlan will
+# be added to this value)
+MAC_LLADDR_OFFSET = "02:00:00:00:00:00"
 ARP_IPV4_PREFIX = "169.254."
 NDP_IPV6_PREFIX = "fd53:d91e:400:7f17::"
 
@@ -64,8 +67,20 @@ IPV4_OCTET_RANGE = 256
 BGP_MODE = 'BGP'
 EVPN_MODE = 'EVPN'
 
+# NOTE(mnederlof, ltomasbo): for lack of better variables we are using the
+# neutron_bgpvpn namespace for now. If in the future another API endpoint
+# is created, we should adapt or maybe move them to another location that
+# makes sense at that time.
 OVN_EVPN_VNI_EXT_ID_KEY = 'neutron_bgpvpn:vni'
 OVN_EVPN_AS_EXT_ID_KEY = 'neutron_bgpvpn:as'
+OVN_EVPN_TYPE_EXT_ID_KEY = 'neutron_bgpvpn:type'
+OVN_EVPN_ROUTE_TARGETS_EXT_ID_KEY = 'neutron_bgpvpn:rt'
+OVN_EVPN_ROUTE_DISTINGUISHERS_EXT_ID_KEY = 'neutron_bgpvpn:rd'
+OVN_EVPN_IMPORT_TARGETS_EXT_ID_KEY = 'neutron_bgpvpn:it'
+OVN_EVPN_EXPORT_TARGETS_EXT_ID_KEY = 'neutron_bgpvpn:et'
+
+OVN_EVPN_TYPE_L2 = 'l2'
+OVN_EVPN_TYPE_L3 = 'l3'
 OVN_EVPN_VRF_PREFIX = "vrf-"
 OVN_EVPN_BRIDGE_PREFIX = "br-"
 OVN_EVPN_VXLAN_PREFIX = "vxlan-"
@@ -77,7 +92,19 @@ OVN_INTEGRATION_BRIDGE = 'br-int'
 OVN_LRP_PORT_NAME_PREFIX = 'lrp-'
 OVN_CRLRP_PORT_NAME_PREFIX = 'cr-lrp-'
 
+# the new prefix will get the first 11 chars of the localnet port prefixed,
+# neutron-tap style
+OVN_EVPN_VETH_VRF_UUID_PREFIX = "vrf"
+OVN_EVPN_VETH_OVS_UUID_PREFIX = "ovs"
+
 OVS_PATCH_PROVNET_PORT_PREFIX = 'patch-provnet-'
+
+EVPN_EXT_ID_MAPPING = {
+    'route_targets': OVN_EVPN_ROUTE_TARGETS_EXT_ID_KEY,
+    'route_distinguishers': OVN_EVPN_ROUTE_DISTINGUISHERS_EXT_ID_KEY,
+    'export_targets': OVN_EVPN_EXPORT_TARGETS_EXT_ID_KEY,
+    'import_targets': OVN_EVPN_IMPORT_TARGETS_EXT_ID_KEY,
+}
 
 LINK_UP = "up"
 LINK_DOWN = "down"
@@ -116,6 +143,7 @@ POLICY_ACTION_TYPES = (POLICY_ACTION_REROUTE)
 LR_POLICY_PRIORITY_MAX = 32767
 
 ROUTE_DISCARD = 'discard'
+ROUTE_TYPE_UNICAST = 1
 
 # Family constants
 AF_INET = socket.AF_INET
@@ -125,3 +153,5 @@ AF_INET6 = socket.AF_INET6
 ROUTING_TABLES_FILE = '/etc/iproute2/rt_tables'
 ROUTING_TABLE_MIN = 1
 ROUTING_TABLE_MAX = 252
+
+VLAN_ID_UNTAGGED = 0

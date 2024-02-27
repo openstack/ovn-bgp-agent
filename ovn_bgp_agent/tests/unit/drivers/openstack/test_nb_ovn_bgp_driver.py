@@ -833,7 +833,32 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         }
         self.nb_bgp_driver.expose_remote_ip(ips, ips_info)
 
-        m_announce_ips.assert_called_once_with(ips)
+        m_announce_ips.assert_called_once_with(ips, ips_info=ips_info)
+
+    @mock.patch.object(bgp_utils, 'announce_ips')
+    def test_expose_remote_ip_vrf(self, m_announce_ips):
+        CONF.set_override('exposing_method', constants.EXPOSE_METHOD_VRF)
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        mock__get_router_port_info_for_ls = mock.patch.object(
+            self.nb_bgp_driver, '_get_router_port_info_for_ls'
+        ).start()
+
+        mock__get_router_port_info_for_ls.return_value = {
+            'bridge_device': self.bridge, 'bridge_vlan': None,
+            'via': self.router1_info['ips'],
+        }
+
+        ips = [self.ipv4, self.ipv6]
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'test-ls'
+        }
+        self.nb_bgp_driver.expose_remote_ip(ips, ips_info)
+
+        m_announce_ips.assert_called_once_with(ips, ips_info=ips_info)
 
     @mock.patch.object(driver_utils, 'is_ipv6_gua')
     @mock.patch.object(bgp_utils, 'announce_ips')
@@ -852,7 +877,32 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         m_gua.side_effect = [False, True]
         self.nb_bgp_driver.expose_remote_ip(ips, ips_info)
 
-        m_announce_ips.assert_called_once_with([self.ipv6])
+        m_announce_ips.assert_called_once_with([self.ipv6], ips_info=ips_info)
+
+    def test__get_exposed_ip(self):
+        self.nb_bgp_driver._exposed_ips = {
+            'provider-ls': {'vip': {'bridge_device': self.bridge,
+                                    'bridge_vlan': None}}}
+
+        ls, info = self.nb_bgp_driver._get_exposed_ip('vip')
+        self.assertEqual('provider-ls', ls)
+        self.assertDictEqual({'bridge_device': self.bridge,
+                              'bridge_vlan': None}, info)
+
+    def test__get_router_port_info_for_ls(self):
+        ls = 'provider-ls'
+        self.nb_bgp_driver._exposed_ips = {
+            ls: {'vip': {'bridge_device': self.bridge, 'bridge_vlan': None}}
+        }
+
+        tenant_ls = 'tenant_ls'
+        self.nb_bgp_driver.ovn_local_lrps[tenant_ls] = {'vip'}
+
+        info = self.nb_bgp_driver._get_router_port_info_for_ls(tenant_ls)
+        self.assertDictEqual({'bridge_device': self.bridge,
+                              'bridge_vlan': None}, info)
+        self.assertIsNone(self.nb_bgp_driver._get_router_port_info_for_ls(
+            'other_ls'))
 
     @mock.patch.object(bgp_utils, 'withdraw_ips')
     def test_withdraw_remote_ip(self, m_withdraw_ips):
@@ -865,7 +915,32 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         }
         self.nb_bgp_driver.withdraw_remote_ip(ips, ips_info)
 
-        m_withdraw_ips.assert_called_once_with(ips)
+        m_withdraw_ips.assert_called_once_with(ips, ips_info=ips_info)
+
+    @mock.patch.object(bgp_utils, 'withdraw_ips')
+    def test_withdraw_remote_ip_vrf(self, m_withdraw_ips):
+        CONF.set_override('exposing_method', constants.EXPOSE_METHOD_VRF)
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        mock__get_router_port_info_for_ls = mock.patch.object(
+            self.nb_bgp_driver, '_get_router_port_info_for_ls'
+        ).start()
+
+        mock__get_router_port_info_for_ls.return_value = {
+            'bridge_device': self.bridge, 'bridge_vlan': None,
+            'via': self.router1_info['ips'],
+        }
+
+        ips = [self.ipv4, self.ipv6]
+        ips_info = {
+            'mac': 'fake-mac',
+            'cidrs': [],
+            'type': constants.OVN_VM_VIF_PORT_TYPE,
+            'logical_switch': 'test-ls'
+        }
+        self.nb_bgp_driver.withdraw_remote_ip(ips, ips_info)
+
+        m_withdraw_ips.assert_called_once_with(ips, ips_info=ips_info)
 
     @mock.patch.object(driver_utils, 'is_ipv6_gua')
     @mock.patch.object(bgp_utils, 'withdraw_ips')
@@ -884,7 +959,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         m_gua.side_effect = [False, True]
         self.nb_bgp_driver.withdraw_remote_ip(ips, ips_info)
 
-        m_withdraw_ips.assert_called_once_with([self.ipv6])
+        m_withdraw_ips.assert_called_once_with([self.ipv6], ips_info=ips_info)
 
     def test_expose_subnet(self):
         ips = ['10.0.0.1/24']

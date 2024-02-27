@@ -156,6 +156,65 @@ def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
     enable_proxy_ndp(bridge)
 
 
+def ensure_anycast_mac_for_interface(intf, offset):
+    # Make pointer to module, to shorten amount of chars to call module.
+    priv = ovn_bgp_agent.privileged.linux_net
+
+    # The intf acting as L3 GW (needs to have same mac address everywhere)
+    # So generate the mac address based on the given offset and add the
+    # configured MAC_LLADR_OFFSET to it.
+    mac_int = int(constants.MAC_LLADDR_OFFSET.replace(':', ''), 16)
+    ll = ('%x' % int(mac_int + offset)).zfill(12)
+    lladdr = ":".join([ll[i:i + 2] for i in range(0, len(ll), 2)])
+
+    # Check what the mac address currently is.
+    dev = priv.get_link_device(intf)
+    curr_lladdr = priv.get_attr(dev, 'IFLA_ADDRESS')
+
+    if lladdr != curr_lladdr:
+        LOG.info("Updating mac address for intf %s to address %s",
+                 intf, lladdr)
+        priv.set_link_attribute(intf, address=lladdr)
+
+        # Also update the 'scope link' address on the interface.
+        ll = lladdr.replace(':', '')
+        ll_ip_address = ipaddress.IPv6Address(
+            f'fe80::{ll[0:4]}:{ll[4:8]}:{ll[8:12]}')
+        ll_net = ipaddress.IPv6Network('fe80::/10')
+
+        # Fetch all ipv6 addresses and check if we already configured the
+        # link-local address.
+        addresses = priv.get_ip_addresses(
+            index=dev['index'], family=constants.AF_INET6)
+        for addr in addresses:
+            ip_addr = ipaddress.IPv6Address(
+                priv.get_attr(addr, 'IFA_ADDRESS'))
+
+            if (addr['scope'] != 0 and
+                    ip_addr in ll_net and
+                    ip_addr != ll_ip_address):
+
+                LOG.info('Update scope link address on intf %s from %s to %s',
+                         intf, ip_addr, ll_ip_address)
+
+                # Delete the old link local ip address from the interface
+                priv.delete_ip_address(ip_addr.compressed, intf,
+                                       prefixlen=addr['prefixlen'],
+                                       scope=addr['scope'])
+
+                # Attach our anycast link local address to the interface
+                priv.add_ip_address(ll_ip_address.compressed, intf,
+                                    prefixlen=addr['prefixlen'],
+                                    scope=addr['scope'])
+
+
+def disable_learning_vxlan_intf(intf):
+    '''ip link set vni200 type bridge_slave neigh_suppress on learning off'''
+    ovn_bgp_agent.privileged.linux_net.set_brport_attribute(
+        intf, neigh_suppress=True, learning=False
+    )
+
+
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
     # check a routing table with the bridge name exists on
     # /etc/iproute2/rt_tables
@@ -366,6 +425,23 @@ def enable_proxy_ndp(device):
 def enable_proxy_arp(device):
     flag = "net.ipv4.conf.{}.proxy_arp".format(device)
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
+
+
+def enable_routing_for_interfaces(*interfaces):
+    # Configure sysctl
+    keys = [
+        ('net.ipv4.ip_forward', 1),
+        ('net.ipv4.conf.all.forwarding', 1),
+        ('net.ipv6.conf.all.forwarding', 1),
+    ]
+    for intf in interfaces:
+        intf_key = intf.replace('.', '/')
+        keys.append((f'net.ipv4.conf.{intf_key}.forwarding', 1))
+        keys.append((f'net.ipv6.conf.{intf_key}.forwarding', 1))
+
+    for k, v in keys:
+        LOG.debug('Configure sysctl %s=%s', k, v)
+        ovn_bgp_agent.privileged.linux_net.set_kernel_flag(k, v)
 
 
 @tenacity.retry(

@@ -18,11 +18,13 @@ from unittest import mock
 from oslo_config import cfg
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import evpn as evpn_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn as ovn_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovs as ovs_utils
 from ovn_bgp_agent.drivers.openstack.utils import wire
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
+from ovn_bgp_agent.tests import utils as test_utils
 from ovn_bgp_agent.utils import linux_net
 
 CONF = cfg.CONF
@@ -37,7 +39,10 @@ class TestWire(test_base.TestCase):
         self.ovs_idl = mock.Mock()
 
         # Helper variables that are used across multiple methods
-        self.bridge_mappings = 'datacentre:br-ex'
+        self.bridge_mappings = ['datacentre:br-ex']
+
+        self.ovs_idl.get_ovn_bridge_mappings.return_value = (
+            self.bridge_mappings)
 
         # Monkey-patch parent class methods
         self.nb_idl.ls_add = mock.Mock()
@@ -63,20 +68,81 @@ class TestWire(test_base.TestCase):
                                        ovn_idl=self.nb_idl)
         mock_ovn.assert_called_once_with(self.ovs_idl, self.nb_idl)
 
-    @mock.patch.object(wire, '_ensure_base_wiring_config_underlay')
-    @mock.patch.object(wire, '_ensure_base_wiring_config_ovn')
-    def test_ensure_base_wiring_config_not_implemeneted(self, mock_ovn,
-                                                        mock_underlay):
+    @mock.patch.object(wire, '_ensure_base_wiring_config_evpn')
+    def test_ensure_base_wiring_config_evpn(self, mock_evpn):
         CONF.set_override('exposing_method', 'vrf')
         self.addCleanup(CONF.clear_override, 'exposing_method')
 
-        wire.ensure_base_wiring_config(self.sb_idl, self.ovs_idl,
+        wire.ensure_base_wiring_config(self.nb_idl, self.ovs_idl,
                                        ovn_idl=self.nb_idl)
+        mock_evpn.assert_called_once_with(self.nb_idl, self.ovs_idl)
+
+    @mock.patch.object(wire, '_ensure_base_wiring_config_underlay')
+    @mock.patch.object(wire, '_ensure_base_wiring_config_ovn')
+    def test_ensure_base_wiring_config_not_implemented(self, mock_ovn,
+                                                       mock_underlay):
+        CONF.set_override('exposing_method', 'dynamic')
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        self.assertRaises(agent_exc.UnsupportedWiringConfig,
+                          wire.ensure_base_wiring_config,
+                          self.sb_idl, self.ovs_idl, ovn_idl=self.nb_idl)
         mock_ovn.assert_not_called()
         mock_underlay.assert_not_called()
 
     def test__ensure_base_wiring_config_ovn(self):
         pass
+
+    @mock.patch.object(linux_net, 'get_interface_address')
+    @mock.patch.object(ovs_utils, 'get_ovs_patch_ports_info')
+    def test__ensure_base_wiring_config_evpn(self, m_get_ovs_patch_ports_info,
+                                             m_get_interface_address):
+        localnet_ports = [test_utils.create_row(
+            tag=[4096],
+        )]
+        ports = localnet_ports + [test_utils.create_row(
+            dhcpv4_options=[test_utils.create_row()],
+            dhcpv6_options=[],
+        )]
+        get_localnet_ports_by_network_name = mock.patch.object(
+            self.nb_idl, 'get_localnet_ports_by_network_name').start()
+        get_localnet_ports_by_network_name.return_value = localnet_ports
+
+        provnets = [test_utils.create_row(
+            name='fake-provnet',
+            external_ids={
+                constants.OVN_EVPN_VNI_EXT_ID_KEY: 100,
+            },
+            ports=ports,
+        )]
+        get_bgpvpn_networks_for_ports = mock.patch.object(
+            self.nb_idl, 'get_bgpvpn_networks_for_ports').start()
+        get_bgpvpn_networks_for_ports.return_value = provnets
+
+        CONF.set_override('evpn_local_ip', '127.0.0.1')
+        self.addCleanup(CONF.clear_override, 'evpn_local_ip')
+
+        vlan_dev = mock.MagicMock()
+
+        evpn_bridge = mock.MagicMock()
+        evpn_bridge.connect_vlan.return_value = vlan_dev
+
+        evpn_setup = mock.patch.object(evpn_utils, 'setup').start()
+        evpn_setup.return_value = evpn_bridge
+
+        wire._ensure_base_wiring_config_evpn(self.nb_idl, self.ovs_idl)
+
+        evpn_setup.assert_called_with(ovs_bridge='br-ex',
+                                      vni=100,
+                                      evpn_opts={'route_targets': [],
+                                                 'route_distinguishers': [],
+                                                 'export_targets': [],
+                                                 'import_targets': []},
+                                      mode=constants.OVN_EVPN_TYPE_L3,
+                                      ovs_flows=mock.ANY)
+
+        evpn_bridge.connect_vlan.assert_called_with(ports[0])
+        vlan_dev.process_dhcp_opts.assert_called()
 
     def test__ensure_ovn_router(self):
         wire._ensure_ovn_router(self.nb_idl)
@@ -272,9 +338,34 @@ class TestWire(test_base.TestCase):
                                   routing_tables_routes)
         self.assertTrue(ret)
 
+    def test_cleanup_wiring_evpn(self):
+        CONF.set_override('exposing_method', 'vrf')
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        vlan_dev = mock.MagicMock()
+        evpn_bridge = mock.MagicMock()
+        evpn_bridge.get_vlan.return_value = vlan_dev
+        ovs_flows = {
+            'foo': {
+                'evpn': {
+                    '4096': evpn_bridge,
+                }
+            }
+        }
+        exposed_ips = {}
+        routing_tables = {}
+        routing_tables_routes = {}
+        ret = wire.cleanup_wiring(self.sb_idl, self.bridge_mappings, ovs_flows,
+                                  exposed_ips, routing_tables,
+                                  routing_tables_routes)
+
+        evpn_bridge.get_vlan.assert_called_with('4096')
+        vlan_dev.cleanup_excessive_routes.assert_called()
+        self.assertTrue(ret)
+
     @mock.patch.object(wire, '_cleanup_wiring_underlay')
     def test_cleanup_wiring_not_implemeneted(self, mock_underlay):
-        CONF.set_override('exposing_method', 'vrf')
+        CONF.set_override('exposing_method', 'dynamic')
         self.addCleanup(CONF.clear_override, 'exposing_method')
 
         ovs_flows = {}
@@ -325,10 +416,68 @@ class TestWire(test_base.TestCase):
                                 ovn_idl=self.nb_idl)
         mock_ovn.assert_called_once_with(self.nb_idl, port_ips, mac)
 
+    def test_wire_provider_port_evpn(self):
+        CONF.set_override('exposing_method', 'vrf')
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        routing_tables_routes = {}
+        ovs_flows = {}
+        port_ips = ['10.10.10.1']
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        localnet = 'fake-localnet'
+        routing_table = 5
+        proxy_cidrs = []
+        mac = 'fake-mac'
+
+        vlan_dev = mock.MagicMock()
+
+        evpn_bridge = mock.MagicMock()
+        evpn_bridge.get_vlan.return_value = vlan_dev
+
+        evpn_lookup = mock.patch.object(evpn_utils, 'lookup').start()
+        evpn_lookup.return_value = evpn_bridge
+
+        ret = wire.wire_provider_port(routing_tables_routes, ovs_flows,
+                                      port_ips, bridge_device, bridge_vlan,
+                                      localnet, routing_table, proxy_cidrs,
+                                      mac=mac, ovn_idl=self.nb_idl)
+        self.assertTrue(ret)
+
+        evpn_lookup.assert_called_once_with(bridge_device, bridge_vlan)
+        evpn_bridge.get_vlan.assert_called_once_with(bridge_vlan)
+        vlan_dev.add_route.assert_called_with(routing_tables_routes,
+                                              port_ips[0], mac, via=None)
+
+    def test_wire_provider_port_evpn_unconfigured(self):
+        CONF.set_override('exposing_method', 'vrf')
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        routing_tables_routes = {}
+        ovs_flows = {}
+        port_ips = ['10.10.10.1']
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        localnet = 'fake-localnet'
+        routing_table = 5
+        proxy_cidrs = []
+        mac = 'fake-mac'
+
+        evpn_lookup = mock.patch.object(evpn_utils, 'lookup').start()
+        evpn_lookup.side_effect = KeyError
+
+        ret = wire.wire_provider_port(routing_tables_routes, ovs_flows,
+                                      port_ips, bridge_device, bridge_vlan,
+                                      localnet, routing_table, proxy_cidrs,
+                                      mac=mac, ovn_idl=self.nb_idl)
+        self.assertIsNone(ret)
+
     @mock.patch.object(wire, '_wire_provider_port_underlay')
     @mock.patch.object(wire, '_wire_provider_port_ovn')
-    def test_wire_provider_port_not_implemented(self, mock_ovn, mock_underlay):
-        CONF.set_override('exposing_method', 'vrf')
+    @mock.patch.object(wire, '_wire_provider_port_evpn')
+    def test_wire_provider_port_not_implemented(self, mock_evpn, mock_ovn,
+                                                mock_underlay):
+        CONF.set_override('exposing_method', 'dynamic')
         self.addCleanup(CONF.clear_override, 'exposing_method')
 
         routing_tables_routes = {}
@@ -344,6 +493,7 @@ class TestWire(test_base.TestCase):
                                 bridge_device, bridge_vlan, localnet,
                                 routing_table, proxy_cidrs)
 
+        mock_evpn.assert_not_called()
         mock_ovn.assert_not_called()
         mock_underlay.assert_not_called()
 
@@ -410,10 +560,8 @@ class TestWire(test_base.TestCase):
                                   proxy_cidrs, ovn_idl=self.nb_idl)
         mock_ovn.assert_called_once_with(self.nb_idl, port_ips)
 
-    @mock.patch.object(wire, '_unwire_provider_port_underlay')
-    @mock.patch.object(wire, '_unwire_provider_port_ovn')
-    def test_unwire_provider_port_not_implemented(self, mock_ovn,
-                                                  mock_underlay):
+    @mock.patch.object(wire, '_unwire_provider_port_evpn')
+    def test_unwire_provider_port_evpn(self, mock_evpn):
         CONF.set_override('exposing_method', 'vrf')
         self.addCleanup(CONF.clear_override, 'exposing_method')
 
@@ -426,9 +574,69 @@ class TestWire(test_base.TestCase):
 
         wire.unwire_provider_port(routing_tables_routes, port_ips,
                                   bridge_device, bridge_vlan, routing_table,
+                                  proxy_cidrs, lladdr='boo')
+        mock_evpn.assert_called_once_with(routing_tables_routes, port_ips,
+                                          bridge_device, bridge_vlan, 'boo')
+
+    @mock.patch.object(wire, '_unwire_provider_port_underlay')
+    @mock.patch.object(wire, '_unwire_provider_port_ovn')
+    @mock.patch.object(wire, '_unwire_provider_port_evpn')
+    def test_unwire_provider_port_not_implemented(self, mock_evpn, mock_ovn,
+                                                  mock_underlay):
+        CONF.set_override('exposing_method', 'dynamic')
+        self.addCleanup(CONF.clear_override, 'exposing_method')
+
+        routing_tables_routes = {}
+        port_ips = []
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        routing_table = 5
+        proxy_cidrs = []
+
+        wire.unwire_provider_port(routing_tables_routes, port_ips,
+                                  bridge_device, bridge_vlan, routing_table,
                                   proxy_cidrs)
+        mock_evpn.assert_not_called()
         mock_ovn.assert_not_called()
         mock_underlay.assert_not_called()
+
+    def test__unwire_provider_port_evpn(self):
+        routing_tables_routes = {}
+        port_ips = ['10.10.10.1']
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        lladdr = 'boo'
+
+        vlan_dev = mock.MagicMock()
+
+        evpn_bridge = mock.MagicMock()
+        evpn_bridge.get_vlan.return_value = vlan_dev
+
+        evpn_lookup = mock.patch.object(evpn_utils, 'lookup').start()
+        evpn_lookup.return_value = evpn_bridge
+
+        ret = wire._unwire_provider_port_evpn(routing_tables_routes, port_ips,
+                                              bridge_device, bridge_vlan,
+                                              lladdr)
+        self.assertTrue(ret)
+
+        vlan_dev.del_route.assert_called_with(routing_tables_routes,
+                                              port_ips[0], lladdr)
+
+    def test__unwire_provider_port_evpn_unconfigured(self):
+        routing_tables_routes = {}
+        port_ips = ['10.10.10.1']
+        bridge_device = 'fake-bridge'
+        bridge_vlan = '101'
+        lladdr = 'boo'
+
+        evpn_lookup = mock.patch.object(evpn_utils, 'lookup').start()
+        evpn_lookup.side_effect = KeyError
+
+        ret = wire._unwire_provider_port_evpn(routing_tables_routes, port_ips,
+                                              bridge_device, bridge_vlan,
+                                              lladdr)
+        self.assertIsNone(ret)
 
     @mock.patch.object(wire, '_execute_commands')
     def test__unwire_provider_port_ovn(self, m_cmds):

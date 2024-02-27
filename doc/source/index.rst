@@ -14,6 +14,7 @@ Contents:
 
    readme
    contributor/index
+   examples/index
    bgp_supportability_matrix
 
 Indices and tables

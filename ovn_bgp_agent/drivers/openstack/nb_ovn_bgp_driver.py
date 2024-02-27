@@ -38,7 +38,7 @@ LOG = logging.getLogger(__name__)
 # logging.basicConfig(level=logging.DEBUG)
 
 OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch', 'Logical_Router',
-              'Logical_Router_Port', 'Load_Balancer']
+              'Logical_Router_Port', 'Load_Balancer', 'DHCP_Options']
 LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
                             'Logical_Router', 'Logical_Router_Port',
                             'Logical_Router_Policy',
@@ -148,11 +148,18 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   watcher.LogicalSwitchPortProviderDeleteEvent(self),
                   watcher.LogicalSwitchPortFIPCreateEvent(self),
                   watcher.LogicalSwitchPortFIPDeleteEvent(self),
-                  watcher.LocalnetCreateDeleteEvent(self),
                   watcher.OVNLBCreateEvent(self),
                   watcher.OVNLBDeleteEvent(self),
                   watcher.OVNPFCreateEvent(self),
                   watcher.OVNPFDeleteEvent(self)}
+
+        if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+            # For vrf we require more information on the logical_switch
+            # before performing a sync.
+            events.add(watcher.LogicalSwitchUpdateEvent(self))
+        else:
+            events.add(watcher.LocalnetCreateDeleteEvent(self))
+
         if self._expose_tenant_networks:
             events.update({watcher.ChassisRedirectCreateEvent(self),
                            watcher.ChassisRedirectDeleteEvent(self),
@@ -279,6 +286,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     self._exposed_ips.setdefault(logical_switch, {}).update(
                         {ip: {'bridge_device': bridge_device,
                               'bridge_vlan': bridge_vlan}})
+            else:
+                return False
         except Exception as e:
             LOG.exception("Unexpected exception while wiring provider port: "
                           "%s", e)
@@ -622,6 +631,21 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def withdraw_remote_ip(self, ips, ips_info):
         self._withdraw_remote_ip(ips, ips_info)
 
+    def _get_exposed_ip(self, exposed_ip):
+        for ls, ip_info in self._exposed_ips.items():
+            if exposed_ip in ip_info:
+                return ls, ip_info[exposed_ip]
+
+    def _get_router_port_info_for_ls(self, ls):
+        # LOG.debug('Searching router port info for ls %s', ls)
+        lrps = list(self.ovn_local_lrps.get(ls, []))
+        if not lrps:
+            LOG.debug('Could not find router gateway port for ls %s', ls)
+            return
+
+        _, cr_lrp_info = self._get_exposed_ip(lrps[0])
+        return cr_lrp_info
+
     def _expose_remote_ip(self, ips, ips_info):
         if (CONF.advertisement_method_tenant_networks ==
                 constants.ADVERTISEMENT_METHOD_SUBNET):
@@ -638,10 +662,23 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         LOG.debug("Adding BGP route for tenant IP(s) %s on chassis %s",
                   ips_to_expose, self.chassis)
-        bgp_utils.announce_ips(ips_to_expose)
+        if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+            cr_lrp_info = self._get_router_port_info_for_ls(
+                ips_info['logical_switch'])
+            if not cr_lrp_info:
+                LOG.debug('Unable to export routed ips %s: could not find '
+                          'router gateway port for ls %s',
+                          ips, ips_info['logical_switch'])
+                return
+
+            # Add the bridge_vlan, bridge_device and via to the ips_info
+            ips_info.update(cr_lrp_info)
+
+        bgp_utils.announce_ips(ips_to_expose, ips_info=ips_info)
         for ip in ips_to_expose:
             self._exposed_ips.setdefault(
-                ips_info['logical_switch'], {}).update({ip: {}})
+                ips_info['logical_switch'], {}).setdefault(ip, {})
+
         LOG.debug("Added BGP route for tenant IP(s) %s on chassis %s",
                   ips_to_expose, self.chassis)
 
@@ -660,12 +697,22 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         LOG.debug("Deleting BGP route for tenant IP(s) %s on chassis %s",
                   ips_to_withdraw, self.chassis)
-        bgp_utils.withdraw_ips(ips_to_withdraw)
+        if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+            cr_lrp_info = self._get_router_port_info_for_ls(
+                ips_info['logical_switch'])
+            if not cr_lrp_info:
+                LOG.debug('Unable to withdraw routed ips %s: could not find '
+                          'router gateway port for ls %s',
+                          ips, ips_info['logical_switch'])
+                return
+
+            # Add the bridge_vlan, bridge_device and via to the ips_info
+            ips_info.update(cr_lrp_info)
+
+        bgp_utils.withdraw_ips(ips_to_withdraw, ips_info=ips_info)
         for ip in ips_to_withdraw:
-            if self._exposed_ips.get(
-                    ips_info['logical_switch'], {}).get(ip):
-                self._exposed_ips[
-                    ips_info['logical_switch']].pop(ip)
+            self._exposed_ips.get(ips_info['logical_switch'], {}).pop(ip, None)
+
         LOG.debug("Deleted BGP route for tenant IP(s) %s on chassis %s",
                   ips_to_withdraw, self.chassis)
 
@@ -805,9 +852,17 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         if (CONF.advertisement_method_tenant_networks ==
                 constants.ADVERTISEMENT_METHOD_SUBNET):
             # Fix ips to be the network address, instead of the lrp address
-            # so the cleanup will not remove them, since they match what's
-            # in the kernel
+            # so we can advertise the entire subnet. This way a cleanup of
+            # EVPN would not remove the incorrect entry as well.
             ips = driver_utils.get_prefixes_from_ips(ips)
+
+        elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+            # For evpn, we work with routes and since we are not exposing per
+            # subnet, we need to remove the subnetmask part, so the ips are
+            # exposed as a /32 or /128. Otherwise the cleanup would remove
+            # the exposed route again, since 10.0.0.1/24 (a router ip) would
+            # not match the kernel route of 10.0.0.0/24.
+            ips = [ip.split('/')[0] for ip in ips]
 
         ips_to_process = []
         for ip in ips:
@@ -845,10 +900,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     self._exposed_ips.setdefault(logical_switch, {}).update(
                         {ip: {
                             'bridge_device': cr_lrp_info.get('bridge_device'),
-                            'bridge_vlan': cr_lrp_info.get('bridge_vlan')}})
+                            'bridge_vlan': cr_lrp_info.get('bridge_vlan'),
+                            'via': cr_lrp_info.get('ips')}})
 
                     self.ovn_local_lrps.setdefault(
-                        subnet_info['network'], []).append(ip)
+                        subnet_info['network'], set()).add(ip)
                 else:
                     error_msg = ("Something happen while exposing the subnet"
                                  "and they have not been properly exposed")
@@ -875,9 +931,14 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         if (CONF.advertisement_method_tenant_networks ==
                 constants.ADVERTISEMENT_METHOD_SUBNET):
             # Fix ips to be the network address, instead of the lrp address
-            # so the cleanup will not remove them, since they match what's
-            # in the kernel
+            # so we can withdraw the corrent subnet entry.
             ips = driver_utils.get_prefixes_from_ips(ips)
+
+        elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+            # For evpn, we work with routes and since we are not exposing per
+            # subnet, we need to remove the subnetmask part, so the ips are
+            # withdrawn as a /32 or /128.
+            ips = [ip.split('/')[0] for ip in ips]
 
         ips_to_process = []
         for ip in ips:
