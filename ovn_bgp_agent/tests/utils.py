@@ -14,6 +14,7 @@
 #    under the License.
 
 import eventlet
+import uuid
 
 
 class WaitTimeout(Exception):
@@ -21,7 +22,22 @@ class WaitTimeout(Exception):
 
 
 def create_row(**kwargs):
-    return type('FakeRow', (object,), kwargs)
+    row = type('FakeRow', (object,), kwargs)
+    if not hasattr(row, 'uuid'):
+        row.uuid = uuid.uuid4()
+    return row
+
+
+class FakeLinuxRoute(dict):
+    def get_attr(self, key, default=None):
+        for k, v in self.get('attrs', []):
+            if k == key:
+                return v
+        return default
+
+
+def create_linux_routes(route_info) -> 'list[FakeLinuxRoute]':
+    return [FakeLinuxRoute(r) for r in route_info]
 
 
 def wait_until_true(predicate, timeout=60, sleep=1, exception=None):

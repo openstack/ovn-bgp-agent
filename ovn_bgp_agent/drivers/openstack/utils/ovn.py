@@ -391,13 +391,35 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
 
     def get_network_vlan_tag_by_network_name(self, network_name):
         tags = []
-        cmd = self.db_find_rows('Logical_Switch_Port', ('type', '=',
-                                constants.OVN_LOCALNET_VIF_PORT_TYPE))
-        for row in cmd.execute(check_error=True):
-            if (row.tag and row.options and
-                    row.options.get('network_name') == network_name):
+        for row in self.get_localnet_ports_by_network_name(network_name):
+            if row.tag:
                 tags.append(row.tag[0])
         return tags
+
+    def get_localnet_ports_by_network_name(self, network_name):
+        conditions = (
+            ('options', '=', {'network_name': network_name}),
+            ('type', '=', constants.OVN_LOCALNET_VIF_PORT_TYPE),
+        )
+        cmd = self.db_find_rows('Logical_Switch_Port', *conditions)
+        for row in cmd.execute(check_error=True):
+            yield row
+
+    def get_bgpvpn_networks_for_ports(self, ports,
+                                      vpn_type=constants.OVN_EVPN_TYPE_L3):
+        cmd = self.db_find_rows(
+            'Logical_Switch',
+            ('external_ids', '=', {constants.OVN_EVPN_TYPE_EXT_ID_KEY:
+                                   vpn_type}))
+        networks = []
+        for row in cmd.execute(check_error=True):
+            if not row.ports:
+                continue
+
+            localnet_ports = [p for p in row.ports if p in ports]
+            if localnet_ports:
+                networks.append(row)
+        return networks
 
     def ls_has_virtual_ports(self, logical_switch):
         ls = self.lookup('Logical_Switch', logical_switch)

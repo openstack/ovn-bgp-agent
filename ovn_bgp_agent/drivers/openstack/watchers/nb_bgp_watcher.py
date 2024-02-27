@@ -311,6 +311,43 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             self.agent.withdraw_fip(fip, row)
 
 
+class LogicalSwitchUpdateEvent(base_watcher.LogicalSwitchChassisEvent):
+    '''Event to trigger on logical switch vrf config updates'''
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE, self.ROW_DELETE)
+        super(LogicalSwitchUpdateEvent, self).__init__(
+            bgp_agent, events)
+
+    def match_fn(self, event, row, old):
+        '''Match updates for vrf configuration
+
+        Will trigger whenever external_ids[neutron_bgpvpn:vni] and
+        external_ids[neutron_bgpvpn:type] have been set and either one has
+        been updated
+        '''
+
+        settings = driver_utils.get_port_vrf_settings(row)
+        if settings and event == self.ROW_DELETE:
+            # Always run sync method if we are deleting this network (and it
+            # had settings applied)
+            return True
+
+        old_settings = driver_utils.get_port_vrf_settings(old)
+        if old_settings is None:
+            # it was not provided in old, so do not process this update
+            return False
+
+        return settings != old_settings
+
+    def _run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            # NOTE(mnederlof): For now it makes sense to run the sync method
+            # as this is triggered with a configured interval anyway and it
+            # will add/remove the triggered logical switch.
+            # It might make sense in the future to optimize this behaviour.
+            self.agent.sync()
+
+
 class LocalnetCreateDeleteEvent(base_watcher.LSPChassisEvent):
     def __init__(self, bgp_agent):
         events = (self.ROW_CREATE, self.ROW_DELETE,)

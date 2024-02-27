@@ -85,6 +85,28 @@ def is_pf_lb(lb):
     return check_name_prefix(lb, constants.OVN_LB_PF_NAME_PREFIX)
 
 
+def ips_per_version(ips: 'list[str]') -> 'dict[int, str]':
+    '''Separate list of ips into ip versions.
+
+    For example, this list ['10.0.0.1/32', 'fe80::1/128'] will be converted
+    to dictionary {
+        4: '10.0.0.1',
+        6: 'fe80::1',
+    }
+
+    If there are more than 1 ip for the same ip version, it will overwrite
+    the previous ip for that ip version.
+    '''
+    ip_list = {constants.IP_VERSION_4: None,
+               constants.IP_VERSION_6: None}
+
+    for ip in ips:
+        ver = linux_net.get_ip_version(ip)
+        ip_list[ver] = ipaddress.ip_address(ip.split('/')[0]).compressed
+
+    return ip_list
+
+
 def get_prefixes_from_ips(ips: 'list[str]') -> 'list[str]':
     '''Return the network address for any given ip (with mask)
 
@@ -106,3 +128,30 @@ def remove_port_from_ip(ip_address):
     if ip_address[last_colon_index + 1:].isdigit():
         return ip_address[:last_colon_index]
     return ip_address
+
+
+def get_port_vlan(port):
+    '''Will return the tag of the given logical switch port row as string
+
+    If the vlan tag is not configured, it will return the value of
+    constants.VLAN_ID_UNTAGGED
+    '''
+    if port.tag:
+        return str(port.tag[0])
+    return str(constants.VLAN_ID_UNTAGGED)
+
+
+def get_port_vrf_settings(port):
+    """Create a comparable object with the settings of the vrf
+
+    Returns None if the settings are not found in the port, otherwise it
+    will return a string value. Either an empty string or a concatenation
+    of the type and vni, e.g. l3::1001
+    """
+    if hasattr(port, 'external_ids'):
+        try:
+            return "%s::%s" % (
+                port.external_ids[constants.OVN_EVPN_TYPE_EXT_ID_KEY],
+                port.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY])
+        except (AttributeError, KeyError):
+            return ''
