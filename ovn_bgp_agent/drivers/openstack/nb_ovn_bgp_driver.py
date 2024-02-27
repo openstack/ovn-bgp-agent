@@ -356,6 +356,48 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 if lb.external_ids.get(constants.OVN_LB_VIP_FIP_EXT_ID_KEY):
                     self._withdraw_ovn_lb_fip(lb)
 
+    def is_ls_provider(self, logical_switch):
+        '''Check if given logical switch is a provider network on this host
+
+        It will also validate that the provider network actually has been
+        exposed by the driver.
+        '''
+
+        if logical_switch is None:
+            self.ovn_tenant_ls[logical_switch] = True  # just for caching
+            return False
+
+        # Check if the ls has already been identified as a tenant network
+        if self.ovn_tenant_ls.get(logical_switch, None) is True:
+            return False
+
+        # Check the bridge device from provider network
+        _, bridge_device, _ = self._get_provider_ls_info(logical_switch)
+
+        # Check if the bridge device has been exposed by the wiring methods
+        if bridge_device not in self.ovn_bridge_mappings.values():
+            return False
+
+        return bridge_device is not None
+
+    def is_ip_exposed(self, logical_switch, ips):
+        '''Check if the ip(s) from given logical_switch is exported.
+
+        So basically, check if the ips are listed in self._exposed_ips.
+        If it is in there, it should be exposed by ovn-bgp-agent.
+
+        This helps a lot in evaluating events.
+        '''
+        # Ip may be a list
+        if not isinstance(ips, (list, tuple, set)):
+            ips = [ips]
+
+        for ip in ips:
+            if ip in self._exposed_ips.get(logical_switch, {}):
+                return True
+
+        return False
+
     @lockutils.synchronized('nbbgp')
     def expose_ip(self, ips, ips_info):
         '''Advertice BGP route by adding IP to device.
@@ -496,6 +538,32 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 LOG.debug("Gateway port for router %s already cleanup.",
                           ips_info['router'])
         LOG.debug("Deleted BGP route for logical port with ip %s", ips)
+
+    def _get_provider_ls_info(self, logical_switch):
+        '''Helper method for _get_ls_localnet_info
+
+        It returns the information from cached self.ovn_provider_ls dictionary
+        or calls the method and populates the dictionary for given
+        logical_switch.
+
+        It returns a tuple of localnet, bridge_device and bridge_vlan for
+        compatibilty with _get_ls_localnet_info
+        '''
+        if logical_switch is None:
+            return None, None, None
+
+        if logical_switch not in self.ovn_provider_ls:
+            localnet, bridge_dev, bridge_vlan = self._get_ls_localnet_info(
+                logical_switch)
+
+            self.ovn_provider_ls[logical_switch] = {
+                'bridge_device': bridge_dev,
+                'bridge_vlan': bridge_vlan,
+                'localnet': localnet
+            }
+
+        ls = self.ovn_provider_ls[logical_switch]
+        return ls['localnet'], ls['bridge_device'], ls['bridge_vlan']
 
     def _get_ls_localnet_info(self, logical_switch):
         localnet_ports = self.nb_idl.ls_get_localnet_ports(
