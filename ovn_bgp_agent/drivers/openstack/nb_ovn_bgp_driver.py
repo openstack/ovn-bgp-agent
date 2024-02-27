@@ -674,7 +674,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._withdraw_remote_ip(ips, ips_info)
 
     def _expose_remote_ip(self, ips, ips_info):
-        if CONF.advertisement_method_tenant_networks == 'subnet':
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
             # Ip should already be exported via cr-lrp subnet announcement.
             return
 
@@ -696,7 +697,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   ips_to_expose, self.chassis)
 
     def _withdraw_remote_ip(self, ips, ips_info):
-        if CONF.advertisement_method_tenant_networks == 'subnet':
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
             return
 
         ips_to_withdraw = ips
@@ -743,7 +745,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                       "and they have not been properly exposed", ips)
             return
 
-        if CONF.advertisement_method_tenant_networks == 'subnet':
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
             # Networks have been exposed via self._expose_router_lsp
             return
 
@@ -778,7 +781,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         self._withdraw_router_lsp(ips, subnet_info, cr_lrp_info)
 
-        if CONF.advertisement_method_tenant_networks == 'subnet':
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
             # Expose the routes per prefix, rather than per port.
             return
 
@@ -800,10 +804,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         if not self._expose_tenant_networks:
             return True
 
-        # Fix ips to be the network address, instead of the lrp address
-        # so the cleanup will not remove them, since they match what's
-        # in the kernel
-        ips = driver_utils.get_prefixes_from_ips(ips)
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
+            # Fix ips to be the network address, instead of the lrp address
+            # so the cleanup will not remove them, since they match what's
+            # in the kernel
+            ips = driver_utils.get_prefixes_from_ips(ips)
 
         success = True
         for ip in ips:
@@ -842,10 +848,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         if not self._expose_tenant_networks:
             return
 
-        # Fix ips to be the network address, instead of the lrp address
-        # so the cleanup will not remove them, since they match what's
-        # in the kernel
-        ips = driver_utils.get_prefixes_from_ips(ips)
+        if (CONF.advertisement_method_tenant_networks ==
+                constants.ADVERTISEMENT_METHOD_SUBNET):
+            # Fix ips to be the network address, instead of the lrp address
+            # so the cleanup will not remove them, since they match what's
+            # in the kernel
+            ips = driver_utils.get_prefixes_from_ips(ips)
 
         for ip in ips:
             if (not CONF.expose_tenant_networks and
