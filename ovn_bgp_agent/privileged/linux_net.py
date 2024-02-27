@@ -518,6 +518,15 @@ def _run_iproute_neigh(command, device, **kwargs):
                   command, device)
 
 
+def _run_iproute_brport(command, ifname, **kwargs):
+    try:
+        with iproute.IPRoute() as ip:
+            idx = _get_link_id(ifname)
+            return ip.brport(command, index=idx, **kwargs)
+    except netlink_exceptions.NetlinkError as e:
+        _translate_ip_device_exception(e, ifname)
+
+
 @ovn_bgp_agent.privileged.default.entrypoint
 def create_interface(ifname, kind, **kwargs):
     ifname = ifname[:15]
@@ -545,12 +554,18 @@ def set_link_attribute(ifname, **kwargs):
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
-def add_ip_address(ip_address, ifname):
+def set_brport_attribute(ifname, **kwargs):
+    _run_iproute_brport("set", ifname, **kwargs)
+
+
+@ovn_bgp_agent.privileged.default.entrypoint
+def add_ip_address(ip_address, ifname, prefixlen=None, **kwargs):
     ifname = ifname[:15]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
-    prefixlen = 32 if ip_version == 4 else 128
+    if not prefixlen:
+        prefixlen = 32 if ip_version == 4 else 128
     family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_addr('add',
                       ifname,
@@ -560,18 +575,20 @@ def add_ip_address(ip_address, ifname):
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
-def delete_ip_address(ip_address, ifname):
+def delete_ip_address(ip_address, ifname, prefixlen=None, **kwargs):
     ifname = ifname[:15]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
-    prefixlen = 32 if ip_version == 4 else 128
+    if not prefixlen:
+        prefixlen = 32 if ip_version == 4 else 128
     family = common_utils.IP_VERSION_FAMILY_MAP[ip_version]
     _run_iproute_addr("delete",
                       ifname,
                       address=address,
                       mask=prefixlen,
-                      family=family)
+                      family=family,
+                      **kwargs)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint

@@ -121,6 +121,34 @@ class TestDriverUtils(test_base.TestCase):
         lb = utils.create_row(name='lb-someuuid')
         self.assertFalse(driver_utils.is_pf_lb(lb))
 
+    def test_ips_per_version(self):
+        ips = ['10.0.0.1/32', 'fe80::1/128']
+        self.assertDictEqual(driver_utils.ips_per_version(ips), {
+            constants.IP_VERSION_4: '10.0.0.1',
+            constants.IP_VERSION_6: 'fe80::1',
+        })
+
+        # More than 1 ip per version and without prefix
+        ips = ['10.0.0.1/32', '10.0.0.254', 'fe80::1', 'fc00::1/128']
+        self.assertDictEqual(driver_utils.ips_per_version(ips), {
+            constants.IP_VERSION_4: '10.0.0.254',
+            constants.IP_VERSION_6: 'fc00::1',
+        })
+
+        # Only IPv4
+        ips = ['10.0.0.1/32']
+        self.assertDictEqual(driver_utils.ips_per_version(ips), {
+            constants.IP_VERSION_4: '10.0.0.1',
+            constants.IP_VERSION_6: None,
+        })
+
+        # Only IPv6
+        ips = ['fc00::1/128']
+        self.assertDictEqual(driver_utils.ips_per_version(ips), {
+            constants.IP_VERSION_4: None,
+            constants.IP_VERSION_6: 'fc00::1',
+        })
+
     def test_get_prefixes_from_ips(self):
         # IPv4
         ips = ['192.168.0.1/24', '192.168.0.244/28', '172.13.37.59/27']
@@ -137,3 +165,37 @@ class TestDriverUtils(test_base.TestCase):
         ips = ['172.13.37.59/27', 'ff00::13:37/112']
         self.assertListEqual(driver_utils.get_prefixes_from_ips(ips),
                              ['172.13.37.32/27', 'ff00::13:0/112'])
+
+    def test_get_port_vlan_untagged(self):
+        port = utils.create_row(tag=[])
+        self.assertEqual('0', driver_utils.get_port_vlan(port))
+
+    def test_get_port_vlan_tagged(self):
+        port = utils.create_row(tag=[100])
+        self.assertEqual('100', driver_utils.get_port_vlan(port))
+
+        port = utils.create_row(tag=[100, 123])
+        self.assertEqual('100', driver_utils.get_port_vlan(port))
+
+    def test_get_port_vrf_settings(self):
+        row = utils.create_row(external_ids={
+            constants.OVN_EVPN_TYPE_EXT_ID_KEY: constants.OVN_EVPN_TYPE_L3,
+            constants.OVN_EVPN_VNI_EXT_ID_KEY: 1001,
+        })
+        self.assertEqual('l3::1001', driver_utils.get_port_vrf_settings(row))
+
+    def test_get_port_vrf_settings_no_vni(self):
+        row = utils.create_row(external_ids={
+            constants.OVN_EVPN_TYPE_EXT_ID_KEY: constants.OVN_EVPN_TYPE_L3,
+        })
+        self.assertEqual('', driver_utils.get_port_vrf_settings(row))
+
+    def test_get_port_vrf_settings_no_type(self):
+        row = utils.create_row(external_ids={
+            constants.OVN_EVPN_VNI_EXT_ID_KEY: 1001,
+        })
+        self.assertEqual('', driver_utils.get_port_vrf_settings(row))
+
+    def test_get_port_vrf_settings_not_provided(self):
+        row = utils.create_row()
+        self.assertIsNone(driver_utils.get_port_vrf_settings(row))
