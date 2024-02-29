@@ -17,6 +17,7 @@ from unittest import mock
 
 from oslo_concurrency import processutils
 
+from ovn_bgp_agent import constants
 from ovn_bgp_agent.privileged import linux_net as priv_linux_net
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
@@ -44,6 +45,7 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.ip = '10.10.1.16'
         self.ipv6 = '2002::1234:abcd:ffff:c0a8:101'
         self.dev = 'ethfake'
+        self.dev_br = 'fake-provider'
         self.mac = 'aa:bb:cc:dd:ee:ff'
 
     def test_set_kernel_flag(self):
@@ -68,6 +70,13 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
             'ip', '-6', 'nei', 'add', 'proxy', self.ipv6,
             'dev', '%s.10' % self.dev)
 
+    def test_add_trimmed_ndp_proxy_vlan(self):
+        priv_linux_net.add_ndp_proxy(self.ipv6, self.dev_br, vlan=1024)
+        self.mock_exc.assert_called_once_with(
+            'ip', '-6', 'nei', 'add', 'proxy', self.ipv6,
+            'dev', '%s.1024' %
+            self.dev_br[:constants.OVN_VLAN_DEVICE_MAX_LENGTH])
+
     def test_add_ndp_proxy_exception(self):
         self.mock_exc.side_effect = FakeException()
         self.assertRaises(
@@ -85,6 +94,13 @@ class TestPrivilegedLinuxNet(test_base.TestCase):
         self.mock_exc.assert_called_once_with(
             'ip', '-6', 'nei', 'del', 'proxy', self.ipv6, 'dev',
             '%s.10' % self.dev, env_variables=mock.ANY)
+
+    def test_del_trimeed_ndp_proxy_vlan(self):
+        priv_linux_net.del_ndp_proxy(self.ipv6, self.dev_br, vlan=1024)
+        self.mock_exc.assert_called_once_with(
+            'ip', '-6', 'nei', 'del', 'proxy', self.ipv6, 'dev',
+            '%s.1024' % self.dev_br[:constants.OVN_VLAN_DEVICE_MAX_LENGTH],
+            env_variables=mock.ANY)
 
     def test_del_ndp_proxy_exception(self):
         self.mock_exc.side_effect = FakeException()

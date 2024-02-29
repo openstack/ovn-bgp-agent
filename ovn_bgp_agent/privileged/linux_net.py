@@ -105,7 +105,9 @@ def ensure_dummy_device(device):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def ensure_vlan_device_for_network(bridge, vlan_tag):
-    vlan_device_name = '{}.{}'.format(bridge, vlan_tag)
+    vlan_device_name = '{}.{}'.format(
+        bridge[:constants.OVN_VLAN_DEVICE_MAX_LENGTH],
+        vlan_tag)
     try:
         set_device_state(vlan_device_name, constants.LINK_UP)
     except agent_exc.NetworkInterfaceNotFound:
@@ -124,9 +126,9 @@ def ensure_vlan_device_for_network(bridge, vlan_tag):
 @ovn_bgp_agent.privileged.default.entrypoint
 def set_master_for_device(device, master):
     try:
+        dev_index = _get_link_id(ifname=device)
+        master_index = _get_link_id(ifname=master)
         with pyroute2.IPRoute() as ipr:
-            dev_index = ipr.link_lookup(ifname=device)[0]
-            master_index = ipr.link_lookup(ifname=master)[0]
             # Check if already associated to the master,
             # and associate it if not
             iface = ipr.link('get', index=dev_index)[0]
@@ -203,7 +205,7 @@ def add_ndp_proxy(ip, dev, vlan=None):
     net_ip = str(ipaddress.IPv6Network(ip, strict=False).network_address)
     dev_name = dev
     if vlan:
-        dev_name = "{}.{}".format(dev, vlan)
+        dev_name = f"{dev[:constants.OVN_VLAN_DEVICE_MAX_LENGTH]}.{vlan}"
     command = ["ip", "-6", "nei", "add", "proxy", net_ip, "dev", dev_name]
     try:
         return processutils.execute(*command)
@@ -219,7 +221,7 @@ def del_ndp_proxy(ip, dev, vlan=None):
     net_ip = str(ipaddress.IPv6Network(ip, strict=False).network_address)
     dev_name = dev
     if vlan:
-        dev_name = "{}.{}".format(dev, vlan)
+        dev_name = f"{dev[:constants.OVN_VLAN_DEVICE_MAX_LENGTH]}.{vlan}"
     command = ["ip", "-6", "nei", "del", "proxy", net_ip, "dev", dev_name]
     env = dict(os.environ)
     env['LC_ALL'] = 'C'
@@ -410,6 +412,7 @@ def make_serializable(value):
 
 
 def _get_link_id(ifname, raise_exception=True):
+    ifname = ifname[:15]
     with iproute.IPRoute() as ip:
         link_id = ip.link_lookup(ifname=ifname)
     if not link_id or len(link_id) < 1:
@@ -431,6 +434,7 @@ def get_link_state(device_name):
 
 
 def get_link_device(device_name):
+    device_name = device_name[:15]
     for device in get_link_devices():
         if get_attr(device, 'IFLA_IFNAME') == device_name:
             return device
