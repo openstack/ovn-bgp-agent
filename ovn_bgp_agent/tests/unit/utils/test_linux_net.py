@@ -197,10 +197,29 @@ class TestLinuxNet(test_base.TestCase):
         mock_ndp.assert_called_once_with(expected_dev)
         mock_arp.assert_called_once_with(expected_dev)
 
+    @mock.patch.object(linux_net, 'enable_proxy_arp')
+    @mock.patch.object(linux_net, 'enable_proxy_ndp')
+    @mock.patch(
+        'ovn_bgp_agent.privileged.linux_net.ensure_vlan_device_for_network')
+    def test_ensure_vlan_trimmed_device_for_network(
+            self, mock_ensure_vlan_device_for_network, mock_ndp, mock_arp):
+        linux_net.ensure_vlan_device_for_network('fake-provider', 1020)
+        mock_ensure_vlan_device_for_network.assert_called_once_with(
+            'fake-provider', 1020)
+        expected_dev = 'fake-provi/1020'
+        mock_ndp.assert_called_once_with(expected_dev)
+        mock_arp.assert_called_once_with(expected_dev)
+
     @mock.patch.object(linux_net, 'delete_device')
     def test_delete_vlan_device_for_network(self, mock_del):
         linux_net.delete_vlan_device_for_network('fake-br', 10)
         vlan_name = 'fake-br.10'
+        mock_del.assert_called_once_with(vlan_name)
+
+    @mock.patch.object(linux_net, 'delete_device')
+    def test_delete_vlan_trimmed_device_for_network(self, mock_del):
+        linux_net.delete_vlan_device_for_network('fake-provider', 1020)
+        vlan_name = 'fake-provi.1020'
         mock_del.assert_called_once_with(vlan_name)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.set_kernel_flag')
@@ -357,10 +376,12 @@ class TestLinuxNet(test_base.TestCase):
 
     @mock.patch.object(linux_net, 'get_interface_index')
     def _test_delete_bridge_ip_routes(self, mock_route_delete, mock_get_index,
-                                      is_vlan=False, has_gateway=False):
+                                      is_vlan=False, has_gateway=False,
+                                      trimmed_bridge=False):
         gateway = '1.1.1.1'
         oif = 11
-        vlan = 30 if is_vlan else None
+        bridge = 'br-provider' if trimmed_bridge else self.bridge
+        vlan = 2030 if is_vlan else None
         mock_get_index.return_value = oif
 
         route = {'route': {'dst': self.ip,
@@ -370,8 +391,8 @@ class TestLinuxNet(test_base.TestCase):
         if has_gateway:
             route['route']['gateway'] = gateway
 
-        routing_tables = {self.bridge: 20}
-        routing_tables_routes = {self.bridge: [route]}
+        routing_tables = {bridge: 20}
+        routing_tables_routes = {bridge: [route]}
         # extra_route0 matches with the route
         extra_route0 = IPRouteDict({
             'dst_len': 32, 'family': constants.AF_INET, 'table': 20,
@@ -384,7 +405,7 @@ class TestLinuxNet(test_base.TestCase):
             'attrs': [('RTA_DST', '10.10.1.17'),
                       ('RTA_OIF', oif),
                       ('RTA_GATEWAY', gateway)]})
-        extra_routes = {self.bridge: [extra_route0, extra_route1]}
+        extra_routes = {bridge: [extra_route0, extra_route1]}
 
         linux_net.delete_bridge_ip_routes(
             routing_tables, routing_tables_routes, extra_routes)
@@ -403,6 +424,12 @@ class TestLinuxNet(test_base.TestCase):
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     def test_delete_bridge_ip_routes_vlan(self, mock_route_delete):
         self._test_delete_bridge_ip_routes(mock_route_delete, is_vlan=True)
+
+    @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
+    def test_delete_trimmed_bridge_ip_routes_vlan(self, mock_route_delete):
+        self._test_delete_bridge_ip_routes(mock_route_delete,
+                                           is_vlan=True,
+                                           trimmed_bridge=True)
 
     @mock.patch('ovn_bgp_agent.privileged.linux_net.route_delete')
     def test_delete_bridge_ip_routes_gateway(self, mock_route_delete):
