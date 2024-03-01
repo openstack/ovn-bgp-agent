@@ -73,7 +73,7 @@ enable_plugin ovn-bgp-agent https://opendev.org/openstack/ovn-bgp-agent
 OVN_BUILD_MODULES=True
 OVN_BUILD_FROM_SOURCE=true
 OVN_BRANCH=main
-OVS_BRANCH=branch-3.2
+OVS_BRANCH=branch-3.3
 
 
 # If the admin wants to enable this chassis to host gateway routers for
