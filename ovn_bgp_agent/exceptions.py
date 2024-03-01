@@ -69,6 +69,39 @@ class PatchPortNotFound(OVNBGPAgentException):
     message = _("Patch port not found for localnet: %(localnet)s.")
 
 
+class ExposeDeniedForAddressScope(OVNBGPAgentException):
+    """Address Scope test failed
+
+    :param addresses: The ip address used for checking address_scope
+    :param address_scopes: The address scopes
+    :param configured_scopes: The allowed address scopes in configuration
+    """
+
+    message = _("Exposing addresses %(addresses)s with address scopes "
+                "%(address_scopes)s was denied, required scopes: "
+                "%(configured_scopes)s")
+
+
+class WireFailure(OVNBGPAgentException):
+    """Wire port failed
+
+    :param cidr: The cidr that failed to wire.
+    :param message: The failure message
+    """
+
+    message = _("Failure with wiring for CIDR %(cidr)s: %(message)s")
+
+
+class UnwireFailure(OVNBGPAgentException):
+    """Unwire port failed
+
+    :param cidr: The cidr that failed to wire.
+    :param message: The failure message
+    """
+
+    message = _("Failure with removing wiring for CIDR %(cidr)s: %(message)s")
+
+
 class IpAddressAlreadyExists(RuntimeError):
     message = _("IP address %(ip)s already configured on %(device)s.")
 
