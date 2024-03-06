@@ -751,5 +751,5 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
 
 
 def set_device_status(device, status, ndb=None):
-    ovn_bgp_agent.privileged.linux_net.set_device_status(
+    ovn_bgp_agent.privileged.linux_net.set_device_state(
         device, status, ndb=ndb)
