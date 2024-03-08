@@ -55,6 +55,11 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             current_chassis, _ = self._get_chassis(row)
             logical_switch = self._get_network(row)
 
+            if logical_switch in self.agent.ovn_local_lrps:
+                # This is a tenant network, routed through lrp, handled by
+                # event LogicalSwitchPortTenantCreateEvent
+                return False
+
             # Check for rejection criteria
             if (current_chassis != self.agent.chassis or
                     not bool(row.up[0]) or
@@ -100,6 +105,11 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
 
             ips = row.addresses[0].split(' ')[1:]
             logical_switch = self._get_network(row)
+
+            if logical_switch in self.agent.ovn_local_lrps:
+                # This is a tenant network, routed through lrp, handled by
+                # event LogicalSwitchPortTenantDeleteEvent
+                return False
 
             # Do nothing if we do not expose the current port
             if not self.agent.is_ip_exposed(logical_switch, ips):

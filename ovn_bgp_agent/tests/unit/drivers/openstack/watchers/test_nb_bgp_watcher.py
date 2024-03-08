@@ -27,6 +27,8 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
         super(TestLogicalSwitchPortProviderCreateEvent, self).setUp()
         self.chassis = 'fake-chassis'
         self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.ovn_local_lrps = {
+            'net1': ['10.0.0.5']}
 
         # Assume the logical switch has been setup properly.
         self.agent.is_ls_provider.return_value = True
@@ -91,6 +93,16 @@ class TestLogicalSwitchPortProviderCreateEvent(test_base.TestCase):
         old = utils.create_row(options={}, up=[True])
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
+    def test_match_fn_tenant_create(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            options={'requested-chassis': self.chassis},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        old = utils.create_row(options={}, up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
     def test_match_fn_additional_bindings(self):
         event = self.event.ROW_UPDATE
         bindings = ','.join([self.chassis, 'other-chassis'])
@@ -133,6 +145,8 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
         super(TestLogicalSwitchPortProviderDeleteEvent, self).setUp()
         self.chassis = 'fake-chassis'
         self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.ovn_local_lrps = {
+            'net1': ['10.0.0.5']}
 
         # Assume the logical switch has been setup properly.
         self.agent.is_ls_provider.return_value = True
@@ -223,6 +237,16 @@ class TestLogicalSwitchPortProviderDeleteEvent(test_base.TestCase):
                                up=[True])
         old = utils.create_row(options={'requested-chassis': 'other_chassis'})
         self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_tenant_delete(self):
+        event = self.event.ROW_DELETE
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            options={'requested-chassis': self.chassis},
+            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'net1'},
+            up=[True])
+        self.assertFalse(self.event.match_fn(event, row, mock.Mock()))
 
     def test_match_fn_wrong_type(self):
         row = utils.create_row(
