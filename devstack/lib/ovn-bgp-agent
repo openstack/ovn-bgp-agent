@@ -112,9 +112,10 @@ function configure_ovn_bgp_agent {
         die $LINENO "OVN BGP Agent requires TLS to be enabled. Please set ENABLE_TLS=True and enable tls-proxy in your local.conf"
     fi
 
-    if [[ $OVN_BGP_AGENT_DRIVER != "ovn_bgp_driver" ]]; then
-        die $LINENO "\"ovn_bgp_driver\" is the only supported driver at the moment"
+    if [[ $OVN_BGP_AGENT_DRIVER != "ovn_bgp_driver" && $OVN_BGP_AGENT_DRIVER != "nb_ovn_bgp_driver" ]]; then
+        die $LINENO "\"ovn_bgp_driver\" or \"nb_ovn_bgp_driver\" are the only supported drivers at the moment"
     fi
+
 
     iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT driver $OVN_BGP_AGENT_DRIVER
     iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT debug $OVN_BGP_AGENT_DEBUG
@@ -122,19 +123,22 @@ function configure_ovn_bgp_agent {
     iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovsdb_connection $OVN_BGP_AGENT_OVS_DB
 
     # Configure TLS/SSL
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_ca_cert "$INT_CA_DIR/ca-chain.pem"
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_sb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_ca_cert "$INT_CA_DIR/ca-chain.pem"
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
-    iniset $OVN_BGP_AGENT_CONF_FILE DEFAULT ovn_nb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_sb_ca_cert "$INT_CA_DIR/ca-chain.pem"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_sb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_sb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_sb_connection $OVN_BGP_AGENT_OVN_SB_DB
+
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_ca_cert "$INT_CA_DIR/ca-chain.pem"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
+    iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_connection $OVN_BGP_AGENT_OVN_NB_DB
 
     # Configure rootwrap
     sudo install -d -o root -g root -m 755 $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
     sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.d/*.filters $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
     sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.conf $OVN_BGP_AGENT_CONF_DIR
-    iniset $OVN_BGP_AGENT_CONF_FILE AGENT root_helper "$OVN_BGP_AGENT_ROOTWRAP_COMMAND"
-    iniset $OVN_BGP_AGENT_CONF_FILE AGENT root_helper_daemon "$OVN_BGP_AGENT_ROOTWRAP_DAEMON"
+    iniset $OVN_BGP_AGENT_CONF_FILE agent root_helper "$OVN_BGP_AGENT_ROOTWRAP_COMMAND"
+    iniset $OVN_BGP_AGENT_CONF_FILE agent root_helper_daemon "$OVN_BGP_AGENT_ROOTWRAP_DAEMON"
 }
 
 function init_ovn_bgp_agent {
