@@ -1,0 +1,15 @@
+- job:
+    name: ovn-bgp-agent-tempest-plugin
+    parent: neutron-tempest-plugin-ovn
+    timeout: 10800
+    required-projects:
+      - openstack/devstack
+      - openstack/ovn-bgp-agent
+      - openstack/neutron-tempest-plugin
+    vars:
+      devstack_localrc:
+        ENABLE_TLS: True
+      devstack_plugins:
+        ovn-bgp-agent: https://git.openstack.org/openstack/ovn-bgp-agent
+      devstack_services:
+        tls-proxy: true
