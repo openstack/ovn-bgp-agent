@@ -2,4 +2,4 @@
 host=review.opendev.org
 port=29418
 project=openstack/ovn-bgp-agent.git
-defaultbranch=master
+defaultbranch=stable/2024.1
