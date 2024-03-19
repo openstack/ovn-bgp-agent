@@ -97,30 +97,8 @@ class LSPChassisEvent(Event):
         return len(mac.strip().split(' ')) > 1
 
     def _get_chassis(self, row, default_type=constants.OVN_VM_VIF_PORT_TYPE):
-        # row.options['requested-chassis'] superseeds the id in external_ids.
-        # Since it is not used for virtual ports by ovn, this option will be
-        # ignored for virtual ports.
-
-        # since 'old' rows could be used, it will not hold the type information
-        # if that is the case, please supply a default in the arguments.
-        row_type = getattr(row, 'type', default_type)
-        if (row_type not in [constants.OVN_VIRTUAL_VIF_PORT_TYPE] and
-                hasattr(row, 'options') and
-                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
-
-            # requested-chassis can be a comma separated list,
-            # so lets only return our chassis if it is a list, to be able to
-            # do a == equal comparison
-            req_chassis = row.options[constants.OVN_REQUESTED_CHASSIS]
-            if self.agent.chassis in req_chassis.split(','):
-                req_chassis = self.agent.chassis
-
-            return (req_chassis, constants.OVN_CHASSIS_AT_OPTIONS)
-        elif (hasattr(row, 'external_ids') and
-                row.external_ids.get(constants.OVN_HOST_ID_EXT_ID_KEY)):
-            return (row.external_ids[constants.OVN_HOST_ID_EXT_ID_KEY],
-                    constants.OVN_CHASSIS_AT_EXT_IDS)
-        return None, None
+        return driver_utils.get_port_chassis(row, self.agent.chassis,
+                                             default_port_type=default_type)
 
     def _has_additional_binding(self, row):
         if (hasattr(row, 'options') and
