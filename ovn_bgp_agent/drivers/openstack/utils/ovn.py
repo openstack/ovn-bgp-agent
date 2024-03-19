@@ -28,6 +28,7 @@ from ovsdbapp.schema.ovn_northbound import impl_idl as nb_impl_idl
 from ovsdbapp.schema.ovn_southbound import impl_idl as sb_impl_idl
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.utils import helpers
 
@@ -414,14 +415,10 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         ports = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True))
         for row in cmd.execute(check_error=True):
-            if (row.external_ids and
-                    row.external_ids.get(
-                        constants.OVN_HOST_ID_EXT_ID_KEY) == chassis):
+            port_chassis, _ = driver_utils.get_port_chassis(row, chassis)
+            if port_chassis == chassis:
                 ports.append(row)
-            elif (row.options and
-                    row.options.get(
-                        constants.OVN_REQUESTED_CHASSIS) == chassis):
-                ports.append(row)
+
         return ports
 
     def get_active_cr_lrp_on_chassis(self, chassis):
