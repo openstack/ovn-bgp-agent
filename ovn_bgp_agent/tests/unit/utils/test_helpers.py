@@ -44,32 +44,32 @@ class TestHelpers(test_base.TestCase):
         self.assertEqual(ret_bridge, None)
 
 
-class TestHelperGetLBDatapathGroup(test_base.TestCase):
+class TestHelperGetLBDatapaths(test_base.TestCase):
 
     def setUp(self):
-        super(TestHelperGetLBDatapathGroup, self).setUp()
+        super().setUp()
         self.dp_group = utils.create_row(_uuid='fake_dp_group',
                                          datapaths=['dp'])
         self.dp_group1 = utils.create_row(_uuid='fake_dp_group1',
                                           datapaths=['dp1'])
 
-    def test_get_lb_datapath_group(self):
+    def test_get_lb_datapaths(self):
         lb = utils.create_row(name='ovn-lb',
                               datapath_group=[self.dp_group])
-        self.assertEqual((['dp'], []), helpers.get_lb_datapath_groups(lb))
+        self.assertEqual((['dp'], []), helpers.get_lb_datapaths(lb))
 
-    def test_get_lb_datapath_group_ls_datapath(self):
+    def test_get_lb_datapaths_ls_datapath(self):
         lb = utils.create_row(name='ovn-lb',
                               ls_datapath_group=[self.dp_group])
-        self.assertEqual((['dp'], []), helpers.get_lb_datapath_groups(lb))
+        self.assertEqual((['dp'], []), helpers.get_lb_datapaths(lb))
 
-    def test_get_lb_datapath_group_lr_datapath(self):
+    def test_get_lb_datapaths_lr_datapath(self):
         lb = utils.create_row(name='ovn-lb',
                               lr_datapath_group=[self.dp_group])
-        self.assertEqual(([], ['dp']), helpers.get_lb_datapath_groups(lb))
+        self.assertEqual(([], ['dp']), helpers.get_lb_datapaths(lb))
 
-    def test_get_lb_datapath_group_ls_and_lr_datapath(self):
+    def test_get_lb_datapaths_ls_and_lr_datapath(self):
         lb = utils.create_row(name='ovn-lb',
                               ls_datapath_group=[self.dp_group],
                               lr_datapath_group=[self.dp_group1])
-        self.assertEqual((['dp'], ['dp1']), helpers.get_lb_datapath_groups(lb))
+        self.assertEqual((['dp'], ['dp1']), helpers.get_lb_datapaths(lb))
