@@ -777,21 +777,21 @@ class OvsdbSbOvnIdl(sb_impl_idl.OvnSbApiIdlImpl, Backend):
             lb = self.get_ovn_lb(lb_name)
             if not lb:
                 continue
-            lb_dp, lr_dp = helpers.get_lb_datapath_groups(lb)
-            if not lb_dp:
-                lb_dp = lb.datapaths
+            lb_dps, lr_dps = helpers.get_lb_datapaths(lb)
+            if not lb_dps:
+                lb_dps = lb.datapaths
 
-            if not lr_dp:
+            if not lr_dps:
                 # assume all the members are connected through the same router
                 # so only one datapath needs to be checked
-                router_lrps = self.get_lrps_for_datapath(lb_dp[0])
+                router_lrps = self.get_lrps_for_datapath(lb_dps[0])
                 for lrp in router_lrps:
                     router_lrp_dp = self.get_port_datapath(lrp)
                     if router_lrp_dp == router_dp:
                         lb_ip = ip_info.split(" ")[0].split("/")[0]
                         lbs[lb.name] = lb_ip
                         break
-            elif lr_dp == router_dp:
+            elif router_dp in lr_dps:
                 lb_ip = ip_info.split(" ")[0].split("/")[0]
                 lbs[lb.name] = lb_ip
 

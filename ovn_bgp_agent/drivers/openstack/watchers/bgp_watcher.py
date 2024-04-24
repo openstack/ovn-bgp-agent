@@ -397,12 +397,12 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
         if not self.agent.ovn_local_cr_lrps:
             return
         try:
-            row_dp = row.datapaths
+            row_dps = row.datapaths
         except AttributeError:
-            row_dp = []
+            row_dps = []
 
-        row_dp, router_dps = helpers.get_lb_datapath_groups(row)
-        if not row_dp:
+        row_dps, router_dps = helpers.get_lb_datapaths(row)
+        if not row_dps:
             # No need to continue. There is no need to expose it as there is
             # no datapaths (aka members).
             return
@@ -419,7 +419,7 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
                                    CONF.expose_ipv6_gua_tenant_networks):
             # assume all the members are connected through the same router
             # so only one member needs to be checked
-            member_dp = row_dp[0]
+            member_dp = row_dps[0]
             # get lrps on that dp (patch ports)
             router_lrps = (
                 self.agent.sb_idl.get_lrps_for_datapath(member_dp))
@@ -430,7 +430,7 @@ class OVNLBMemberCreateEvent(base_watcher.OVNLBEvent):
             if vip_port.datapath != cr_lrp_info.get('provider_datapath'):
                 continue
             if cr_lrp_info.get('subnets_datapath'):
-                if set(row_dp).intersection(set(
+                if set(row_dps).intersection(set(
                         cr_lrp_info.get('subnets_datapath').values())):
                     associated_cr_lrp_port = cr_lrp_port
                     break
