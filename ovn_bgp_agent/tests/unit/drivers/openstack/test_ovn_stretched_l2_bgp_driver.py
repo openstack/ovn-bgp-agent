@@ -44,8 +44,8 @@ class TestHashedRoute(test_base.TestCase):
         self.table.add(self.route)
 
     def test_lookup(self):
-        self.assertTrue(self.route in self.table)
-        self.assertFalse(self.invalid_route in self.table)
+        self.assertIn(self.route, self.table)
+        self.assertNotIn(self.invalid_route, self.table)
 
     def test_delete(self):
         self.table.remove(self.route)
@@ -214,7 +214,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
                 via=test_route.dst,
             )
 
-            self.assertTrue(test_route in self.bgp_driver.vrf_routes)
+            self.assertIn(test_route, self.bgp_driver.vrf_routes)
 
     @mock.patch.object(linux_net, "del_ip_route")
     def test__del_route(self, mock_del_route):
@@ -237,7 +237,7 @@ class TestOVNBGPStretchedL2Driver(test_base.TestCase):
                 via=test_route.dst,
             )
 
-            self.assertTrue(test_route not in self.bgp_driver.vrf_routes)
+            self.assertNotIn(test_route, self.bgp_driver.vrf_routes)
 
     def test__address_scope_allowed(self):
         test_scope2 = {

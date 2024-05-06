@@ -456,7 +456,7 @@ class TestOvsdbSbOvnIdl(test_base.TestCase):
                 'tag': tag})
             m_dp.return_value = [row, ]
             net_name, net_tag = self.sb_idl.get_network_name_and_tag(
-                'fake-dp', 'br-ex:public'.format(network))
+                'fake-dp', 'br-ex:public')
 
             if network_in_bridge_map:
                 self.assertEqual(network, net_name)
