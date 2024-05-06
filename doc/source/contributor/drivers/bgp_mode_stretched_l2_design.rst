@@ -196,7 +196,7 @@ On the BGP neighbor side, the route should look like this:
 
    .. code-block:: ini
 
-        $ ip route show 
+        $ ip route show
         192.168.0.0/24 via 111.111.111.17
 
 Driver API
