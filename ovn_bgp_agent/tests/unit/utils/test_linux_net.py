@@ -788,7 +788,7 @@ class TestEnsureRoutingTableForBridge(test_base.TestCase):
             "1 foo",
             "# commented line",
             "random garbage text",
-            "3	another bridge",
+            "3  another bridge",
             "2",
         ]
 
