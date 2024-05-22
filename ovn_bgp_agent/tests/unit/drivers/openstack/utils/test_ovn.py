@@ -66,6 +66,7 @@ class TestOvsdbNbOvnIdl(test_base.TestCase):
         self.assertEqual(tag, ret)
         self.nb_idl.db_find_rows.assert_called_once_with(
             'Logical_Switch_Port',
+            ('options', '=', {'network_name': network_name}),
             ('type', '=', constants.OVN_LOCALNET_VIF_PORT_TYPE))
 
     def test_ls_has_virtual_ports(self):

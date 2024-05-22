@@ -93,6 +93,37 @@ class TestFrr(test_base.TestCase):
         self._test_vrf_reconfigure(add_vrf=False)
 
     def test_vrf_reconfigure_unknown_action(self):
-        frr_utils.vrf_reconfigure('fake-evpn-info', 'non-existing-action')
+        frr_utils.vrf_reconfigure({'fake': 'evpn-info'}, 'non-existing-action')
         # Assert run_vtysh_command() wasn't called
         self.assertFalse(self.mock_vtysh.run_vtysh_config.called)
+
+    @mock.patch.object(tempfile, 'NamedTemporaryFile')
+    def _test_nd_reconfigure(self, mock_tf, stateless=False):
+        interface = 'veth-vrf-100'
+        prefix = '2a04::/64'
+        opts = {
+            'dhcpv6_stateless': str(stateless),
+            'dns_server': '{2001:4860:4860::8888, 2001:4860:4860::8844}',
+        }
+
+        frr_utils.nd_reconfigure(interface, prefix, opts)
+
+        write_arg = mock_tf.return_value.write.call_args_list[0][0][0]
+
+        self.assertIn("ipv6 nd managed-config-flag", write_arg)
+        self.assertIn("ipv6 nd rdnss 2001:4860:4860::8888", write_arg)
+        self.assertIn("ipv6 nd rdnss 2001:4860:4860::8844", write_arg)
+        self.assertIn("ipv6 nd prefix 2a04::/64", write_arg)
+        if not stateless:
+            self.assertIn('ipv6 nd prefix 2a04::/64 no-autoconfig', write_arg)
+
+        self.mock_vtysh.run_vtysh_config.assert_called_once_with(
+            mock_tf.return_value.name)
+        # Assert the file was closed
+        mock_tf.return_value.close.assert_called_once_with()
+
+    def test_nd_reconfigure_statefull(self):
+        self._test_nd_reconfigure()
+
+    def test_nd_reconfigure_stateless(self):
+        self._test_nd_reconfigure(stateless=True)

@@ -120,6 +120,9 @@ for now you can select:
 - ``underlay``: using kernel routing (what we describe in this document), same
   as supported by the driver at :ref:`bgp_driver`.
 
+- ``vrf``: using kernel routing, similar to the evpn driver, but with some
+  changes, as outlined in :ref:`evpn_wiring`.
+
 - ``ovn``: using an extra OVN cluster per node to perform the routing at
   OVN/OVS level instead of kernel, enabling datapath acceleration
   (Hardware Offloading and OVS-DPDK). More information about this mechanism
@@ -136,8 +139,9 @@ networking accordingly.
   .. note::
 
      Linux Kernel Networking is used when the default ``exposing_method``
-     (``underlay``) is used. If ``ovn`` is used instead, OVN routing is
-     used instead of Kernel. For more details on this see :ref:`ovn_routing`.
+     (``underlay``) or (``vrf``) is used. If ``ovn`` is used instead, OVN
+     routing is used instead of Kernel. For more details on this see
+     :ref:`ovn_routing`.
 
 The following events are watched and handled by the BGP watcher:
 
@@ -294,6 +298,9 @@ To accomplish the network configuration and advertisement, the driver ensures:
 
 .. include:: ../bgp_advertising.rst
 
+.. _evpn_wiring:
+.. include:: ../evpn_advertising.rst
+
 
 Traffic flow from tenant networks
 +++++++++++++++++++++++++++++++++
@@ -378,6 +385,7 @@ OVN load balancers:
 
 .. include:: ../agent_deployment.rst
 
+.. _NB_BGP_driver_limitations:
 
 Limitations
 -----------
@@ -390,23 +398,25 @@ The following limitations apply:
 - There is no API to decide what to expose, all VMs/LBs on providers or with
   floating IPs associated with them are exposed. For the VMs in the tenant
   networks, use the flag ``address_scopes`` to filter which subnets to expose,
-  which also prefents having overlapping IPs.
+  which also prevents having overlapping IPs.
 
 - In the currently implemented exposing methods (``underlay`` and
   ``ovn``) there is no support for overlapping CIDRs, so this must be
   avoided, e.g., by using address scopes and subnet pools.
 
-- For the default exposing method (``underlay``) the network traffic is steered
-  by kernel routing (ip routes and rules), therefore OVS-DPDK, where the kernel
-  space is skipped, is not supported. With the ``ovn`` exposing method
-  the routing is done at ovn level, so this limitation does not exists.
-  More details in :ref:`ovn_routing`.
+- For the default exposing method (``underlay``) but also with the ``vrf``
+  exposing method the network traffic is steered by kernel routing (ip
+  routes and rules), therefore OVS-DPDK, where the kernel space is skipped,
+  is not supported.
+  With the ``ovn`` exposing method the routing is done at ovn level, so this
+  limitation does not exists. More details in :ref:`ovn_routing`.
 
-- For the default exposing method (``underlay``) the network traffic is steered
-  by kernel routing (ip routes and rules), therefore SRIOV, where the hypervisor
-  is skipped, is not supported.  With the ``ovn`` exposing method
-  the routing is done at ovn level, so this limitation does not exists.
-  More details in :ref:`ovn_routing`.
+- For the default exposing method (``underlay``) but also with the ``vrf``
+  exposing method the network traffic is steered by kernel routing (ip
+  routes and rules), therefore SRIOV, where the hypervisor is skipped, is
+  not supported.
+  With the ``ovn`` exposing method the routing is done at ovn level, so this
+  limitation does not exists. More details in :ref:`ovn_routing`.
 
 - In OpenStack with OVN networking the N/S traffic to the ovn-octavia VIPs on
   the provider or the FIPs associated with the VIPs on tenant networks needs to

@@ -124,12 +124,19 @@ def ensure_mac_tweak_flows(bridge, mac, ports, cookie):
 def remove_extra_ovs_flows(ovs_flows, bridge, cookie):
     expected_flows = []
     for port in ovs_flows[bridge].get('in_port'):
-        flow = ("=900,ip,in_port={} actions=mod_dl_dst:{},NORMAL".format(
-            port, ovs_flows[bridge]['mac']))
-        expected_flows.append(flow)
-        flow_v6 = ("=900,ipv6,in_port={} actions=mod_dl_dst:{},NORMAL".format(
-            port, ovs_flows[bridge]['mac']))
-        expected_flows.append(flow_v6)
+        pmm = ovs_flows[bridge].get('port-mac-mapping', {})
+        lladdr = pmm.get(port, ovs_flows[bridge]['mac'])
+
+        for flow in [
+            # Add ipv4 flow in 'normal' and OpenFlow13 format
+            "=900,ip,in_port={} actions=mod_dl_dst:{},NORMAL",
+            "=900,ip,in_port={} actions=set_field:{}->eth_dst,NORMAL",
+
+            # Add ipv6 flow in 'normal' and OpenFlow13 format
+            "=900,ipv6,in_port={} actions=mod_dl_dst:{},NORMAL",
+            "=900,ipv6,in_port={} actions=set_field:{}->eth_dst,NORMAL",
+        ]:
+            expected_flows.append(flow.format(port, lladdr))
 
     cookie_id = "cookie={}/-1".format(cookie)
     current_flows = get_bridge_flows(bridge, cookie_id)

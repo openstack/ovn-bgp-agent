@@ -33,6 +33,24 @@ class OVNBGPAgentException(Exception):
         return self.msg
 
 
+class ConfOptionRequired(OVNBGPAgentException):
+    """Configuration option is required for this driver to function properly
+
+    :param option: The configuration option required
+    """
+
+    message = _("Required driver conf option missing: CONF.%(option)s")
+
+
+class UnsupportedWiringConfig(OVNBGPAgentException):
+    """Wiring config called with unknown/unsupported exposing method
+
+    :param method: The (unsupported) exposing method
+    """
+
+    message = _("No wiring support for exposing_method %(method)s.")
+
+
 class InvalidPortIP(OVNBGPAgentException):
     """OVN Port has Invalid IP.
 

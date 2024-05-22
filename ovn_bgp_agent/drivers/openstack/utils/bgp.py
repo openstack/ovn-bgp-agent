@@ -16,6 +16,8 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import evpn
 from ovn_bgp_agent.drivers.openstack.utils import frr
 from ovn_bgp_agent.utils import linux_net
 
@@ -24,11 +26,44 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
-def announce_ips(port_ips):
+def announce_ips(port_ips, ips_info=None):
+    if CONF.exposing_method in [constants.EXPOSE_METHOD_VRF]:
+        if ips_info is None or ips_info.get('bridge_device', None) is None:
+            return
+
+        # Lookup the EVPN vlan dev
+        vlan_dev = evpn.lookup_vlan(ips_info['bridge_device'],
+                                    ips_info['bridge_vlan'])
+
+        # Split the via ip's per ip version
+        via = driver_utils.ips_per_version(ips_info.get('via', []))
+
+        for ip in port_ips:
+            # Add route for each ip in routing table.
+            if via:
+                ver = linux_net.get_ip_version(ip)
+                vlan_dev.add_route(None, ip, None, via=via.get(ver))
+            else:
+                vlan_dev.add_route(None, ip, ips_info['mac'])
+        return
+
     linux_net.add_ips_to_dev(CONF.bgp_nic, port_ips)
 
 
-def withdraw_ips(port_ips):
+def withdraw_ips(port_ips, ips_info=None):
+    if CONF.exposing_method in [constants.EXPOSE_METHOD_VRF]:
+        if ips_info is None or ips_info.get('bridge_device', None) is None:
+            return
+
+        # Lookup the EVPN vlan dev
+        vlan_dev = evpn.lookup_vlan(ips_info['bridge_device'],
+                                    ips_info['bridge_vlan'])
+
+        for ip in port_ips:
+            # Add route for each ip in routing table.
+            vlan_dev.del_route(None, ip)
+        return
+
     linux_net.del_ips_from_dev(CONF.bgp_nic, port_ips)
 
 

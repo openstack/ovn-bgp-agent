@@ -12,10 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import ast
+
 from oslo_config import cfg
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import evpn
+from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.utils import helpers
@@ -30,8 +35,12 @@ def ensure_base_wiring_config(idl, ovs_idl, ovn_idl=None, routing_tables={}):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _ensure_base_wiring_config_underlay(idl, ovs_idl,
                                                    routing_tables)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:  # Type 5 evpn
+        return _ensure_base_wiring_config_evpn(idl, ovs_idl)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         return _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl)
+
+    raise agent_exc.UnsupportedWiringConfig(method=CONF.exposing_method)
 
 
 def _ensure_base_wiring_config_underlay(idl, ovs_idl, routing_tables):
@@ -66,6 +75,105 @@ def _ensure_base_wiring_config_underlay(idl, ovs_idl, routing_tables):
                                        flows_info[bridge]['in_port'],
                                        constants.OVS_RULE_COOKIE)
     return ovn_bridge_mappings, flows_info
+
+
+def _ensure_base_wiring_config_evpn(idl: 'ovn.OvsdbNbOvnIdl|ovn.OvsdbSbOvnIdl',
+                                    ovs_idl: 'ovs.OvsIdl',
+                                    mode=constants.OVN_EVPN_TYPE_L3):
+    # This method will create the bridge mappings and make sure the
+    # vrf bridge and vlans are provisioned
+
+    # Get bridge mappings: xxxx:br-ex,yyyy:br-ex2
+    bridge_mappings = ovs_idl.get_ovn_bridge_mappings()
+
+    ovn_bridge_mappings = {}
+    flows_info = {}  # dictionary to use for mappings with vrf's
+    for bridge_mapping in bridge_mappings:
+        try:
+            # for example: physnet1, br-ex
+            network, bridge = bridge_mapping.split(":", 1)
+        except ValueError:
+            LOG.debug('Invalid bridge mapping: %s', bridge_mapping)
+            continue
+
+        ovn_bridge_mappings[network] = bridge
+        LOG.debug('Setup EVPN base wiring for network %s on bridge %s',
+                  network, bridge)
+
+        # Make sure the bridge exists
+        ovs_idl.idl_ovs.add_br(bridge).execute(check_error=True)
+
+        if bridge not in flows_info:
+            flows_info[bridge] = {
+                'mac': linux_net.get_interface_address(bridge),
+                'in_port': ovs.get_ovs_patch_ports_info(bridge),
+                'evpn': {}
+            }
+
+        # Find all provider networks, and create the vrf's
+        localnet_ports = list(idl.get_localnet_ports_by_network_name(network))
+        if not localnet_ports:
+            LOG.debug('No localnet ports found for network %s', network)
+            continue
+
+        provnets = idl.get_bgpvpn_networks_for_ports(localnet_ports,
+                                                     vpn_type=mode)
+        if not provnets:
+            LOG.debug('No provider networks found for %s %s',
+                      constants.OVN_EVPN_TYPE_EXT_ID_KEY, mode)
+            continue
+
+        for ls in provnets:
+            LOG.info('Network %s (settings: %s)', ls.name, ls.external_ids)
+
+            if constants.OVN_EVPN_VNI_EXT_ID_KEY not in ls.external_ids:
+                LOG.warning('Skipped, VNI required for EVPN VRF setup')
+                continue
+
+            evpn_opts = {}
+            for opt, ext_id_key in constants.EVPN_EXT_ID_MAPPING.items():
+                evpn_opts[opt] = ast.literal_eval(
+                    ls.external_ids.get(ext_id_key, '[]')
+                )
+
+            # Create or return the EVPN bridge
+            evpn_bridge = evpn.setup(
+                ovs_bridge=bridge,
+                vni=ls.external_ids[constants.OVN_EVPN_VNI_EXT_ID_KEY],
+                evpn_opts=evpn_opts,
+                mode=mode,
+                ovs_flows=flows_info,
+            )
+
+            # Connect all VLAN interfaces to this VRF and gather dhcp
+            # options to be configured for l3 mode.
+            evpn_dev, dhcp_opts = _ensure_evpn_vlan_dev(ls, localnet_ports,
+                                                        evpn_bridge,
+                                                        flows_info, bridge)
+
+            if dhcp_opts and evpn_dev:
+                evpn_dev.process_dhcp_opts(dhcp_opts)
+
+    return ovn_bridge_mappings, flows_info
+
+
+def _ensure_evpn_vlan_dev(ls, localnet_ports, evpn_bridge, flows_info, bridge):
+    evpn_dev = None
+    dhcp_opts = set()
+    for port in ls.ports:
+        if port not in localnet_ports:
+            if port.dhcpv4_options:
+                dhcp_opts.update(port.dhcpv4_options)
+            if port.dhcpv6_options:
+                dhcp_opts.update(port.dhcpv6_options)
+            continue
+
+        LOG.info('VLAN tag %s', driver_utils.get_port_vlan(port))
+        evpn_dev = evpn_bridge.connect_vlan(port)
+
+        flows_info[bridge]['evpn'][str(evpn_dev.vlan_tag)] = evpn_bridge
+
+    return evpn_dev, dhcp_opts
 
 
 def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
@@ -376,6 +484,8 @@ def cleanup_wiring(idl, bridge_mappings, ovs_flows, exposed_ips,
         return _cleanup_wiring_underlay(idl, bridge_mappings, ovs_flows,
                                         exposed_ips, routing_tables,
                                         routing_tables_routes)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+        return _cleanup_wiring_evpn(ovs_flows, routing_tables_routes)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # TODO(ltomasbo): clean up old policies, routes and proxy_arps cidrs
         return True
@@ -432,6 +542,17 @@ def delete_vlan_devices_leftovers(idl, bridge_mappings):
                 linux_net.delete_vlan_device_for_network(ovs_device, vlan)
 
 
+def _cleanup_wiring_evpn(ovs_flows, routing_tables_routes):
+    for flow_conf in ovs_flows.values():
+        for vlan, evpn_bridge in flow_conf.get('evpn', {}).items():
+            LOG.debug('Running cleanup for vrf %s vlan %s',
+                      evpn_bridge.vrf_name, vlan)
+            evpn_bridge.get_vlan(vlan).cleanup_excessive_routes(
+                routing_tables_routes
+            )
+    return True
+
+
 def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
                        bridge_device, bridge_vlan, localnet, routing_table,
                        proxy_cidrs, lladdr=None, mac=None, ovn_idl=None):
@@ -441,6 +562,12 @@ def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
                                             bridge_vlan, localnet,
                                             routing_table, proxy_cidrs,
                                             lladdr=lladdr)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+        return _wire_provider_port_evpn(routing_tables_routes, ovs_flows,
+                                        port_ips, bridge_device,
+                                        bridge_vlan, localnet,
+                                        proxy_cidrs,
+                                        mac=mac)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # We need to add a static mac binding due to proxy-arp issue in
         # core ovn that would reply on the incomming traffic from the LR,
@@ -456,6 +583,10 @@ def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
                                               bridge_device, bridge_vlan,
                                               routing_table, proxy_cidrs,
                                               lladdr=lladdr)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+        return _unwire_provider_port_evpn(routing_tables_routes, port_ips,
+                                          bridge_device, bridge_vlan,
+                                          lladdr)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # We need to remove thestatic mac binding added due to proxy-arp issue
         # in core ovn that would reply on the incomming traffic from the LR,
@@ -512,6 +643,27 @@ def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
     return True
 
 
+def _wire_provider_port_evpn(routing_tables_routes, ovs_flows, port_ips,
+                             bridge_device, bridge_vlan, localnet,
+                             proxy_cidrs, mac=None, via=None):
+    try:
+        evpn_dev = evpn.lookup_vlan(bridge_device, bridge_vlan)
+    except KeyError:
+        msg = ('EVPN has not been setup for bridge %s with vlan device %s. '
+               'Either the network has not been configured, or something '
+               'went wrong in the base wiring method.')
+        LOG.warning(msg, bridge_device, bridge_vlan)
+        return
+
+    via = via or {}  # make sure it is at least a empty dictionary
+
+    for ip in port_ips:
+        ver = linux_net.get_ip_version(ip)
+        evpn_dev.add_route(routing_tables_routes, ip, mac, via=via.get(ver))
+
+    return True
+
+
 def _wire_provider_port_ovn(ovn_idl, port_ips, mac):
     cmds = []
     port = "{}-openstack".format(constants.OVN_CLUSTER_ROUTER)
@@ -561,6 +713,24 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
     return True
 
 
+def _unwire_provider_port_evpn(routing_tables_routes, port_ips,
+                               bridge_device, bridge_vlan, lladdr):
+    # locate the evpn_dev, based on bridge and vlan
+    try:
+        evpn_dev = evpn.lookup_vlan(bridge_device, bridge_vlan)
+    except KeyError:
+        msg = ('EVPN has not been setup for bridge %s with vlan device %s. '
+               'Either the network has not been configured, or something '
+               'went wrong in the base wiring method.')
+        LOG.warning(msg, bridge_device, bridge_vlan)
+        return
+
+    for ip in port_ips:
+        evpn_dev.del_route(routing_tables_routes, ip, lladdr)
+
+    return True
+
+
 def _unwire_provider_port_ovn(ovn_idl, port_ips):
     cmds = []
     port = "{}-openstack".format(constants.OVN_CLUSTER_ROUTER)
@@ -579,6 +749,9 @@ def wire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
         return _wire_lrp_port_underlay(routing_tables_routes, ip,
                                        bridge_device, bridge_vlan,
                                        routing_tables, cr_lrp_ips)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+        return _wire_lrp_port_evpn(routing_tables_routes, ip, bridge_device,
+                                   bridge_vlan, cr_lrp_ips)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # TODO(ltomasbo): Add flow on br-ex(-X)
         # ovs-ofctl add-flow br-ex
@@ -622,12 +795,35 @@ def _wire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
     return True
 
 
+def _wire_lrp_port_evpn(routing_tables_routes, ip, bridge_device,
+                        bridge_vlan, cr_lrp_ips):
+
+    # Generate the via addresses
+    via = driver_utils.ips_per_version(cr_lrp_ips)
+
+    try:
+        evpn_dev = evpn.lookup_vlan(bridge_device, bridge_vlan)
+    except KeyError:
+        msg = ('EVPN has not been setup for bridge %s with vlan device %s. '
+               'Either the network has not been configured, or something '
+               'went wrong in the base wiring method.')
+        LOG.warning(msg, bridge_device, bridge_vlan)
+        return
+
+    ver = linux_net.get_ip_version(ip)
+    evpn_dev.add_route(routing_tables_routes, ip, None, via=via.get(ver))
+    return True
+
+
 def unwire_lrp_port(routing_tables_routes, ip, bridge_device, bridge_vlan,
                     routing_tables, cr_lrp_ips):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _unwire_lrp_port_underlay(routing_tables_routes, ip,
                                          bridge_device, bridge_vlan,
                                          routing_tables, cr_lrp_ips)
+    elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
+        return _unwire_lrp_port_evpn(routing_tables_routes, ip,
+                                     bridge_device, bridge_vlan)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # TODO(ltomasbo): Remove flow(s) and router route
         return
@@ -659,4 +855,21 @@ def _unwire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
                 mask=ip.split("/")[1],
                 via=cr_lrp_ip)
     LOG.debug("Deleted IP Routes for network %s", ip)
+    return True
+
+
+def _unwire_lrp_port_evpn(routing_tables_routes, ip, bridge_device,
+                          bridge_vlan):
+    # locate the evpn_dev, based on bridge and vlan
+    try:
+        evpn_dev = evpn.lookup_vlan(bridge_device, bridge_vlan)
+    except KeyError:
+        msg = ('EVPN has not been setup for bridge %s with vlan device %s. '
+               'Either the network has not been configured, or something '
+               'went wrong in the base wiring method.')
+        LOG.warning(msg, bridge_device, bridge_vlan)
+        return
+
+    evpn_dev.del_route(routing_tables_routes, ip)
+
     return True
