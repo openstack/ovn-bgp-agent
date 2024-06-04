@@ -151,7 +151,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   watcher.OVNLBCreateEvent(self),
                   watcher.OVNLBDeleteEvent(self),
                   watcher.OVNPFCreateEvent(self),
-                  watcher.OVNPFDeleteEvent(self)}
+                  watcher.OVNPFDeleteEvent(self),
+                  watcher.ChassisRedirectCreateEvent(self),
+                  watcher.ChassisRedirectDeleteEvent(self)}
 
         if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
             # For vrf we require more information on the logical_switch
@@ -161,9 +163,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             events.add(watcher.LocalnetCreateDeleteEvent(self))
 
         if self._expose_tenant_networks:
-            events.update({watcher.ChassisRedirectCreateEvent(self),
-                           watcher.ChassisRedirectDeleteEvent(self),
-                           watcher.LogicalSwitchPortSubnetAttachEvent(self),
+            events.update({watcher.LogicalSwitchPortSubnetAttachEvent(self),
                            watcher.LogicalSwitchPortSubnetDetachEvent(self)})
             if CONF.advertisement_method_tenant_networks == 'host':
                 events.update({
