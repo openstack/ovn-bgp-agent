@@ -728,12 +728,12 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         nat_entry = fakes.create_object({
             'external_ids': {constants.OVN_FIP_NET_EXT_ID_KEY: 'net1'},
             'external_ip': 'fake-ip',
-            'external_mac': 'fake-mac'})
+            'external_mac': ['fake-mac']})
         self.nb_idl.get_nat_by_logical_port.return_value = nat_entry
 
         ret = self.nb_bgp_driver.get_port_external_ip_and_ls('fake-port')
 
-        expected_result = (nat_entry.external_ip, nat_entry.external_mac,
+        expected_result = (nat_entry.external_ip, nat_entry.external_mac[0],
                            "neutron-net1")
         self.assertEqual(ret, expected_result)
 
@@ -748,13 +748,13 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         nat_entry = fakes.create_object({
             'external_ids': {},
             'external_ip': 'fake-ip',
-            'external_mac': 'fake-mac'})
+            'external_mac': ['fake-mac']})
         self.nb_idl.get_nat_by_logical_port.return_value = nat_entry
 
         ret = self.nb_bgp_driver.get_port_external_ip_and_ls('fake-port')
 
-        self.assertEqual(ret,
-                         (nat_entry.external_ip, nat_entry.external_mac, None))
+        self.assertEqual(
+            ret, (nat_entry.external_ip, nat_entry.external_mac[0], None))
 
     def test_expose_fip(self):
         ip = '10.0.0.1'
@@ -773,7 +773,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         ret = self.nb_bgp_driver.expose_fip(ip, mac, logical_switch, row)
 
         mock_get_ls_localnet_info.assert_called_once_with(logical_switch)
-        mock_expose_provider_port.assert_called_once_with([ip], mac, 'test-ls',
+        mock_expose_provider_port.assert_called_once_with([ip], mac,
+                                                          'test-ls',
                                                           'br-ex', 100,
                                                           'fake-localnet')
         self.assertTrue(ret)

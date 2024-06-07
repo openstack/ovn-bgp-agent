@@ -554,10 +554,10 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             return None, None, None
         net_id = nat_entry.external_ids.get(constants.OVN_FIP_NET_EXT_ID_KEY)
         if not net_id:
-            return nat_entry.external_ip, nat_entry.external_mac, None
+            return nat_entry.external_ip, nat_entry.external_mac[0], None
         else:
             ls_name = "neutron-{}".format(net_id)
-            return nat_entry.external_ip, nat_entry.external_mac, ls_name
+            return nat_entry.external_ip, nat_entry.external_mac[0], ls_name
 
     @lockutils.synchronized('nbbgp')
     def expose_fip(self, ip, mac, logical_switch, row):
