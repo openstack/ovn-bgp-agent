@@ -555,13 +555,13 @@ def _cleanup_wiring_evpn(ovs_flows, routing_tables_routes):
 
 def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
                        bridge_device, bridge_vlan, localnet, routing_table,
-                       proxy_cidrs, lladdr=None, mac=None, ovn_idl=None):
+                       proxy_cidrs, mac=None, ovn_idl=None):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _wire_provider_port_underlay(routing_tables_routes, ovs_flows,
                                             port_ips, bridge_device,
                                             bridge_vlan, localnet,
                                             routing_table, proxy_cidrs,
-                                            lladdr=lladdr)
+                                            lladdr=mac)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
         return _wire_provider_port_evpn(routing_tables_routes, ovs_flows,
                                         port_ips, bridge_device,
@@ -576,17 +576,17 @@ def wire_provider_port(routing_tables_routes, ovs_flows, port_ips,
 
 
 def unwire_provider_port(routing_tables_routes, port_ips, bridge_device,
-                         bridge_vlan, routing_table, proxy_cidrs, lladdr=None,
+                         bridge_vlan, routing_table, proxy_cidrs, mac=None,
                          ovn_idl=None):
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _unwire_provider_port_underlay(routing_tables_routes, port_ips,
                                               bridge_device, bridge_vlan,
                                               routing_table, proxy_cidrs,
-                                              lladdr=lladdr)
+                                              lladdr=mac)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
         return _unwire_provider_port_evpn(routing_tables_routes, port_ips,
                                           bridge_device, bridge_vlan,
-                                          lladdr)
+                                          mac)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
         # We need to remove thestatic mac binding added due to proxy-arp issue
         # in core ovn that would reply on the incomming traffic from the LR,
@@ -618,7 +618,8 @@ def _wire_provider_port_underlay(routing_tables_routes, ovs_flows, port_ips,
                 linux_net.add_ip_rule(ip, routing_table[bridge_device],
                                       dev=dev, lladdr=lladdr)
             else:
-                linux_net.add_ip_rule(ip, routing_table[bridge_device])
+                linux_net.add_ip_rule(ip, routing_table[bridge_device],
+                                      dev=bridge_device)
         except agent_exc.InvalidPortIP:
             LOG.exception("Invalid IP to create a rule for port on the "
                           "provider network: %s", ip)
@@ -699,7 +700,8 @@ def _unwire_provider_port_underlay(routing_tables_routes, port_ips,
                 return False
         else:
             try:
-                linux_net.del_ip_rule(ip, routing_table[bridge_device])
+                linux_net.del_ip_rule(ip, routing_table[bridge_device],
+                                      dev=bridge_device)
             except agent_exc.InvalidPortIP:
                 LOG.exception("Invalid IP to delete a rule for the "
                               "provider port: %s", ip)

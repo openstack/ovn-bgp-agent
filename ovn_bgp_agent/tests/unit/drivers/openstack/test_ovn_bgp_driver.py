@@ -298,7 +298,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_add_rule.assert_called_once_with(
-            self.ipv4, 'fake-table')
+            self.ipv4, 'fake-table', dev='fake-bridge')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=10)
 
@@ -340,7 +340,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         self.assertEqual(False, ret)
         mock_add_ips_dev.assert_not_called()
         mock_add_rule.assert_called_once_with(
-            self.ipv4, 'fake-table')
+            self.ipv4, 'fake-table', dev='fake-bridge')
         mock_add_route.assert_not_called()
         mock_ensure_mac_tweak.assert_not_called()
 
@@ -518,7 +518,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_ips_dev.assert_called_once_with(
             CONF.bgp_nic, [self.ipv4])
         mock_del_rule.assert_called_once_with(
-            self.ipv4, 'fake-table')
+            self.ipv4, 'fake-table', dev='fake-bridge')
         mock_del_route.assert_called_once_with(
             mock.ANY, self.ipv4, 'fake-table', self.bridge, vlan=10)
 
@@ -1009,8 +1009,10 @@ class TestOVNBGPDriver(test_base.TestCase):
                           mock.call(CONF.bgp_nic, [self.ipv6])]
         mock_del_ip_dev.assert_has_calls(expected_calls)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_del_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1066,8 +1068,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1149,8 +1153,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1218,7 +1224,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, [self.fip])
         mock_add_rule.assert_called_once_with(
-            self.fip, 'fake-table')
+            self.fip, 'fake-table', dev='fake-bridge')
         mock_add_route.assert_called_once_with(
             mock.ANY, self.fip, 'fake-table', self.bridge, vlan=10)
 
@@ -1296,8 +1302,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_add_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_add_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1436,8 +1444,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_del_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1474,8 +1484,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_del_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',
@@ -1509,7 +1521,7 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_ip_dev.assert_called_once_with(
             CONF.bgp_nic, [self.fip])
         mock_del_rule.assert_called_once_with(
-            self.fip, 'fake-table')
+            self.fip, 'fake-table', dev='fake-bridge')
         mock_del_route.assert_called_once_with(
             mock.ANY, self.fip, 'fake-table', self.bridge, vlan=10)
 
@@ -1555,8 +1567,10 @@ class TestOVNBGPDriver(test_base.TestCase):
         mock_del_ip_dev.assert_called_once_with(
             CONF.bgp_nic, ips)
 
-        expected_calls = [mock.call(self.ipv4, 'fake-table'),
-                          mock.call(self.ipv6, 'fake-table')]
+        expected_calls = [mock.call(self.ipv4, 'fake-table',
+                                    dev='fake-bridge'),
+                          mock.call(self.ipv6, 'fake-table',
+                                    dev='fake-bridge')]
         mock_del_rule.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call(mock.ANY, self.ipv4, 'fake-table',

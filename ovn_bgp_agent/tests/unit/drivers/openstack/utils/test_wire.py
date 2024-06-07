@@ -574,7 +574,7 @@ class TestWire(test_base.TestCase):
 
         wire.unwire_provider_port(routing_tables_routes, port_ips,
                                   bridge_device, bridge_vlan, routing_table,
-                                  proxy_cidrs, lladdr='boo')
+                                  proxy_cidrs, mac='boo')
         mock_evpn.assert_called_once_with(routing_tables_routes, port_ips,
                                           bridge_device, bridge_vlan, 'boo')
 
@@ -757,6 +757,9 @@ class TestWire(test_base.TestCase):
         CONF.set_override(
             'advertisement_method_tenant_networks',
             constants.ADVERTISEMENT_METHOD_SUBNET)
+        self.addCleanup(
+            CONF.clear_override,
+            'advertisement_method_tenant_networks')
         routing_tables_routes = {}
         ip = '10.0.0.1/24'
         bridge_device = 'fake-bridge'
