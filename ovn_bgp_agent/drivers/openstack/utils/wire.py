@@ -790,6 +790,18 @@ def _wire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],
                 via=cr_lrp_ip)
+
+            if (CONF.advertisement_method_tenant_networks ==
+                    constants.ADVERTISEMENT_METHOD_SUBNET):
+                # NOTE(jayjahns): The route for the tenant subnet needs to be
+                # added to the bgp_nic in order to announce the network.
+                linux_net.add_ip_route(
+                    routing_tables_routes,
+                    ip.split("/")[0],
+                    CONF.bgp_vrf_table_id,
+                    CONF.bgp_nic,
+                    mask=ip.split("/")[1],
+                    via=cr_lrp_ip)
             break
     LOG.debug("Added IP Routes for network %s", ip)
     return True
@@ -854,6 +866,18 @@ def _unwire_lrp_port_underlay(routing_tables_routes, ip, bridge_device,
                 vlan=bridge_vlan,
                 mask=ip.split("/")[1],
                 via=cr_lrp_ip)
+
+            if (CONF.advertisement_method_tenant_networks ==
+                    constants.ADVERTISEMENT_METHOD_SUBNET):
+                # NOTE(jayjahns): We need to delete the route to the
+                # tenant subnet from the bgp_nic interface.
+                linux_net.del_ip_route(
+                    routing_tables_routes,
+                    ip.split("/")[0],
+                    CONF.bgp_vrf_table_id,
+                    CONF.bgp_nic,
+                    mask=ip.split("/")[1],
+                    via=cr_lrp_ip)
     LOG.debug("Deleted IP Routes for network %s", ip)
     return True
 
