@@ -701,8 +701,10 @@ def del_ip_rule(ip, table, dev=None, lladdr=None):
 
     ovn_bgp_agent.privileged.linux_net.rule_delete(rule)
 
-    if lladdr:
-        del_ip_nei(ip, lladdr, dev)
+    # TODO(jayjahns): The lladdr in all delete operations is blank, so
+    # we need to investigate how to ensure that exists in order to
+    # add the if comparison.
+    del_ip_nei(ip, lladdr, dev)
 
 
 def del_ip_nei(ip, lladdr, dev):
