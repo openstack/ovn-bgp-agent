@@ -749,6 +749,36 @@ class TestWire(test_base.TestCase):
         m_ip_rule.assert_called_once_with(ip, 5)
         m_ip_version.assert_not_called()
 
+    @mock.patch.object(linux_net, 'add_ip_route')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'add_ip_rule')
+    def test__wire_lrp_port_underlay_advertisement_subnet(
+        self, m_ip_rule, m_ip_version, m_ip_route):
+        CONF.set_override(
+            'advertisement_method_tenant_networks',
+            constants.ADVERTISEMENT_METHOD_SUBNET)
+        routing_tables_routes = {}
+        ip = '10.0.0.1/24'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = None
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+        ret = wire._wire_lrp_port_underlay(
+            routing_tables_routes, ip, bridge_device,
+            bridge_vlan, routing_tables, cr_lrp_ips)
+        self.assertTrue(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        expected_ip_route_calls = [
+            mock.call(
+                routing_tables_routes, ip.split('/')[0],
+                routing_tables[bridge_device], bridge_device,
+                vlan=bridge_vlan, mask=ip.split('/')[1], via=cr_lrp_ips[0]),
+            mock.call(
+                routing_tables_routes, ip.split('/')[0],
+                CONF.bgp_vrf_table_id, CONF.bgp_nic,
+                mask=ip.split('/')[1], via=cr_lrp_ips[0])]
+        m_ip_route.assert_has_calls(expected_ip_route_calls)
+
     @mock.patch.object(linux_net, 'del_ip_route')
     @mock.patch.object(linux_net, 'get_ip_version')
     @mock.patch.object(linux_net, 'del_ip_rule')
@@ -805,3 +835,33 @@ class TestWire(test_base.TestCase):
         self.assertFalse(ret)
         m_ip_rule.assert_called_once_with(ip, 5)
         m_ip_version.assert_not_called()
+
+    @mock.patch.object(linux_net, 'del_ip_route')
+    @mock.patch.object(linux_net, 'get_ip_version')
+    @mock.patch.object(linux_net, 'del_ip_rule')
+    def test__unwire_lrp_port_underlay_advertisement_subnet(
+        self, m_ip_rule, m_ip_version, m_ip_route):
+        CONF.set_override(
+            'advertisement_method_tenant_networks',
+            constants.ADVERTISEMENT_METHOD_SUBNET)
+        routing_tables_routes = {}
+        ip = '10.0.0.1/24'
+        bridge_device = 'fake-bridge'
+        bridge_vlan = None
+        routing_tables = {'fake-bridge': 5}
+        cr_lrp_ips = ['fake-crlrp-ip']
+        ret = wire._unwire_lrp_port_underlay(
+            routing_tables_routes, ip, bridge_device, bridge_vlan,
+            routing_tables, cr_lrp_ips)
+        self.assertTrue(ret)
+        m_ip_rule.assert_called_once_with(ip, 5)
+        expected_ip_route_calls = [
+            mock.call(
+                routing_tables_routes, ip.split('/')[0],
+                routing_tables[bridge_device], bridge_device,
+                vlan=bridge_vlan, mask=ip.split('/')[1], via=cr_lrp_ips[0]),
+            mock.call(
+                routing_tables_routes, ip.split('/')[0],
+                CONF.bgp_vrf_table_id, CONF.bgp_nic,
+                mask=ip.split('/')[1], via=cr_lrp_ips[0])]
+        m_ip_route.assert_has_calls(expected_ip_route_calls)
