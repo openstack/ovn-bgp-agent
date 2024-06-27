@@ -239,7 +239,7 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
 
     # LS
     bgp_bridge_mappings = ovs_idl.get_ovn_bridge_mappings(
-        bridge=constants.OVN_CLUSTER_BRIDGE)
+        bridge=CONF.local_ovn_cluster.bgp_chassis_id)
     for bridge_mapping in bgp_bridge_mappings:
         network, bridge = helpers.parse_bridge_mapping(bridge_mapping)
         if not network:
@@ -347,7 +347,7 @@ def _ensure_ovn_network_link(ovn_idl, switch_name, direction,
         # bind to local chassis
         # ovn-nbctl lrp-set-gateway-chassis  bgp-router-public bgp 1
         cmds.append(ovn_idl.lrp_set_gateway_chassis(
-            r_port_name, constants.OVN_CLUSTER_BRIDGE, 1))
+            r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1))
     else:  # direction == 'external'
         # Connect BGP router to the external logical switch
         r_port_name = "{}-{}".format(constants.OVN_CLUSTER_ROUTER, switch_name)

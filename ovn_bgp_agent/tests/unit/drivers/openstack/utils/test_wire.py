@@ -180,7 +180,7 @@ class TestWire(test_base.TestCase):
         m_ensure_lsp.assert_called_once_with(
             self.nb_idl, mock.ANY, switch_name, 'router', 'router', **options)
         self.nb_idl.lrp_set_gateway_chassis.assert_called_once_with(
-            r_port_name, constants.OVN_CLUSTER_BRIDGE, 1)
+            r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1)
 
     @mock.patch.object(wire, '_execute_commands')
     @mock.patch.object(wire, '_ensure_lsp_cmds')
@@ -205,7 +205,7 @@ class TestWire(test_base.TestCase):
         m_ensure_lsp.assert_called_once_with(
             self.nb_idl, mock.ANY, switch_name, 'router', 'router', **options)
         self.nb_idl.lrp_set_gateway_chassis.assert_called_once_with(
-            r_port_name, constants.OVN_CLUSTER_BRIDGE, 1)
+            r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1)
 
     @mock.patch.object(wire, '_ensure_lsp_cmds')
     def test__ensure_ovn_network_link_external(self, m_ensure_lsp):
