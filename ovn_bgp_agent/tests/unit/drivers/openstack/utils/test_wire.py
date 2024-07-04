@@ -847,6 +847,9 @@ class TestWire(test_base.TestCase):
         CONF.set_override(
             'advertisement_method_tenant_networks',
             constants.ADVERTISEMENT_METHOD_SUBNET)
+        self.addCleanup(
+            CONF.clear_override,
+            'advertisement_method_tenant_networks')
         routing_tables_routes = {}
         ip = '10.0.0.1/24'
         bridge_device = 'fake-bridge'
