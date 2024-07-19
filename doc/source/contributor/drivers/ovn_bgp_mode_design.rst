@@ -69,12 +69,15 @@ The OVN routing architecture proposes the following mapping:
   (``br-osp``).
 
 - ``br-osp`` does not have any physical resources attached, just patch
-  ports connecting them to ``br-int`` and ``br-bgp``.
+  ports connecting them to ``br-int`` and ``br-bgp``. The name of this bridge can
+  be arbitrary so long as ovn-bridge-mappings for both OVN clusters (the primary and
+  the extra node-local one) are set accordingly.
 
 - ``br-bgp`` is the integration bridge managed by the extra OVN cluster
   deployed per node. This is where the virtual OVN resources are be created
-  (routers and switches). It creates mappings to ``br-osp`` and ``br-ex``
-  (patch ports).
+  (routers and switches). OVN creates patch ports between ``br-osp`` and ``br-ex``
+  based on ovn-bridge-mappings set for the extra OVN cluster. The name of this bridge
+  is configurable and can be changed by setting a relevant instance-specific OVSDB option.
 
 - ``br-ex`` keeps being the external bridge, where the physical NICs are
   attached (as in default environments without BGP). But instead of being
@@ -236,6 +239,71 @@ range for the provider networks to expose/handle:
     external_nics=eth1,eth2
     peer_ips=100.64.1.5,100.65.1.5
     provider_networks_pool_prefixes=172.16.0.0/16
+    # This will be used as a suffix for options relevant to the node-local OVN.
+    bgp_chassis_id = bgp
+
+
+Multiple OVN Controllers
+++++++++++++++++++++++++
+
+This mode relies on running two ovn-controllers on the same host. However, a single
+OVSDB is shared for both controllers. To achieve that, OVN supports having option
+suffixes for options stored in OVSDB that look like this: ``<option>-<system-id>``.
+
+One of the ``ovn-controller`` instances will need to have ``-n <system-id-override>``
+passed in via command-line arguments to the daemon. Alternatively, if the second
+ovn-controller is run in a container, ``/etc/<ovn-config-dir>/system-id-override``
+can be provided to override the system-id.
+
+``ovn-bgp-agent`` itself needs to parse bridge-mappings related to the local OVN instance
+and by default uses ``bgp_chassis_id`` config option set to `bgp` making it look for
+bridge mappings in the ``ovn-bridge-mappings-bgp`` option. Make sure to set this option
+correctly, otherwise, ``ovn-bgp-agent`` will not create the necessary local ``ovn-nb`` state
+and, as a result, no patch ports will be created between ``br-bgp`` and ``br-ex``.
+
+An example of how to set relevant OVSDB options for both ``ovn-controller``s via ``ovs-vsctl``:
+
+  .. code-block:: bash
+
+    # Set the hostname that will be used by both ovn-controllers.
+    ovs-vsctl set open . external-ids:hostname=<desired-hostname>
+
+    # This is optional as it matches the default integration bridge
+    # name in OVN but present here to clarify the difference with the
+    # extra OVN cluster config.
+    ovs-vsctl set open . external-ids:ovn-bridge=br-int
+
+    # Bridge mappings for the primary OVN cluster's ovn-controller.
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings=provider:br-osp
+    # Set the IP to be used for a tunnel endpoint.
+    ovs-vsctl set open . external-ids:ovn-encap-ip=<desired-vtep-ip>
+    # Set the desired encapsulation (will apply to both ovn-controllers as there's no
+    # suffixed override):
+    ovs-vsctl set open . external-ids:ovn-encap-type=geneve
+    # Assuming the primary OVN deployment has a clustered ovn-sb setup with 3 IPs
+    # and listening on port 6642:
+    ovs-vsctl set open . external-ids:ovn-remote="ssl:<primary-ovn-sb-ip-1>:6642,ssl:<primary-ovn-sb-ip-2>:6642,ssl:<primary-ovn-sb-ip-3>:6642"
+
+    # Set the integation bridge name for the extra OVN deployment
+    # (this overrides the default br-int):
+    ovs-vsctl set open . external-ids:ovn-bridge-bgp=br-bgp
+
+    # Set the bridge mappings for the extra OVN's ovn-controller instance. Note that
+    # there will be localnet ports on both the northbound and southbound side of br-bgp
+    # as a result.
+    ovs-vsctl set open . external-ids:ovn-bridge-mappings-bgp=dcfabric:br-ex,local:br-osp
+
+    # Make sure that the local ovn-controller speaks to the local ovn-sb.
+    ovs-vsctl set open . external-ids:ovn-remote-bgp=unix:/var/run/ovn/ovnsb_db.sock
+
+    # Have to set both ovn-encap-ip (taken from the option without suffix) and ovn-encap-ip
+    # in order for ovn-controller to start successfully.
+    # Since we only use localnet ports for the extra cluster, we can set this IP to the localhost IP.
+    ovs-vsctl set open . external-ids:ovn-encap-ip-bgp=127.0.0.1
+
+    # Enable hardware offload if your hardware supports it which will apply to the state created
+    # by both ovn-controllers.
+    ovs-vsctl set open . other-config:hw-offload=true
 
 
 Limitations

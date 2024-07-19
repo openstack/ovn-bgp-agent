@@ -179,7 +179,7 @@ def ensure_anycast_mac_for_interface(intf, offset):
         # Also update the 'scope link' address on the interface.
         ll = lladdr.replace(':', '')
         ll_ip_address = ipaddress.IPv6Address(
-            f'fe80::{ll[0:4]}:{ll[4:8]}:{ll[8:12]}')
+            f'fe80::{ll[0:4]}:{ll[4:8]}:{ll[8:12]}')  # noqa: E231
         ll_net = ipaddress.IPv6Network('fe80::/10')
 
         # Fetch all ipv6 addresses and check if we already configured the
