@@ -52,7 +52,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, _ = self._get_chassis(row)
+            current_chassis = self._get_chassis(row)
             logical_switch = self._get_network(row)
 
             if logical_switch in self.agent.ovn_local_lrps:
@@ -119,7 +119,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             if event == self.ROW_DELETE:
                 return True
 
-            current_chassis, _ = self._get_chassis(row)
+            current_chassis = self._get_chassis(row)
             # Delete the port from current chassis, if
             # 1. port went down (while only attached here)
             if (hasattr(old, 'up') and bool(old.up[0]) and   # port was up
@@ -183,7 +183,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             if not self._check_ip_associated(row.addresses[0]):
                 return False
 
-            current_chassis, _ = self._get_chassis(row)
+            current_chassis = self._get_chassis(row)
             current_port_fip = row.external_ids.get(
                 constants.OVN_FIP_EXT_ID_KEY)
             if (current_chassis != self.agent.chassis or
@@ -291,7 +291,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
                 return True
 
             # If we reach here, just check if host changed
-            current_chassis, _ = self._get_chassis(row)
+            current_chassis = self._get_chassis(row)
             return current_chassis != self.agent.chassis
 
         except (IndexError, AttributeError):
