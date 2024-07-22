@@ -437,7 +437,7 @@ class OvsdbNbOvnIdl(nb_impl_idl.OvnNbApiIdlImpl, Backend):
         ports = []
         cmd = self.db_find_rows('Logical_Switch_Port', ('up', '=', True))
         for row in cmd.execute(check_error=True):
-            port_chassis, _ = driver_utils.get_port_chassis(row, chassis)
+            port_chassis = driver_utils.get_port_chassis(row, chassis)
             if port_chassis == chassis:
                 ports.append(row)
 
