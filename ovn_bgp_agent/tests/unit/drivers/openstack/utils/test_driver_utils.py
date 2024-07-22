@@ -77,7 +77,7 @@ class TestDriverUtils(test_base.TestCase):
             options={constants.OVN_REQUESTED_CHASSIS: my_host})
 
         self.assertEqual(driver_utils.get_port_chassis(row, chassis=my_host),
-                         (my_host, constants.OVN_CHASSIS_AT_OPTIONS))
+                         my_host)
 
     def test_get_port_chassis_from_external_ids(self):
         my_host = 'foo-host'
@@ -87,7 +87,7 @@ class TestDriverUtils(test_base.TestCase):
             external_ids={constants.OVN_HOST_ID_EXT_ID_KEY: my_host})
 
         self.assertEqual(driver_utils.get_port_chassis(row, chassis=my_host),
-                         (my_host, constants.OVN_CHASSIS_AT_EXT_IDS))
+                         my_host)
 
     def test_get_port_chassis_from_external_ids_virtual_port(self):
         my_host = 'foo-host'
@@ -99,12 +99,12 @@ class TestDriverUtils(test_base.TestCase):
             type=constants.OVN_VIRTUAL_VIF_PORT_TYPE)
 
         self.assertEqual(driver_utils.get_port_chassis(row, chassis=my_host),
-                         (my_host, constants.OVN_CHASSIS_AT_EXT_IDS))
+                         my_host)
 
     def test_get_port_chassis_no_information(self):
         row = utils.create_row()
         self.assertEqual(driver_utils.get_port_chassis(row, chassis='foo'),
-                         (None, None))
+                         None)
 
     def test_check_name_prefix(self):
         lb = utils.create_row(name='some-name')
