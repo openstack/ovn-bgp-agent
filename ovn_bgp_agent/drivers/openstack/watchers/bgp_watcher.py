@@ -17,6 +17,7 @@ from oslo_config import cfg
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 from ovn_bgp_agent.utils import helpers
 
@@ -34,7 +35,7 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             if not bool(row.up[0]):
                 return False
@@ -67,7 +68,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             if event == self.ROW_DELETE:
                 return row.chassis[0].name == self.agent.chassis
@@ -181,7 +182,7 @@ class SubnetRouterAttachedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             return (not row.chassis and
                     row.logical_port.startswith('lrp-') and
@@ -212,8 +213,8 @@ class SubnetRouterUpdateEvent(base_watcher.PortBindingChassisEvent):
         # mac = [ff:ff:ff:ff:ff:ff subnet1/cidr subnet2/cidr [...]]
         try:
             # single and dual-stack format
-            if (not self._check_ip_associated(row.mac[0]) and
-                    not self._check_ip_associated(old.mac[0])):
+            if (not port_utils.has_ip_address_defined(row.mac[0]) and
+                    not port_utils.has_ip_address_defined(old.mac[0])):
                 return False
             return (
                 not row.chassis and
@@ -240,7 +241,7 @@ class SubnetRouterDetachedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             return (not row.chassis and
                     row.logical_port.startswith('lrp-') and
@@ -272,7 +273,7 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
                 if not n_cidrs:
                     return False
             # single and dual-stack format
-            elif not self._check_ip_associated(row.mac[0]):
+            elif not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             return (not old.chassis and row.chassis and
                     self.agent.ovn_local_lrps != [])
@@ -311,7 +312,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
                 if not n_cidrs:
                     return False
             # single and dual-stack format
-            elif not self._check_ip_associated(row.mac[0]):
+            elif not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis and not row.chassis and
