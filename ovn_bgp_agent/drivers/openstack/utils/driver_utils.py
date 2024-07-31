@@ -50,7 +50,7 @@ def get_port_chassis(port, chassis,
     # if that is the case, please supply a default in the arguments.
 
     port_type = getattr(port, 'type', default_port_type)
-    if (port_type not in [constants.OVN_VIRTUAL_VIF_PORT_TYPE] and
+    if (port_type != constants.OVN_VIRTUAL_VIF_PORT_TYPE and
             hasattr(port, 'options') and
             port.options.get(constants.OVN_REQUESTED_CHASSIS)):
 
@@ -59,19 +59,13 @@ def get_port_chassis(port, chassis,
         # to do a == equal comparison
         req_chassis = port.options[constants.OVN_REQUESTED_CHASSIS]
         if chassis in req_chassis.split(','):
-            req_chassis = chassis
+            return chassis
 
-        return req_chassis.split(',')[0], constants.OVN_CHASSIS_AT_OPTIONS
+        return req_chassis.split(',')[0]
 
     elif (hasattr(port, 'external_ids') and
             port.external_ids.get(constants.OVN_HOST_ID_EXT_ID_KEY)):
-
-        return (
-            port.external_ids[constants.OVN_HOST_ID_EXT_ID_KEY],
-            constants.OVN_CHASSIS_AT_EXT_IDS
-        )
-
-    return None, None
+        return port.external_ids[constants.OVN_HOST_ID_EXT_ID_KEY]
 
 
 def check_name_prefix(entity, prefix):
