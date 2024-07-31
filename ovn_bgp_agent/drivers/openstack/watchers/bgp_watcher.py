@@ -486,11 +486,11 @@ class ChassisCreateEventBase(base_watcher.Event):
     table = None
 
     def __init__(self, bgp_agent):
-        self.agent = bgp_agent
         self.first_time = True
         events = (self.ROW_CREATE,)
-        super(ChassisCreateEventBase, self).__init__(
-            events, self.table, (('name', '=', self.agent.chassis),))
+        super().__init__(
+            bgp_agent, events, self.table,
+            (('name', '=', bgp_agent.chassis),))
         self.event_name = self.__class__.__name__
 
     def _run(self, event, row, old):
