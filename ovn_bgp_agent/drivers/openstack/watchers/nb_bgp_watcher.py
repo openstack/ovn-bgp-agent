@@ -17,6 +17,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
@@ -49,7 +50,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             return
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             current_chassis = self._get_chassis(row)
@@ -100,7 +101,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             return
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             ips = row.addresses[0].split(' ')[1:]
@@ -180,7 +181,7 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             return
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             current_chassis = self._get_chassis(row)
@@ -258,7 +259,7 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             return
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             current_port_fip = self._get_port_fip(row)
@@ -579,7 +580,7 @@ class LogicalSwitchPortTenantCreateEvent(base_watcher.LSPChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             if not bool(row.up[0]):
@@ -627,7 +628,7 @@ class LogicalSwitchPortTenantDeleteEvent(base_watcher.LSPChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.addresses[0]):
+            if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
             current_network = self._get_network(row)
