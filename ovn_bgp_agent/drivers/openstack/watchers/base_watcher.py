@@ -149,3 +149,30 @@ class LRPChassisEvent(Event):
             'logical_switch': self._get_network(row),
             'router': row.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY),
         }
+
+
+class ChassisCreateEventBase(Event):
+    table = None
+
+    def __init__(self, bgp_agent):
+        self.first_time = True
+        events = (self.ROW_CREATE,)
+        super().__init__(
+            bgp_agent, events, self.table,
+            (('name', '=', bgp_agent.chassis),))
+        self.event_name = self.__class__.__name__
+
+    def _run(self, event, row, old):
+        if self.first_time:
+            self.first_time = False
+        else:
+            LOG.info("Connection to OVSDB established, doing a full sync")
+            self.agent.sync()
+
+
+class ChassisCreateEvent(ChassisCreateEventBase):
+    table = 'Chassis'
+
+
+class ChassisPrivateCreateEvent(ChassisCreateEventBase):
+    table = 'Chassis_Private'
