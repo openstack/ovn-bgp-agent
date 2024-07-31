@@ -23,6 +23,10 @@ LOG = logging.getLogger(__name__)
 
 
 class Event(row_event.RowEvent):
+    def __init__(self, agent, events, table, condition=None):
+        self.agent = agent
+        super().__init__(events, table, condition)
+
     def run(self, *args, **kwargs):
         try:
             self._run(*args, **kwargs)
@@ -33,10 +37,8 @@ class Event(row_event.RowEvent):
 
 class PortBindingChassisEvent(Event):
     def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
         table = 'Port_Binding'
-        super(PortBindingChassisEvent, self).__init__(
-            events, table, None)
+        super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
     def _check_ip_associated(self, mac):
@@ -45,10 +47,8 @@ class PortBindingChassisEvent(Event):
 
 class OVNLBEvent(Event):
     def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
         table = 'Load_Balancer'
-        super(OVNLBEvent, self).__init__(
-            events, table, None)
+        super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
     def _get_router(self, row, key=constants.OVN_LB_LR_REF_EXT_ID_KEY):
@@ -87,19 +87,15 @@ class OVNLBEvent(Event):
 
 class LogicalSwitchChassisEvent(Event):
     def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
         table = 'Logical_Switch'
-        super(LogicalSwitchChassisEvent, self).__init__(
-            events, table, None)
+        super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
 
 class LSPChassisEvent(Event):
     def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
         table = 'Logical_Switch_Port'
-        super(LSPChassisEvent, self).__init__(
-            events, table, None)
+        super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
     def _check_ip_associated(self, mac):
@@ -141,10 +137,8 @@ class LSPChassisEvent(Event):
 
 class LRPChassisEvent(Event):
     def __init__(self, bgp_agent, events):
-        self.agent = bgp_agent
         table = 'Logical_Router_Port'
-        super(LRPChassisEvent, self).__init__(
-            events, table, None)
+        super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
     def _get_network(self, row):
