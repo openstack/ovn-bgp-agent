@@ -41,9 +41,6 @@ class PortBindingChassisEvent(Event):
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
-    def _check_ip_associated(self, mac):
-        return len(mac.strip().split(' ')) > 1
-
 
 class OVNLBEvent(Event):
     def __init__(self, bgp_agent, events):
@@ -97,9 +94,6 @@ class LSPChassisEvent(Event):
         table = 'Logical_Switch_Port'
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
-
-    def _check_ip_associated(self, mac):
-        return len(mac.strip().split(' ')) > 1
 
     def _get_chassis(self, row, default_type=constants.OVN_VM_VIF_PORT_TYPE):
         return driver_utils.get_port_chassis(row, self.agent.chassis,
