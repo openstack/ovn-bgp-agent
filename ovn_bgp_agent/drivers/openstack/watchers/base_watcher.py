@@ -16,6 +16,7 @@ from oslo_log import log as logging
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import common as common_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 
 
@@ -109,19 +110,14 @@ class LSPChassisEvent(Event):
 
         return False
 
-    def _get_network(self, row):
-        try:
-            return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
-        except (AttributeError, KeyError):
-            return
-
     def _get_ips_info(self, row):
         return {
             'mac': row.addresses[0].strip().split(' ')[0],
             'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
                                           "").split(),
             'type': row.type,
-            'logical_switch': self._get_network(row),
+            'logical_switch': common_utils.get_from_external_ids(
+                row, constants.OVN_LS_NAME_EXT_ID_KEY),
         }
 
     def _get_port_fip(self, row):
@@ -135,18 +131,13 @@ class LRPChassisEvent(Event):
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
-    def _get_network(self, row):
-        try:
-            return row.external_ids[constants.OVN_LS_NAME_EXT_ID_KEY]
-        except (AttributeError, KeyError):
-            return
-
     def _get_ips_info(self, row):
         return {
             'mac': row.mac,
             'cidrs': row.networks,
             'type': constants.OVN_CR_LRP_PORT_TYPE,
-            'logical_switch': self._get_network(row),
+            'logical_switch': common_utils.get_from_external_ids(
+                row, constants.OVN_LS_NAME_EXT_ID_KEY),
             'router': row.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY),
         }
 
