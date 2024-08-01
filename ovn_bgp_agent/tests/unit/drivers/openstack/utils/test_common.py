@@ -36,3 +36,33 @@ class TestGetFromExternalIds(test_base.TestCase):
         row = test_utils.create_row(external_ids={})
 
         self.assertIsNone(common.get_from_external_ids(row, 'key'))
+
+
+class TestIpMatchesInRow(test_base.TestCase):
+    def test_ip_is_in_row(self):
+        ip = 'ip'
+        key = 'key'
+        row = test_utils.create_row(external_ids={key: ip})
+
+        self.assertTrue(common.ip_matches_in_row(row, ip, key))
+
+    def test_external_ids_missing_returns_none(self):
+        ip = 'ip'
+        key = 'key'
+        row = test_utils.create_row()
+
+        self.assertIsNone(common.ip_matches_in_row(row, ip, key))
+
+    def test_key_missing(self):
+        ip = 'ip'
+        key = 'key'
+        row = test_utils.create_row(external_ids={})
+
+        self.assertFalse(common.ip_matches_in_row(row, ip, key))
+
+    def test_key_missing_but_ip_is_none(self):
+        ip = None
+        key = 'key'
+        row = test_utils.create_row(external_ids={})
+
+        self.assertTrue(common.ip_matches_in_row(row, ip, key))
