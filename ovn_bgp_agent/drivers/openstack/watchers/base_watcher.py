@@ -49,12 +49,6 @@ class OVNLBEvent(Event):
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
-    def _get_router(self, row, key=constants.OVN_LB_LR_REF_EXT_ID_KEY):
-        try:
-            return row.external_ids[key].replace('neutron-', "", 1)
-        except (AttributeError, KeyError):
-            return
-
     def _get_ip_from_vips(self, row):
         return [driver_utils.remove_port_from_ip(ipport)
                 for ipport in getattr(row, 'vips', {}).keys()]
