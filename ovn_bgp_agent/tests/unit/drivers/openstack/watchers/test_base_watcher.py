@@ -103,11 +103,6 @@ class TestOVNLBEvent(test_base.TestCase):
                          ['192.168.1.50', '172.24.4.5'])
 
 
-class FakeLogicalSwitchChassisEvent(base_watcher.LogicalSwitchChassisEvent):
-    def run(self):
-        pass
-
-
 class FakeLSPChassisEvent(base_watcher.LSPChassisEvent):
     def run(self):
         pass
