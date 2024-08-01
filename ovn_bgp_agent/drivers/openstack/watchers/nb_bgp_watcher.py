@@ -18,6 +18,7 @@ from oslo_log import log as logging
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import common as common_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import loadbalancer as lb_utils
 from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.utils import router as router_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
@@ -716,12 +717,12 @@ class OVNLBCreateEvent(base_watcher.OVNLBEvent):
 
     def _run(self, event, row, old):
         # vips field grows
-        diff = self._get_diff_ip_from_vips(row, old)
+        diff = lb_utils.get_diff_ip_from_vips(row, old)
         for ip in diff:
             with _SYNC_STATE_LOCK.read_lock():
-                if self._is_vip(row, ip):
+                if lb_utils.is_vip(row, ip):
                     self.agent.expose_ovn_lb_vip(row)
-                elif self._is_fip(row, ip):
+                elif lb_utils.is_fip(row, ip):
                     self.agent.expose_ovn_lb_fip(row)
 
         # router set ext-gw
@@ -780,23 +781,23 @@ class OVNLBDeleteEvent(base_watcher.OVNLBEvent):
     def _run(self, event, row, old):
         # DELETE event need drop all
         if event == self.ROW_DELETE:
-            diff = self._get_ip_from_vips(row)
+            diff = lb_utils.get_vips(row)
             for ip in diff:
                 with _SYNC_STATE_LOCK.read_lock():
-                    if self._is_vip(row, ip):
+                    if lb_utils.is_vip(row, ip):
                         self.agent.withdraw_ovn_lb_vip(row)
-                    elif self._is_fip(row, ip):
+                    elif lb_utils.is_fip(row, ip):
                         self.agent.withdraw_ovn_lb_fip(row)
             return
 
         # UPDATE event
         # vips field decrease
-        diff = self._get_diff_ip_from_vips(old, row)
+        diff = lb_utils.get_diff_ip_from_vips(old, row)
         for ip in diff:
             with _SYNC_STATE_LOCK.read_lock():
-                if self._is_vip(old, ip):
+                if lb_utils.is_vip(old, ip):
                     self.agent.withdraw_ovn_lb_vip(old)
-                elif self._is_fip(old, ip):
+                elif lb_utils.is_fip(old, ip):
                     self.agent.withdraw_ovn_lb_fip(old)
 
         # router unset ext-gw

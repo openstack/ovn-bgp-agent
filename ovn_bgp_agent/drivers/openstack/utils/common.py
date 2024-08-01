@@ -18,3 +18,18 @@ def get_from_external_ids(row, key):
         return row.external_ids[key]
     except (AttributeError, KeyError):
         pass
+
+
+def ip_matches_in_row(row, ip, key):
+    """Return True if given ip is in external_ids under given key.
+
+    Return also True if passed ip is None and key is not present.
+
+    Return None if external_ids is not present in row.
+
+    Otherwise return False
+    """
+    try:
+        return ip == row.external_ids.get(key)
+    except AttributeError:
+        pass
