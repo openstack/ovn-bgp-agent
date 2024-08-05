@@ -41,3 +41,14 @@ def make_lsp_dict(row):
         'logical_switch': common.get_from_external_ids(
             row, constants.OVN_LS_NAME_EXT_ID_KEY),
     }
+
+
+def make_lrp_dict(row):
+    return {
+        'mac': row.mac,
+        'cidrs': row.networks,
+        'type': constants.OVN_CR_LRP_PORT_TYPE,
+        'logical_switch': common.get_from_external_ids(
+            row, constants.OVN_LS_NAME_EXT_ID_KEY),
+        'router': row.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY),
+    }
