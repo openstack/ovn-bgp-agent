@@ -158,3 +158,12 @@ class InvalidArgument(RuntimeError):
     def __init__(self, message=None, device=None):
         message = message or self.message % {'device': device}
         super(InvalidArgument, self).__init__(message)
+
+
+class MacAddressNotFound(OVNBGPAgentException):
+    message = _("Addresses column is empty or not set for port %(lsp)s")
+
+
+class IpAddressNotFound(OVNBGPAgentException):
+    message = _("Addresses column has no IP addresses or is not set for port"
+                " %(lsp)s")
