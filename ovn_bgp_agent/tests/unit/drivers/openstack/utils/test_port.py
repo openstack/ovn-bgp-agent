@@ -15,6 +15,7 @@
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import port
+from ovn_bgp_agent import exceptions
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils as test_utils
 
@@ -82,3 +83,71 @@ class TestHasAdditionalBinding(test_base.TestCase):
             options={constants.OVN_REQUESTED_CHASSIS: ""})
 
         self.assertFalse(port.has_additional_binding(lsp))
+
+
+class TestGetAddressList(test_base.TestCase):
+    def test_get_list(self):
+        expected_list = ["mac", "ip1", "ip2"]
+        lsp = test_utils.create_row(
+            addresses=["mac ip1 ip2"])
+        observed = port.get_address_list(lsp)
+
+        self.assertListEqual(expected_list, observed)
+
+    def test_get_list_strip(self):
+        expected_list = ["mac", "ip1", "ip2"]
+        lsp = test_utils.create_row(
+            addresses=["  mac ip1 ip2 "])
+        observed = port.get_address_list(lsp)
+
+        self.assertListEqual(expected_list, observed)
+
+    def test_get_list_no_addresses(self):
+        lsp = test_utils.create_row()
+        observed = port.get_address_list(lsp)
+
+        self.assertListEqual([], observed)
+
+    def test_get_list_empty(self):
+        lsp = test_utils.create_row(addresses=[])
+        observed = port.get_address_list(lsp)
+
+        self.assertListEqual([], observed)
+
+    def test_get_list_empty_string(self):
+        lsp = test_utils.create_row(addresses=[""])
+        observed = port.get_address_list(lsp)
+
+        self.assertListEqual([], observed)
+
+
+class TestGetMacFromLsp(test_base.TestCase):
+    def test_get_mac(self):
+        mac = 'mac'
+        lsp = test_utils.create_row(
+            addresses=["%s ip1 ip2" % mac])
+        observed_mac = port.get_mac_from_lsp(lsp)
+
+        self.assertEqual(mac, observed_mac)
+
+    def test_get_mac_empty_list(self):
+        lsp = test_utils.create_row(
+            addresses=[])
+        self.assertRaises(
+            exceptions.MacAddressNotFound, port.get_mac_from_lsp, lsp)
+
+
+class TestGetIpsFromLsp(test_base.TestCase):
+    def test_get_ips(self):
+        ips = ['ip1', 'ip2']
+        lsp = test_utils.create_row(
+            addresses=["mac " + ' '.join(ips)])
+        observed_ips = port.get_ips_from_lsp(lsp)
+
+        self.assertEqual(ips, observed_ips)
+
+    def test_get_ips_empty_list(self):
+        lsp = test_utils.create_row(
+            addresses=[])
+        self.assertRaises(
+            exceptions.IpAddressNotFound, port.get_ips_from_lsp, lsp)
