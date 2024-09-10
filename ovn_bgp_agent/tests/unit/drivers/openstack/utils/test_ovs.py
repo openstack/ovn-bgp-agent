@@ -100,7 +100,7 @@ class TestOVS(test_base.TestCase):
         patch = 'fake-patch'
         self.mock_ovs_vsctl.ovs_cmd.side_effect = Exception
 
-        self.assertRaises(agent_exc.PatchPortNotFound,
+        self.assertRaises(agent_exc.PortNotFound,
                           ovs_utils.get_ovs_patch_port_ofport, patch)
 
         expected_calls = [
@@ -121,7 +121,7 @@ class TestOVS(test_base.TestCase):
         ofport = ['[]']
         self.mock_ovs_vsctl.ovs_cmd.return_value = ofport
 
-        self.assertRaises(agent_exc.PatchPortNotFound,
+        self.assertRaises(agent_exc.PortNotFound,
                           ovs_utils.get_ovs_patch_port_ofport, patch)
 
         expected_calls = [
