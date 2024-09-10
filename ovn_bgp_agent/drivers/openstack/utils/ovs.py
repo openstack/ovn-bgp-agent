@@ -50,9 +50,24 @@ def get_bridge_flows(bridge, filter_=None):
         'ovs-ofctl', args)[0].split('\n')[1:-1]
 
 
+@tenacity.retry(
+    retry=tenacity.retry_if_exception_type(agent_exc.PortNotFound),
+    wait=tenacity.wait_fixed(1),
+    stop=tenacity.stop_after_delay(5),
+    reraise=True)
 def get_device_port_at_ovs(device):
-    return ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-        'ovs-vsctl', ['get', 'Interface', device, 'ofport'])[0].rstrip()
+    try:
+        ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
+            'ovs-vsctl', ['get', 'Interface', device, 'ofport']
+            )[0].rstrip()
+    except Exception:
+        raise agent_exc.PortNotFound(port=device)
+    if ofport == '[]':
+        # NOTE(ltomasbo): there is a chance the patch port interface was
+        # created but not yet added to ovs bridge, therefore it exists but
+        # has an empty ofport. We should retry in this case
+        raise agent_exc.PortNotFound(port=device)
+    return ofport
 
 
 def get_ovs_ports_info(bridge):
@@ -71,25 +86,9 @@ def get_ovs_patch_ports_info(bridge, prefix='patch-provnet-'):
     return in_ports
 
 
-@tenacity.retry(
-    retry=tenacity.retry_if_exception_type(agent_exc.PatchPortNotFound),
-    wait=tenacity.wait_fixed(1),
-    stop=tenacity.stop_after_delay(5),
-    reraise=True)
 def get_ovs_patch_port_ofport(patch):
     patch_name = "patch-{}-to-br-int".format(patch)
-    try:
-        ofport = ovn_bgp_agent.privileged.ovs_vsctl.ovs_cmd(
-            'ovs-vsctl', ['get', 'Interface', patch_name, 'ofport']
-            )[0].rstrip()
-    except Exception:
-        raise agent_exc.PatchPortNotFound(localnet=patch)
-    if ofport == '[]':
-        # NOTE(ltomasbo): there is a chance the patch port interface was
-        # created but not yet added to ovs bridge, therefore it exists but
-        # has an empty ofport. We should retry in this case
-        raise agent_exc.PatchPortNotFound(localnet=patch)
-    return ofport
+    return get_device_port_at_ovs(patch_name)
 
 
 def ensure_mac_tweak_flows(bridge, mac, ports, cookie):
