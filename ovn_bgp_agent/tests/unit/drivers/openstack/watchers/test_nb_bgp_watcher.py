@@ -16,6 +16,7 @@
 from unittest import mock
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack import nb_exceptions
 from ovn_bgp_agent.drivers.openstack.watchers import nb_bgp_watcher
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils
@@ -420,15 +421,13 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                                                       ls_name, row)
 
     def test_run_no_external_ip(self):
-        external_ip = None
-        ls_name = 'logical_switch'
-        self.agent.get_port_external_ip_and_ls.return_value = (external_ip,
-                                                               'mac',
-                                                               ls_name)
+        self.agent.get_port_external_ip_and_ls.side_effect = (
+            nb_exceptions.NATNotFound)
+
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
                                addresses=['mac 192.168.0.1'],
                                name='net-id')
-        self.event.run(mock.Mock(), row, mock.Mock())
+        self.event.run(mock.ANY, row, mock.ANY)
         self.agent.expose_fip.assert_not_called()
 
 

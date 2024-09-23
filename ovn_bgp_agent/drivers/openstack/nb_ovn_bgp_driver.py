@@ -22,6 +22,7 @@ from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers import driver_api
+from ovn_bgp_agent.drivers.openstack import nb_exceptions
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn
@@ -232,9 +233,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     def _ensure_lsp_exposed(self, port):
         port_fip = port.external_ids.get(constants.OVN_FIP_EXT_ID_KEY)
         if port_fip:
-            external_ip, external_mac, ls_name = (
-                self.get_port_external_ip_and_ls(port.name))
-            if not external_ip or not ls_name:
+            try:
+                external_ip, external_mac, ls_name = (
+                    self.get_port_external_ip_and_ls(port.name))
+            except nb_exceptions.NATNotFound as e:
+                LOG.debug("Logical Switch Port %s does not have all data "
+                          "required in its NAT entry: %s", port.name, e)
                 return
             return self._expose_fip(external_ip, external_mac, ls_name, port)
 
@@ -555,14 +559,26 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
     def get_port_external_ip_and_ls(self, port):
         nat_entry = self.nb_idl.get_nat_by_logical_port(port)
-        if not nat_entry:
-            return None, None, None
-        net_id = nat_entry.external_ids.get(constants.OVN_FIP_NET_EXT_ID_KEY)
-        if not net_id:
-            return nat_entry.external_ip, nat_entry.external_mac[0], None
-        else:
-            ls_name = "neutron-{}".format(net_id)
-            return nat_entry.external_ip, nat_entry.external_mac[0], ls_name
+        try:
+            net_id = nat_entry.external_ids[constants.OVN_FIP_NET_EXT_ID_KEY]
+        except AttributeError:
+            # nat_entry is None and has no external_ids attribute
+            raise nb_exceptions.NATNotFound(
+                "NAT entry for port %s not found" % port)
+        except KeyError:
+            # network ID was not found in the NAT entry
+            raise nb_exceptions.NATNotFound(
+                "NAT entry for port %s does not contain network ID in its "
+                "external_ids" % port)
+        try:
+            external_mac = nat_entry.external_mac[0]
+        except IndexError:
+            raise nb_exceptions.NATNotFound(
+                "NAT entry for port %s does not have external_mac set" % (
+                    port))
+
+        ls_name = "neutron-{}".format(net_id)
+        return nat_entry.external_ip, external_mac, ls_name
 
     @lockutils.synchronized('nbbgp')
     def expose_fip(self, ip, mac, logical_switch, row):
@@ -1064,11 +1080,12 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             LOG.debug("Something went wrong, VIP port %s not found", vip_port)
             return
 
-        external_ip, external_mac, ls_name = (
-            self.get_port_external_ip_and_ls(vip_lsp.name))
-        if not external_ip or not ls_name:
-            LOG.debug("Something went wrong, no NAT entry for the VIP %s",
-                      vip_port)
+        try:
+            external_ip, external_mac, ls_name = (
+                self.get_port_external_ip_and_ls(vip_lsp.name))
+        except nb_exceptions.NATNotFound as e:
+            LOG.debug("Something went wrong with the VIP %s: %s",
+                      vip_port, e)
             return
         self._expose_fip(external_ip, external_mac, ls_name, vip_lsp)
 
