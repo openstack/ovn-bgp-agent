@@ -16,6 +16,7 @@ from oslo_concurrency import lockutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack import nb_exceptions
 from ovn_bgp_agent.drivers.openstack.utils import common as common_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import loadbalancer as lb_utils
@@ -235,9 +236,12 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
             return False
 
     def _run(self, event, row, old):
-        external_ip, external_mac, ls_name = (
-            self.agent.get_port_external_ip_and_ls(row.name))
-        if not external_ip or not ls_name:
+        try:
+            external_ip, external_mac, ls_name = (
+                self.agent.get_port_external_ip_and_ls(row.name))
+        except nb_exceptions.NATNotFound as e:
+            LOG.debug("Logical Switch Port %s does not have all data required"
+                      " in its NAT entry: %s", row.name, e)
             return
 
         with _SYNC_STATE_LOCK.read_lock():
