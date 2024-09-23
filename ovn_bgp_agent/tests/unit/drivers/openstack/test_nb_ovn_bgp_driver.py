@@ -18,6 +18,7 @@ from unittest import mock
 from oslo_config import cfg
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack import nb_exceptions
 from ovn_bgp_agent.drivers.openstack import nb_ovn_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
@@ -740,9 +741,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
     def test_get_port_external_ip_and_ls_no_nat_entry(self):
         self.nb_idl.get_nat_by_logical_port.return_value = None
 
-        ret = self.nb_bgp_driver.get_port_external_ip_and_ls('fake-port')
-
-        self.assertEqual(ret, (None, None, None))
+        self.assertRaises(
+            nb_exceptions.NATNotFound,
+            self.nb_bgp_driver.get_port_external_ip_and_ls, 'fake-port')
 
     def test_get_port_external_ip_and_ls_no_external_id(self):
         nat_entry = fakes.create_object({
@@ -751,10 +752,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
             'external_mac': ['fake-mac']})
         self.nb_idl.get_nat_by_logical_port.return_value = nat_entry
 
-        ret = self.nb_bgp_driver.get_port_external_ip_and_ls('fake-port')
-
-        self.assertEqual(
-            ret, (nat_entry.external_ip, nat_entry.external_mac[0], None))
+        self.assertRaises(
+            nb_exceptions.NATNotFound,
+            self.nb_bgp_driver.get_port_external_ip_and_ls, 'fake-port')
 
     def test_expose_fip(self):
         ip = '10.0.0.1'
@@ -1706,9 +1706,9 @@ class TestNBOVNBGPDriver(test_base.TestCase):
                 constants.OVN_LS_NAME_EXT_ID_KEY: 'net2'
             })
         self.nb_idl.lsp_get.return_value.execute.return_value = vip_lsp
-        mock_get_port_external_ip_and_ls = mock.patch.object(
-            self.nb_bgp_driver, 'get_port_external_ip_and_ls').start()
-        mock_get_port_external_ip_and_ls.return_value = (None, None, None)
+        mock.patch.object(
+            self.nb_bgp_driver, 'get_port_external_ip_and_ls',
+            side_effect=nb_exceptions.NATNotFound).start()
         mock_expose_fip = mock.patch.object(
             self.nb_bgp_driver, '_expose_fip').start()
 
