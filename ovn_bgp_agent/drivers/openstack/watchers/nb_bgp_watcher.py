@@ -174,6 +174,15 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
     So for migration flow we are only interested in event 7.
     Otherwise the floating ip would be added upon event 2, deleted with
         event 3 and re-added with event 7.
+
+    For the live migration of a VIP (floating ip attached to virtual port),
+    the following events happen:
+    1. port is set down (by ovn-controller on source host)
+    2. external_ids update (neutron:host_id is removed)
+    3. port is set up (by ovn-controller on dest host)
+    4. external_ids update (neutron:host_id is added)
+
+    In this case we only need to catch event 4.
     '''
     def __init__(self, bgp_agent):
         events = (self.ROW_UPDATE,)
@@ -210,8 +219,11 @@ class LogicalSwitchPortFIPCreateEvent(base_watcher.LSPChassisEvent):
                 # to something else) we need to process this update.
                 # If nothing else changed in the external_ids, we do not care
                 # as it would just cause unnecessary events during migrations.
+                # Only case we are interested in is if the chassis has changed
+                # with this event.
                 # (see the docstring of this class)
-                return False
+                old_chassis = self._get_chassis(old)
+                return old_chassis != current_chassis
 
             # Check if the current port_fip has not been exposed yet
             return not self.agent.is_ip_exposed(
