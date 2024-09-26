@@ -310,8 +310,29 @@ class TestLogicalSwitchPortFIPCreateEvent(test_base.TestCase):
                 constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
                 constants.OVN_FIP_EXT_ID_KEY: 'fip-ip'},
             up=[True])
-        old = utils.create_row(external_ids={}, up=[True])
+        old = utils.create_row(external_ids={
+            constants.OVN_FIP_EXT_ID_KEY: 'fip-ip',
+        }, up=[True])
         self.assertTrue(self.event.match_fn(mock.Mock(), row, old))
+
+    def test_match_fn_no_change_external_ids(self):
+        row = utils.create_row(
+            type=constants.OVN_VM_VIF_PORT_TYPE,
+            addresses=['mac 192.168.0.1'],
+            external_ids={
+                constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
+                constants.OVN_FIP_EXT_ID_KEY: 'fip-ip',
+                'neutron:revision_number': '416',
+            },
+            up=[True])
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_EXT_ID_KEY: 'fip-ip',
+                constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis,
+                'neutron:revision_number': '417',
+            },
+            up=[True])
+        self.assertFalse(self.event.match_fn(mock.Mock(), row, old))
 
     def test_match_fn_status_change(self):
         row = utils.create_row(type=constants.OVN_VM_VIF_PORT_TYPE,
