@@ -99,3 +99,11 @@ class ChassisCreateEvent(ChassisCreateEventBase):
 
 class ChassisPrivateCreateEvent(ChassisCreateEventBase):
     table = 'Chassis_Private'
+
+
+class DnatSnatUpdatedBaseEvent(Event):
+    def __init__(self, bgp_agent):
+        events = (self.ROW_UPDATE)
+        table = 'NAT'
+        super().__init__(
+            bgp_agent, events, table, (('type', '=', 'dnat_and_snat'),))

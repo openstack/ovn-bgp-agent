@@ -1610,3 +1610,111 @@ class TestOVNLBDeleteEvent(test_base.TestCase):
 
         self.agent.withdraw_ovn_lb_vip.assert_not_called()
         self.agent.withdraw_ovn_lb_fip.assert_called_once_with(old)
+
+
+class TestNATMACAddedEvent(test_base.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.chassis = 'fake-chassis'
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.event = nb_bgp_watcher.NATMACAddedEvent(
+            self.agent)
+        self.nat_entry = utils.create_row(
+            _uuid='uuid',
+            logical_port=['port-id'],
+            external_ids={constants.OVN_FIP_NET_EXT_ID_KEY: 'net-id'},
+            external_ip='ext-ip',
+            external_mac=['ext-mac']
+        )
+
+    def _call_match(self, old=mock.ANY):
+        return self.event.match_fn(mock.ANY, self.nat_entry, old)
+
+    def test_run(self):
+        self.event.run(mock.ANY, self.nat_entry, None)
+
+    def test_match_fn_no_logical_port(self):
+        self.nat_entry.logical_port = ""
+        self.assertFalse(self._call_match())
+
+    def test_match_fn_lsp_not_found(self):
+        self.agent.nb_idl.lsp_get.return_value.execute.return_value = None
+        self.assertFalse(self._call_match())
+
+    def test_match_fn_bad_lsp_type(self):
+        self.agent.nb_idl.lsp_get.return_value.execute.return_value.type = 'b'
+        self.assertFalse(self._call_match())
+
+    def test_match_fn_no_requested_chassis(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {}
+        self.assertFalse(self._call_match())
+
+    def test_match_fn_different_chassis(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': 'foo'}
+        self.assertFalse(self._call_match())
+
+    def test_match_fn_external_mac_untouched(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+        )
+        self.assertFalse(self._call_match(old))
+
+    def test_match_fn_external_mac_unset(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=['old-mac']
+        )
+        self.nat_entry.external_mac = ""
+        self.assertFalse(self._call_match(old))
+
+    def test_match_fn_external_mac_already_set(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=self.nat_entry.external_mac
+        )
+        self.assertFalse(self._call_match(old))
+
+    def test_match_fn_ext_ids_missing_net_id(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=""
+        )
+        del self.nat_entry.external_ids[constants.OVN_FIP_NET_EXT_ID_KEY]
+        self.assertFalse(self._call_match(old))
+
+    def test_match_fn_missing_ext_ip(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=""
+        )
+        self.nat_entry.external_ip = ""
+        self.assertFalse(self._call_match(old))
+
+    def test_match_fn_passed(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VM_VIF_PORT_TYPE
+        lsp.options = {'requested-chassis': self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=""
+        )
+        self.assertTrue(self._call_match(old))

@@ -859,3 +859,60 @@ class OVNPFDeleteEvent(OVNPFBaseEvent):
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.withdraw_ovn_pf_lb_fip(row)
+
+
+class NATMACAddedEvent(base_watcher.DnatSnatUpdatedBaseEvent):
+    def match_fn(self, event, row, old):
+        try:
+            lsp_id = row.logical_port[0]
+        except IndexError:
+            LOG.error("NAT entry %s has no logical port set.", row.uuid)
+            return False
+
+        lsp = self.agent.nb_idl.lsp_get(lsp_id).execute()
+
+        if lsp is None:
+            LOG.error("Logical Switch Port %(lsp)s for NAT entry %(nat)s "
+                      "was not found in OVN NB DB.", {
+                          'lsp': lsp_id,
+                          'nat': row.uuid})
+            return False
+
+        if lsp.type != constants.OVN_VM_VIF_PORT_TYPE:
+            return False
+
+        try:
+            if lsp.options['requested-chassis'] != self.agent.chassis:
+                return False
+        except KeyError:
+            return False
+
+        try:
+            if old.external_mac and old.external_mac[0] == row.external_mac[0]:
+                return False
+        except (AttributeError, IndexError):
+            return False
+
+        # This is required to be able to expose the FIP, there is no point in
+        # continuing if the external_id is not set
+        if constants.OVN_FIP_NET_EXT_ID_KEY not in row.external_ids:
+            LOG.error("NAT entry %(nat)s does not have %(fip_net)s set in "
+                      "external_ids", {
+                          'nat': row.uuid,
+                          'fip_net': constants.OVN_FIP_NET_EXT_ID_KEY})
+            return False
+
+        if not row.external_ip:
+            LOG.error("NAT entry %s does not have external_ip set", row.uuid)
+            return False
+
+        return True
+
+    def run(self, event, row, old):
+        lsp = self.agent.nb_idl.lsp_get(row.logical_port[0]).execute()
+        # The key is present, it was checked in match_fn
+        net_id = row.external_ids[constants.OVN_FIP_NET_EXT_ID_KEY]
+        ls_name = "neutron-{}".format(net_id)
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.expose_fip(
+                row.external_ip, row.external_mac[0], ls_name, lsp)
