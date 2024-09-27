@@ -154,7 +154,8 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                   watcher.OVNPFCreateEvent(self),
                   watcher.OVNPFDeleteEvent(self),
                   watcher.ChassisRedirectCreateEvent(self),
-                  watcher.ChassisRedirectDeleteEvent(self)}
+                  watcher.ChassisRedirectDeleteEvent(self),
+                  watcher.NATMACAddedEvent(self)}
 
         if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
             # For vrf we require more information on the logical_switch
