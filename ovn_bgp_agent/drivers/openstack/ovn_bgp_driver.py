@@ -177,7 +177,7 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
             mac = linux_net.get_interface_address(bridge)
             self.ovs_flows[bridge] = {
                 'mac': mac,
-                'in_port': set([])}
+                'in_port': []}
             # 3) Get in_port for bridge mappings (br-ex, br-ex2)
             self.ovs_flows[bridge]['in_port'] = (
                 ovs.get_ovs_patch_ports_info(bridge))
