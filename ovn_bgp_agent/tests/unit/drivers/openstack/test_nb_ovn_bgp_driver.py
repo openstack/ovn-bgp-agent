@@ -13,6 +13,7 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import functools
 from unittest import mock
 
 from oslo_config import cfg
@@ -88,6 +89,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         self.mock_ovs_idl.get_own_chassis_id.return_value = 'chassis-id'
         self.mock_ovs_idl.get_ovn_remote.return_value = (
             self.conf_ovsdb_connection)
+        nb_idl = self.mock_nbdb.return_value.start.return_value
+        nb_idl.get_distributed_flag.return_value = True
 
         self.nb_bgp_driver.start()
 
@@ -1806,3 +1809,77 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         self.nb_bgp_driver.withdraw_ovn_pf_lb_fip(lb)
         mock_withdraw_provider_port.assert_not_called()
+
+
+def set_distributed(distributed):
+    def outer(f):
+        @functools.wraps(f)
+        def inner(self, *args, **kwargs):
+            self.exposer.distributed = distributed
+            return f(self, *args, **kwargs)
+        return inner
+    return outer
+
+
+class NATExposerTestCase(test_base.TestCase):
+    def setUp(self):
+        super().setUp()
+        self.fake_agent = mock.Mock()
+        self.exposer = nb_ovn_bgp_driver.NATExposer(self.fake_agent)
+        self.lsp = (
+            self.fake_agent.nb_idl.lsp_get.return_value.execute.return_value)
+
+    def test_expose_uninitialized(self):
+        self.assertRaises(
+            RuntimeError, self.exposer.expose_fip_from_nat, mock.ANY)
+
+    def test_withdraw_uninitialized(self):
+        self.assertRaises(
+            RuntimeError, self.exposer.withdraw_fip_from_nat, mock.ANY)
+
+    def test_expose_distributed(self):
+        with mock.patch.object(self.exposer, '_expose_nat_distributed') as c:
+            self.exposer.distributed = True
+            self.exposer.expose_fip_from_nat(mock.ANY)
+        self.assertTrue(c.called)
+
+    def test_withdraw_distributed(self):
+        with mock.patch.object(self.exposer, '_withdraw_nat_distributed') as c:
+            self.exposer.distributed = True
+            self.exposer.withdraw_fip_from_nat(mock.ANY)
+        self.assertTrue(c.called)
+
+    def test_expose_centralized(self):
+        with mock.patch.object(self.exposer, '_expose_nat_centralized') as c:
+            self.exposer.distributed = False
+            self.exposer.expose_fip_from_nat(mock.ANY)
+        self.assertTrue(c.called)
+
+    def test_withdraw_centralized(self):
+        with mock.patch.object(self.exposer, '_withdraw_nat_centralized') as c:
+            self.exposer.distributed = False
+            self.exposer.withdraw_fip_from_nat(mock.ANY)
+        self.assertTrue(c.called)
+
+    @set_distributed(False)
+    def test__expose_nat_centralized(self):
+        gw_port = utils.create_row(mac='mac')
+        nat = utils.create_row(
+            logical_port=['lp'],
+            external_ip='ext-ip',
+            external_ids={constants.OVN_FIP_NET_EXT_ID_KEY: 'foo'},
+            gateway_port=[gw_port])
+
+        self.exposer.expose_fip_from_nat(nat)
+
+        self.fake_agent.expose_fip.assert_called_once_with(
+            'ext-ip', 'mac', 'neutron-foo', self.lsp)
+
+    @set_distributed(False)
+    def test__withdraw_nat_centralized(self):
+        nat = utils.create_row(external_ip='ext-ip', logical_port=['lp'])
+
+        self.exposer.withdraw_fip_from_nat(nat)
+
+        self.fake_agent.withdraw_fip.assert_called_once_with(
+            'ext-ip', self.lsp)

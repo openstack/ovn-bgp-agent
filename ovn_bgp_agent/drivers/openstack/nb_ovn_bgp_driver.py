@@ -25,6 +25,7 @@ from ovn_bgp_agent.drivers import driver_api
 from ovn_bgp_agent.drivers.openstack import nb_exceptions
 from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import nat as nat_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
@@ -40,12 +41,74 @@ LOG = logging.getLogger(__name__)
 # logging.basicConfig(level=logging.DEBUG)
 
 OVN_TABLES = ['Logical_Switch_Port', 'NAT', 'Logical_Switch', 'Logical_Router',
-              'Logical_Router_Port', 'Load_Balancer', 'DHCP_Options']
+              'Logical_Router_Port', 'Load_Balancer', 'DHCP_Options',
+              'NB_Global']
 LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
                             'Logical_Router', 'Logical_Router_Port',
                             'Logical_Router_Policy',
                             'Logical_Router_Static_Route', 'Gateway_Chassis',
                             'Static_MAC_Binding']
+
+
+def _validate_ovn_version(distributed, idl):
+    if not distributed and 'gateway_port' not in idl.tables['NAT'].columns:
+        raise RuntimeError(
+            "Centralized routing requires gateway_port column in the "
+            "OVN_Northbound schema. Please update OVN to 23.09.0 or later.")
+
+
+class NATExposer:
+    def __init__(self, agent):
+        self.agent = agent
+
+    def expose_fip_from_nat(self, nat):
+        raise RuntimeError(
+            "The exposer does not have distributed flag set yet")
+
+    def withdraw_fip_from_nat(self, nat):
+        raise RuntimeError(
+            "The exposer does not have distributed flag set yet")
+
+    @property
+    def distributed(self):
+        pass
+
+    @distributed.setter
+    def distributed(self, value):
+        if value:
+            self.expose_fip_from_nat = self._expose_nat_distributed
+            self.withdraw_fip_from_nat = self._withdraw_nat_distributed
+        else:
+            self.expose_fip_from_nat = self._expose_nat_centralized
+            self.withdraw_fip_from_nat = self._withdraw_nat_centralized
+
+    def _expose_nat_distributed(self, nat):
+        raise NotImplementedError("Distributed NAT is not implemented yet.")
+
+    def _expose_nat_centralized(self, nat):
+        net_id = nat.external_ids[constants.OVN_FIP_NET_EXT_ID_KEY]
+        ls_name = "neutron-{}".format(net_id)
+
+        try:
+            mac = nat_utils.get_gateway_lrp(nat).mac
+        except IndexError:
+            LOG.error("Gateway port for NAT entry %s has no MAC address set",
+                      nat.uuid)
+            return
+
+        # nat has the logical port and its in the db, that was checked in
+        # match_fn
+        lsp = self.agent.nb_idl.lsp_get(
+            nat.logical_port[0]).execute(check_error=True)
+
+        self.agent.expose_fip(nat.external_ip, mac, ls_name, lsp)
+
+    def _withdraw_nat_distributed(self, nat):
+        raise NotImplementedError("Distributed NAT is not implemented yet.")
+
+    def _withdraw_nat_centralized(self, nat):
+        lsp = self.agent.nb_idl.lsp_get(nat.logical_port[0]).execute()
+        self.agent.withdraw_fip(nat.external_ip, lsp)
 
 
 class NBOVNBGPDriver(driver_api.AgentDriverBase):
@@ -58,6 +121,20 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         self._nb_idl = None
         self._local_nb_idl = None
         self._post_start_event = threading.Event()
+        self.nat_exposer = NATExposer(self)
+
+        self.__d_events = {
+            True: [
+                watcher.NATMACAddedEvent(self),
+                watcher.LogicalSwitchPortFIPCreateEvent(self),
+                watcher.LogicalSwitchPortFIPDeleteEvent(self),
+            ],
+            False: [
+                watcher.ExposeFIPOnCRLRP(self),
+                watcher.WithdrawFIPOnCRLRP(self),
+                watcher.CrLrpChassisChangeExposeEvent(self),
+                watcher.CrLrpChassisChangeWithdrawEvent(self),
+            ]}
 
     @property
     def _expose_tenant_networks(self):
@@ -83,6 +160,30 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
     @local_nb_idl.setter
     def local_nb_idl(self, val):
         self._local_nb_idl = val
+
+    @property
+    def distributed(self):
+        if not hasattr(self, '_distributed'):
+            self._distributed = self.nb_idl.get_distributed_flag()
+            _validate_ovn_version(self._distributed, self.nb_idl.idl)
+            self.nat_exposer.distributed = self._distributed
+        return self._distributed
+
+    @distributed.setter
+    def distributed(self, value):
+        _validate_ovn_version(value, self.nb_idl.idl)
+        self._distributed = value
+        self.nat_exposer.distributed = value
+        self._switch_distributed_events(value)
+
+    def _switch_distributed_events(self, distributed):
+        to_unwatch = self._get_additional_events(not distributed)
+        to_watch = self._get_additional_events(distributed)
+
+        self.nb_idl.ovsdb_connection.idl.notify_handler.unwatch_events(
+            to_unwatch)
+        self.nb_idl.ovsdb_connection.idl.notify_handler.watch_events(
+            to_watch)
 
     def _init_vars(self):
         self.ovn_bridge_mappings = {}  # {'public': 'br-ex'}
@@ -128,7 +229,7 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         self._post_start_event.clear()
 
-        events = self._get_events()
+        events = self._get_base_events()
         self.nb_idl = ovn.OvnNbIdl(
             self.ovn_remote,
             tables=OVN_TABLES,
@@ -142,21 +243,23 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 events=[],
                 leader_only=True).start()
 
+        self.nb_idl.ovsdb_connection.idl.notify_handler.watch_events(
+            self._get_additional_events(self.distributed))
+
         # Now IDL connections can be safely used
         self._post_start_event.set()
 
-    def _get_events(self):
+    def _get_base_events(self):
         events = {watcher.LogicalSwitchPortProviderCreateEvent(self),
                   watcher.LogicalSwitchPortProviderDeleteEvent(self),
-                  watcher.LogicalSwitchPortFIPCreateEvent(self),
-                  watcher.LogicalSwitchPortFIPDeleteEvent(self),
                   watcher.OVNLBCreateEvent(self),
                   watcher.OVNLBDeleteEvent(self),
                   watcher.OVNPFCreateEvent(self),
                   watcher.OVNPFDeleteEvent(self),
                   watcher.ChassisRedirectCreateEvent(self),
                   watcher.ChassisRedirectDeleteEvent(self),
-                  watcher.NATMACAddedEvent(self)}
+                  watcher.DistributedFlagChangedEvent(self),
+                  }
 
         if CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
             # For vrf we require more information on the logical_switch
@@ -174,6 +277,9 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                     watcher.LogicalSwitchPortTenantDeleteEvent(self)
                 })
         return events
+
+    def _get_additional_events(self, distributed):
+        return self.__d_events[distributed]
 
     @lockutils.synchronized('nbbgp')
     def frr_sync(self):
@@ -211,8 +317,14 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
                 'address_scopes': driver_utils.get_addr_scopes(port)}
             self._expose_subnet(ips, subnet_info)
 
-        # add missing routes/ips for IPs on provider network
+        # add missing routes/ips for IPs on provider network and FIPs
         ports = self.nb_idl.get_active_lsp_on_chassis(self.chassis)
+        if not self.distributed:
+            # expose all FIPs if this chassis hosts the gateway port
+            lsp_with_fips = ovn.GetLSPsForGwChassisCommand(
+                self.nb_idl, self.chassis_id).execute(check_error=True)
+            for lsp_data in lsp_with_fips:
+                self._expose_fip(*lsp_data)
         for port in ports:
             if port.type not in [constants.OVN_VM_VIF_PORT_TYPE,
                                  constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
