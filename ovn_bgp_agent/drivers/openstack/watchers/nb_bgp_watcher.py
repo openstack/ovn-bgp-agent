@@ -879,7 +879,9 @@ class OVNPFDeleteEvent(OVNPFBaseEvent):
             self.agent.withdraw_ovn_pf_lb_fip(row)
 
 
-class NATMACAddedEvent(base_watcher.DnatSnatUpdatedBaseEvent):
+class NATMACAddedEvent(base_watcher.DnatSnatBaseEvent):
+    events = (base_watcher.DnatSnatBaseEvent.ROW_UPDATE,)
+
     def match_fn(self, event, row, old):
         try:
             lsp_id = row.logical_port[0]
@@ -934,3 +936,141 @@ class NATMACAddedEvent(base_watcher.DnatSnatUpdatedBaseEvent):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.expose_fip(
                 row.external_ip, row.external_mac[0], ls_name, lsp)
+
+
+class ExposeFIPOnCRLRP(base_watcher.FipOnCRLRPBaseEvent):
+    """Expose floating IP on the gateway chassis hosting the gateway port.
+
+    This event happens when NAT entry is created. It exposes the floating IP on
+    the gateway chassis hosting the gateway router.
+    """
+    events = (base_watcher.DnatSnatBaseEvent.ROW_CREATE,)
+
+    def run(self, event, row, old):
+        with _SYNC_STATE_LOCK.read_lock():
+            self.agent.nat_exposer.expose_fip_from_nat(row)
+
+
+class WithdrawFIPOnCRLRP(base_watcher.FipOnCRLRPBaseEvent):
+    """Withdraw floating IP from the gateway chassis hosting the gateway port.
+
+    This event happens when NAT entry is deleted. It withdraws the floating IP
+    from the gateway chassis hosting the gateway router.
+    """
+    events = (base_watcher.DnatSnatBaseEvent.ROW_DELETE,)
+
+    def run(self, event, row, old):
+        self.agent.nat_exposer.withdraw_fip_from_nat(row)
+
+
+class CrLrpChassisChangeBaseEvent(base_watcher.LRPChassisEvent):
+    """Base class for case when gateway port moves.
+
+    It matches if the hosting-chassis in status column of the gateway port has
+    changed.
+    """
+    def __init__(self, bgp_agent):
+        super().__init__(bgp_agent, (self.ROW_UPDATE,))
+
+    def match_fn(self, event, row, old):
+        new_chassis = row.status.get(constants.OVN_STATUS_CHASSIS)
+        try:
+            old_chassis = old.status.get(constants.OVN_STATUS_CHASSIS)
+        except AttributeError:
+            return False
+
+        # Match only if the port was moved
+        return new_chassis != old_chassis
+
+
+class CrLrpChassisChangeExposeEvent(CrLrpChassisChangeBaseEvent):
+    """A LRP event to expose floating IPs on centralized node.
+
+    Expose all floating IPs hosted by a router with this gateway port hosted on
+    this chassis. It matches in case of gateway port changes its hosting
+    chassis to this chassis.
+    """
+    def match_fn(self, event, row, old):
+        if not super().match_fn(event, row, old):
+            return False
+
+        if constants.OVN_STATUS_CHASSIS not in row.status:
+            return False
+
+        if row.status[constants.OVN_STATUS_CHASSIS] != self.agent.chassis_id:
+            return False
+
+        return True
+
+    def run(self, event, row, old):
+        nats = self.agent.nb_idl.get_nats_by_lrp(row)
+        with _SYNC_STATE_LOCK.read_lock():
+            for nat in nats:
+                self.agent.nat_exposer.expose_fip_from_nat(nat)
+
+
+class CrLrpChassisChangeWithdrawEvent(CrLrpChassisChangeBaseEvent):
+    """A LRP event to expose floating IPs on centralized node.
+
+    Expose all floating IPs hosted by a router with this gateway port hosted on
+    this chassis. It matches in case of gateway port changes its hosting
+    chassis to this chassis.
+    """
+    def match_fn(self, event, row, old):
+        if not super().match_fn(event, row, old):
+            return False
+
+        # if old does not have status, it would have failed in
+        # super().match_fn()
+        if constants.OVN_STATUS_CHASSIS not in old.status:
+            return False
+
+        if old.status[constants.OVN_STATUS_CHASSIS] != self.agent.chassis_id:
+            return False
+
+        return True
+
+    def run(self, event, row, old):
+        nats = self.agent.nb_idl.get_nats_by_lrp(row)
+        with _SYNC_STATE_LOCK.read_lock():
+            for nat in nats:
+                self.agent.nat_exposer.withdraw_fip_from_nat(nat)
+
+
+class DistributedFlagChangedEvent(base_watcher.Event):
+    """Re-register events if Neutron changed the distributed flag.
+
+    The event matches if distributed flag was switched in OVN. Then it
+    re-registers the events to react on the right events and does a full
+    re-sync to withdraw or expose IPs.
+    """
+    def __init__(self, bgp_agent):
+        table = 'NB_Global'
+        events = (self.ROW_UPDATE,)
+        super().__init__(bgp_agent, events, table)
+        self.event_name = self.__class__.__name__
+
+    def match_fn(self, event, row, old):
+        try:
+            if (old.external_ids.get(constants.OVN_FIP_DISTRIBUTED) ==
+                    row.external_ids[constants.OVN_FIP_DISTRIBUTED]):
+                return False
+        except KeyError:
+            # Distributed flag was deleted, behave like distributed agent
+            pass
+        except AttributeError:
+            return False
+
+        return True
+
+    def run(self, event, row, old):
+        if row.external_ids.get(constants.OVN_FIP_DISTRIBUTED) == "True":
+            self.agent.distributed = True
+        elif row.external_ids.get(constants.OVN_FIP_DISTRIBUTED) == "False":
+            self.agent.distributed = False
+        else:
+            # Default to True
+            self.agent.distributed = True
+
+        self.agent.sync()
+        self.agent.frr_sync()

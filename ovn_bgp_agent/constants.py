@@ -42,6 +42,7 @@ OVN_LB_VIP_IP_EXT_ID_KEY = 'neutron:vip'
 OVN_LB_VIP_FIP_EXT_ID_KEY = 'neutron:vip_fip'
 OVN_LB_VIP_PORT_EXT_ID_KEY = 'neutron:vip_port_id'
 OVN_LB_LR_REF_EXT_ID_KEY = 'lr_ref'
+OVN_FIP_DISTRIBUTED = 'neutron:fip-distributed'
 
 OVN_LB_EXT_ID_ROUTER_KEY = [
     OVN_LB_LR_REF_EXT_ID_KEY,
