@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ovsdbapp.schema.open_vswitch import impl_idl
 from ovsdbapp.tests.functional.schema import fixtures
 
 from ovn_bgp_agent.drivers.openstack.utils import ovn
@@ -19,3 +20,7 @@ from ovn_bgp_agent.drivers.openstack.utils import ovn
 
 class NbApiFixture(fixtures.ApiImplFixture):
     api_cls = ovn.OvsdbNbOvnIdl
+
+
+class OvsApiFixture(fixtures.ApiImplFixture):
+    api_cls = impl_idl.OvsdbIdl
