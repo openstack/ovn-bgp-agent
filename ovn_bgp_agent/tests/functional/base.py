@@ -18,16 +18,21 @@ import functools
 import inspect
 import os
 import sys
+from unittest import mock
 
 import eventlet.timeout
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import fileutils
+from oslo_utils import uuidutils
 from oslotest import base
+from ovsdbapp.backend.ovs_idl import connection
 from ovsdbapp.tests.functional import base as ovsdbapp_base
 
 import ovn_bgp_agent
 from ovn_bgp_agent import config
+from ovn_bgp_agent.drivers.openstack import nb_ovn_bgp_driver
+from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.tests.functional import fixtures
 
 
@@ -78,35 +83,8 @@ def sanitize_log_path(path):
     return path.replace(' ', '-').replace('(', '_').replace(')', '_')
 
 
-# Test worker cannot survive eventlet's Timeout exception, which effectively
-# kills the whole worker, with all test cases scheduled to it. This metaclass
-# makes all test cases convert Timeout exceptions into unittest friendly
-# failure mode (self.fail).
-class BaseFunctionalTestCase(base.BaseTestCase,
-                             metaclass=_CatchTimeoutMetaclass):
-    """Base class for functional tests."""
-
-    COMPONENT_NAME = 'ovn_bgp_agent'
-    PRIVILEGED_GROUP = 'privsep'
-
-    def setUp(self):
-        super(BaseFunctionalTestCase, self).setUp()
-        logging.register_options(CONF)
-        setup_logging(self.COMPONENT_NAME)
-        fileutils.ensure_tree(DEFAULT_LOG_DIR, mode=0o755)
-        log_file = sanitize_log_path(
-            os.path.join(DEFAULT_LOG_DIR, "%s.txt" % self.id()))
-        self.flags(log_file=log_file)
-        config.register_opts()
-        config.setup_privsep()
-        privsep_helper = os.path.join(
-            os.getenv('VIRTUAL_ENV', os.path.dirname(sys.executable)[:-4]),
-            'bin', 'privsep-helper')
-        self.flags(
-            helper_command=' '.join(['sudo', '-E', privsep_helper]),
-            group=self.PRIVILEGED_GROUP)
-
-    def flags(self, **kw):
+def configure_functional_test(id_):
+    def flags(**kw):
         """Override some configuration values.
 
         The keyword arguments are the names of configuration options to
@@ -122,10 +100,111 @@ class BaseFunctionalTestCase(base.BaseTestCase,
         for k, v in kw.items():
             CONF.set_override(k, v, group)
 
+    COMPONENT_NAME = 'ovn_bgp_agent'
+    PRIVILEGED_GROUP = 'privsep'
+
+    logging.register_options(CONF)
+    setup_logging(COMPONENT_NAME)
+    fileutils.ensure_tree(DEFAULT_LOG_DIR, mode=0o755)
+    log_file = sanitize_log_path(
+        os.path.join(DEFAULT_LOG_DIR, "%s.txt" % id_))
+
+    config.register_opts()
+    flags(log_file=log_file)
+    config.setup_privsep()
+    privsep_helper = os.path.join(
+        os.getenv('VIRTUAL_ENV', os.path.dirname(sys.executable)[:-4]),
+        'bin', 'privsep-helper')
+    flags(
+        helper_command=' '.join(['sudo', '-E', privsep_helper]),
+        group=PRIVILEGED_GROUP)
+
+
+# Test worker cannot survive eventlet's Timeout exception, which effectively
+# kills the whole worker, with all test cases scheduled to it. This metaclass
+# makes all test cases convert Timeout exceptions into unittest friendly
+# failure mode (self.fail).
+class BaseFunctionalTestCase(base.BaseTestCase,
+                             metaclass=_CatchTimeoutMetaclass):
+    """Base class for functional tests."""
+
+    def setUp(self):
+        super(BaseFunctionalTestCase, self).setUp()
+        configure_functional_test(self.id())
+
 
 class BaseFunctionalNorthboundTestCase(ovsdbapp_base.FunctionalTestCase):
-    schemas = ['OVN_Northbound']
+    schemas = ['OVN_Northbound', 'Open_vSwitch']
+    COMPONENT_NAME = 'ovn_bgp_agent'
+    PRIVILEGED_GROUP = 'privsep'
 
     def setUp(self):
         super().setUp()
-        self.api = self.useFixture(fixtures.NbApiFixture(self.connection)).obj
+        self.nb_api = self.useFixture(
+            fixtures.NbApiFixture(self.connection['OVN_Northbound'])).obj
+
+
+class BaseFunctionalNBAgentTestCase(BaseFunctionalNorthboundTestCase):
+    @classmethod
+    def create_connection(cls, schema):
+        if schema == 'OVN_Northbound':
+            idl = ovn.OvnNbIdl.from_server(cls.schema_map[schema], schema)
+            return connection.Connection(idl, timeout=5)
+        else:
+            return super().create_connection(schema)
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.agent_config = {
+            None: {
+                'exposing_method': 'vrf',
+                'ovsdb_connection': cls.schema_map['Open_vSwitch'],
+            },
+            'ovn': {
+                'ovn_nb_connection': cls.schema_map['OVN_Northbound'],
+            },
+        }
+
+    def setUp(self):
+        super().setUp()
+        configure_functional_test(self.id())
+
+        # TODO(jlibosva): Find a way to isolate vrf and frr processes
+        self.bgp_utils = mock.patch.object(
+            nb_ovn_bgp_driver, 'bgp_utils').start()
+
+        self.ovs_api = self.configure_local_ovs()
+
+        self.set_agent()
+
+        self.agent = nb_ovn_bgp_driver.NBOVNBGPDriver()
+        self.agent.start()
+
+    def set_agent(self):
+        for group, options in self.__class__.agent_config.items():
+            for key, value in options.items():
+                CONF.set_override(key, value, group)
+
+        # We do not want to interfere with the syncs
+        self.agent_sync = mock.patch.object(
+            nb_ovn_bgp_driver.NBOVNBGPDriver, 'sync').start()
+        self.agent_frr_sync = mock.patch.object(
+            nb_ovn_bgp_driver.NBOVNBGPDriver, 'frr_sync').start()
+
+    def configure_local_ovs(self):
+        ovs_api = self.useFixture(
+            fixtures.OvsApiFixture(self.connection['Open_vSwitch'])).obj
+
+        system_id = uuidutils.generate_uuid()
+        ovs_config_external_ids = {
+            'system-id': system_id,
+            'hostname': f'func-{system_id}',
+            'ovn-nb-remote': self.schema_map['OVN_Northbound'],
+        }
+
+        ovs_api.db_set(
+            'Open_vSwitch', '.', external_ids=ovs_config_external_ids
+        ).execute(check_error=True)
+
+        return ovs_api
