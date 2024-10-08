@@ -28,15 +28,17 @@ def ovs_cmd(command, args, timeout=None):
     full_args += args
     try:
         return processutils.execute(*full_args)
-    except processutils.ProcessExecutionError:
-        full_args += ['-O', 'OpenFlow13']
-        try:
-            return processutils.execute(*full_args)
-        except Exception as e:
-            LOG.exception("Unable to execute %s %s. Exception: %s",
-                          command, full_args, e)
-            raise
-    except Exception as e:
-        LOG.exception("Unable to execute %s %s. Exception: %s", command,
-                      full_args, e)
+    except Exception:
+        LOG.error("Unable to execute %s %s", command, full_args)
         raise
+
+
+def ovs_vsctl(args, timeout=None):
+    return ovs_cmd('ovs-vsctl', args, timeout)
+
+
+def ovs_ofctl(args, timeout=None):
+    try:
+        return ovs_cmd('ovs-ofctl', args, timeout)
+    except processutils.ProcessExecutionError:
+        return ovs_cmd('ovs-ofctl', args + ['-O', 'OpenFlow13'], timeout)
