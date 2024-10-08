@@ -38,47 +38,68 @@ class TestPrivilegedOvsVsctl(test_base.TestCase):
         # Mock processutils.execute()
         self.mock_exc = mock.patch.object(processutils, 'execute').start()
 
-    def test_ovs_cmd(self):
-        ovs_vsctl.ovs_cmd(
-            'ovs-vsctl', ['--if-exists', 'del-port', 'fake-port'])
+    def test_ovs_vsctl(self):
+        ovs_vsctl.ovs_vsctl(
+            ['--if-exists', 'del-port', 'fake-port'])
         self.mock_exc.assert_called_once_with(
             'ovs-vsctl', '--if-exists', 'del-port', 'fake-port')
 
-    def test_ovs_cmd_timeout(self):
-        ovs_vsctl.ovs_cmd(
-            'ovs-vsctl', ['--if-exists', 'del-port', 'fake-port'], timeout=10)
+    def test_ovs_ofctl(self):
+        ovs_vsctl.ovs_ofctl(
+            ['dump-flows', 'dummy-br'])
+        self.mock_exc.assert_called_once_with(
+            'ovs-ofctl', 'dump-flows', 'dummy-br')
+
+    def test_ovs_vsctl_timeout(self):
+        ovs_vsctl.ovs_vsctl(
+            ['--if-exists', 'del-port', 'fake-port'], timeout=10)
         self.mock_exc.assert_called_once_with(
             'ovs-vsctl', '--timeout=10', '--if-exists', 'del-port',
             'fake-port')
 
-    def test_ovs_cmd_fallback_OF_version(self):
+    def test_ovs_ofctl_timeout(self):
+        ovs_vsctl.ovs_ofctl(
+            ['dump-flows', 'dummy-br'], timeout=10)
+        self.mock_exc.assert_called_once_with(
+            'ovs-ofctl', '--timeout=10', 'dump-flows', 'dummy-br')
+
+    def test_ovs_ofctl_fallback_OF_version(self):
+        # fallback only applies to ovs-ofctl command
         self.mock_exc.side_effect = (
             processutils.ProcessExecutionError(), None)
-        ovs_vsctl.ovs_cmd(
-            'ovs-vsctl', ['--if-exists', 'del-port', 'fake-port'])
+        ovs_vsctl.ovs_ofctl(
+            ['--strict', 'del-flows', 'br-ex', 'dummy-flow'])
 
-        calls = [mock.call('ovs-vsctl', '--if-exists', 'del-port',
-                           'fake-port'),
-                 mock.call('ovs-vsctl', '--if-exists', 'del-port',
-                           'fake-port', '-O', 'OpenFlow13')]
+        calls = [mock.call('ovs-ofctl', '--strict', 'del-flows',
+                           'br-ex', 'dummy-flow'),
+                 mock.call('ovs-ofctl', '--strict', 'del-flows',
+                           'br-ex', 'dummy-flow', '-O', 'OpenFlow13')]
         self.mock_exc.assert_has_calls(calls)
 
-    def test_ovs_cmd_exception(self):
-        self.mock_exc.side_effect = FakeException()
+    def test_ovs_vsctl_process_execution_error_no_fallback(self):
+        # fallback does not apply to ovs-vsctl command
+        self.mock_exc.side_effect = processutils.ProcessExecutionError()
         self.assertRaises(
-            FakeException, ovs_vsctl.ovs_cmd, 'ovs-vsctl',
+            processutils.ProcessExecutionError, ovs_vsctl.ovs_vsctl,
             ['--if-exists', 'del-port', 'fake-port'])
         self.mock_exc.assert_called_once_with(
             'ovs-vsctl', '--if-exists', 'del-port', 'fake-port')
+
+    def test_ovs_ofctl_exception(self):
+        self.mock_exc.side_effect = FakeException()
+        self.assertRaises(
+            FakeException, ovs_vsctl.ovs_ofctl,
+            ['add-flow', 'br-ex', 'dummy-flow'])
+        self.mock_exc.assert_called_once_with(
+            'ovs-ofctl', 'add-flow', 'br-ex', 'dummy-flow')
 
     def test_ovs_cmd_fallback_exception(self):
         self.mock_exc.side_effect = (
             processutils.ProcessExecutionError(), FakeException())
         self.assertRaises(
-            FakeException, ovs_vsctl.ovs_cmd, 'ovs-vsctl',
-            ['--if-exists', 'del-port', 'fake-port'])
-        calls = [mock.call('ovs-vsctl', '--if-exists', 'del-port',
-                           'fake-port'),
-                 mock.call('ovs-vsctl', '--if-exists', 'del-port',
-                           'fake-port', '-O', 'OpenFlow13')]
+            FakeException, ovs_vsctl.ovs_ofctl,
+            ['add-flow', 'br-ex', 'dummy-flow'])
+        calls = [mock.call('ovs-ofctl', 'add-flow', 'br-ex', 'dummy-flow'),
+                 mock.call('ovs-ofctl', 'add-flow', 'br-ex', 'dummy-flow',
+                           '-O', 'OpenFlow13')]
         self.mock_exc.assert_has_calls(calls)
