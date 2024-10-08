@@ -44,7 +44,7 @@ class TestOVS(test_base.TestCase):
         fake_flow_1 = '{},ipv6,in_port={}'.format(self.cookie_id, port_iface)
         fake_filter = 'cookie=fake-cookie/-1' if has_filter else None
         flows = 'HEADER\n%s\n%s\n' % (fake_flow_0, fake_flow_1)
-        self.mock_ovs_vsctl.ovs_cmd.return_value = [flows]
+        self.mock_ovs_vsctl.ovs_ofctl.return_value = [flows]
 
         ret = ovs_utils.get_bridge_flows(self.bridge, filter_=fake_filter)
 
@@ -52,8 +52,7 @@ class TestOVS(test_base.TestCase):
         if has_filter:
             expected_args.append(fake_filter)
 
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-ofctl', expected_args)
+        self.mock_ovs_vsctl.ovs_ofctl.assert_called_once_with(expected_args)
         self.assertEqual([fake_flow_0, fake_flow_1], ret)
 
     def test_get_bridge_flows(self):
@@ -65,77 +64,76 @@ class TestOVS(test_base.TestCase):
     def test_get_device_port_at_ovs(self):
         port = 'fake-port'
         port_iface = '1'
-        self.mock_ovs_vsctl.ovs_cmd.return_value = port_iface
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = port_iface
 
         ret = ovs_utils.get_device_port_at_ovs(port)
 
         self.assertEqual(port_iface, ret)
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['get', 'Interface', port, 'ofport'])
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
+            ['get', 'Interface', port, 'ofport'])
 
     def test_get_ovs_ports_info(self):
         bridge = 'fake-bridge'
         bridge_ports = ['br-ex']
-        self.mock_ovs_vsctl.ovs_cmd.return_value = bridge_ports
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = bridge_ports
 
         ret = ovs_utils.get_ovs_ports_info(bridge)
 
         self.assertEqual(bridge_ports, ret)
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['list-ports', bridge])
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
+            ['list-ports', bridge])
 
     def test_get_ovs_patch_port_ofport(self):
         patch = 'fake-patch'
         ofport = ['1']
-        self.mock_ovs_vsctl.ovs_cmd.return_value = ofport
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = ofport
 
         ret = ovs_utils.get_ovs_patch_port_ofport(patch)
 
         self.assertEqual(ofport[0], ret)
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl',
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
             ['get', 'Interface', 'patch-fake-patch-to-br-int', 'ofport'])
 
     def test_get_ovs_patch_port_ofport_exception(self):
         patch = 'fake-patch'
-        self.mock_ovs_vsctl.ovs_cmd.side_effect = Exception
+        self.mock_ovs_vsctl.ovs_vsctl.side_effect = Exception
 
         self.assertRaises(agent_exc.PortNotFound,
                           ovs_utils.get_ovs_patch_port_ofport, patch)
 
         expected_calls = [
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport'])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport'])]
+        self.mock_ovs_vsctl.ovs_vsctl.assert_has_calls(expected_calls)
 
     def test_get_ovs_patch_port_ofport_no_port(self):
         patch = 'fake-patch'
         ofport = ['[]']
-        self.mock_ovs_vsctl.ovs_cmd.return_value = ofport
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = ofport
 
         self.assertRaises(agent_exc.PortNotFound,
                           ovs_utils.get_ovs_patch_port_ofport, patch)
 
         expected_calls = [
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport']),
-            mock.call('ovs-vsctl', ['get', 'Interface',
-                                    'patch-fake-patch-to-br-int', 'ofport'])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport']),
+            mock.call(['get', 'Interface',
+                       'patch-fake-patch-to-br-int', 'ofport'])]
+        self.mock_ovs_vsctl.ovs_vsctl.assert_has_calls(expected_calls)
 
     @mock.patch.object(ovs_utils, 'get_bridge_flows')
     def test_remove_extra_ovs_flows(self, mock_flows):
@@ -161,8 +159,8 @@ class TestOVS(test_base.TestCase):
 
         expected_del_flow = ('%s,ip,in_port=%s' % (self.cookie_id,
                                                    extra_port_iface))
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-ofctl', ['del-flows', self.bridge, expected_del_flow])
+        self.mock_ovs_vsctl.ovs_ofctl.assert_called_once_with(
+            ['del-flows', self.bridge, expected_del_flow])
         mock_flows.assert_called_once_with(self.bridge, self.cookie_id)
 
     def test_ensure_flow(self):
@@ -171,8 +169,8 @@ class TestOVS(test_base.TestCase):
 
         ovs_utils.ensure_flow(bridge, flow)
 
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-ofctl', ['add-flow', bridge, flow])
+        self.mock_ovs_vsctl.ovs_ofctl.assert_called_once_with(
+            ['add-flow', bridge, flow])
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     @mock.patch.object(linux_net, 'get_interface_address')
@@ -188,8 +186,9 @@ class TestOVS(test_base.TestCase):
         port_iface = '1'
         ovs_port_iface = '2'
         net = 'fake-net'
-        self.mock_ovs_vsctl.ovs_cmd.side_effect = (
-            ['%s\n%s\n' % (port, ovs_port)], None)
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [
+            '%s\n%s\n' % (port, ovs_port)]
+        self.mock_ovs_vsctl.ovs_ofctl.return_value = None
         mock_ofport.side_effect = (ovs_port_iface, port_iface)
 
         # Invoke the method
@@ -211,15 +210,14 @@ class TestOVS(test_base.TestCase):
                 "ipv6_src={} actions=mod_dl_dst:{},{}output={}".format(
                     self.cookie, ovs_port_iface, self.mac, net, address,
                     strip_vlan_opt, port_iface))
-        expected_calls = [
-            mock.call('ovs-vsctl', ['list-ports', self.bridge]),
-            mock.call('ovs-ofctl', ['add-flow', self.bridge, expected_flow])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
-        self.assertEqual(len(expected_calls),
-                         self.mock_ovs_vsctl.ovs_cmd.call_count)
+        vsctl_expected_calls = [
+            mock.call(['list-ports', self.bridge])]
+        ofctl_expected_calls = [
+            mock.call(['add-flow', self.bridge, expected_flow])]
+        self.mock_ovs_vsctl.ovs_vsctl.assert_has_calls(vsctl_expected_calls)
+        self.mock_ovs_vsctl.ovs_ofctl.assert_has_calls(ofctl_expected_calls)
         expected_calls_ofport = [mock.call(ovs_port), mock.call(port)]
         mock_ofport.assert_has_calls(expected_calls_ofport)
-        self.assertEqual(len(expected_calls_ofport), mock_ofport.call_count)
 
     def test_ensure_evpn_ovs_flow_ipv4(self):
         self._test_ensure_evpn_ovs_flow(ip_version=constants.IP_VERSION_4)
@@ -237,21 +235,22 @@ class TestOVS(test_base.TestCase):
 
     def test_ensure_evpn_ovs_flow_no_ovs_ports(self):
         port = 'non-patch-provnet-port'
-        self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [port]
 
         ret = ovs_utils.ensure_evpn_ovs_flow(
             self.bridge, self.cookie, self.mac, port, 'fake-port-dst',
             'fake-net')
 
         self.assertIsNone(ret)
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['list-ports', self.bridge])
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
+            ['list-ports', self.bridge])
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     def test_remove_evpn_router_ovs_flows(self, mock_ofport):
         ovs_port = constants.OVS_PATCH_PROVNET_PORT_PREFIX + 'fake-port'
         ovs_port_iface = '1'
-        self.mock_ovs_vsctl.ovs_cmd.side_effect = ([ovs_port], None, None)
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [ovs_port]
+        self.mock_ovs_vsctl.ovs_ofctl.side_effect = (None, None)
         mock_ofport.return_value = ovs_port_iface
 
         # Invoke the method
@@ -263,26 +262,27 @@ class TestOVS(test_base.TestCase):
         expected_flow_v6 = '{},ipv6,in_port={},dl_src:{}'.format(
             self.cookie_id, ovs_port_iface, self.mac)
 
-        expected_calls = [
-            mock.call('ovs-vsctl', ['list-ports', self.bridge]),
-            mock.call('ovs-ofctl', ['del-flows', self.bridge, expected_flow]),
-            mock.call('ovs-ofctl', ['del-flows', self.bridge,
-                                    expected_flow_v6])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
-        self.assertEqual(len(expected_calls),
-                         self.mock_ovs_vsctl.ovs_cmd.call_count)
+        vsctl_expected_calls = [
+            mock.call(['list-ports', self.bridge])]
+        ofctl_expected_calls = [
+            mock.call(['del-flows', self.bridge, expected_flow]),
+            mock.call(['del-flows', self.bridge, expected_flow_v6])]
+
+        self.mock_ovs_vsctl.ovs_vsctl.assert_has_calls(vsctl_expected_calls)
+        self.mock_ovs_vsctl.ovs_ofctl.assert_has_calls(ofctl_expected_calls)
+
         mock_ofport.assert_called_once_with(ovs_port)
 
     def test_remove_evpn_router_ovs_flows_no_ovs_port(self):
         port = 'non-patch-provnet-port'
-        self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [port]
 
         ret = ovs_utils.remove_evpn_router_ovs_flows(
             self.bridge, self.cookie, self.mac)
 
         self.assertIsNone(ret)
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['list-ports', self.bridge])
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
+            ['list-ports', self.bridge])
 
     @mock.patch.object(ovs_utils, 'get_device_port_at_ovs')
     @mock.patch.object(linux_net, 'get_ip_version')
@@ -293,7 +293,8 @@ class TestOVS(test_base.TestCase):
         net = 'fake-net'
         mock_ip_version.return_value = ip_version
         mock_ofport.return_value = ovs_port_iface
-        self.mock_ovs_vsctl.ovs_cmd.side_effect = ([ovs_port], None)
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [ovs_port]
+        self.mock_ovs_vsctl.ovs_ofctl.side_effect = None
 
         ovs_utils.remove_evpn_network_ovs_flow(
             self.bridge, self.cookie, self.mac, net)
@@ -305,12 +306,12 @@ class TestOVS(test_base.TestCase):
             expected_flow = ("{},ip,in_port={},dl_src:{},nw_src={}".format(
                              self.cookie_id, ovs_port_iface, self.mac, net))
 
-        expected_calls = [
-            mock.call('ovs-vsctl', ['list-ports', self.bridge]),
-            mock.call('ovs-ofctl', ['del-flows', self.bridge, expected_flow])]
-        self.mock_ovs_vsctl.ovs_cmd.assert_has_calls(expected_calls)
-        self.assertEqual(len(expected_calls),
-                         self.mock_ovs_vsctl.ovs_cmd.call_count)
+        vsctl_expected_calls = [
+            mock.call(['list-ports', self.bridge])]
+        ofctl_expected_calls = [
+            mock.call(['del-flows', self.bridge, expected_flow])]
+        self.mock_ovs_vsctl.ovs_vsctl.assert_has_calls(vsctl_expected_calls)
+        self.mock_ovs_vsctl.ovs_ofctl.assert_has_calls(ofctl_expected_calls)
         mock_ip_version.assert_called_once_with(net)
 
     def test_remove_evpn_network_ovs_flow_ipv4(self):
@@ -323,13 +324,13 @@ class TestOVS(test_base.TestCase):
 
     def test_remove_evpn_network_ovs_flow_no_ovs_port(self):
         port = 'non-patch-provnet-port'
-        self.mock_ovs_vsctl.ovs_cmd.return_value = [port]
+        self.mock_ovs_vsctl.ovs_vsctl.return_value = [port]
 
         ovs_utils.remove_evpn_network_ovs_flow(
             self.bridge, self.cookie, self.mac, 'fake-net')
 
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', ['list-ports', self.bridge])
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(
+            ['list-ports', self.bridge])
 
     def _test_add_device_to_ovs_bridge(self, vlan_tag=False):
         device = 'ethX'
@@ -341,8 +342,7 @@ class TestOVS(test_base.TestCase):
         if vlan_tag:
             expected_args.append('tag=%s' % vtag)
 
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', expected_args)
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(expected_args)
 
     def test_add_device_to_ovs_bridge(self):
         self._test_add_device_to_ovs_bridge()
@@ -361,8 +361,7 @@ class TestOVS(test_base.TestCase):
             expected_args.append(br)
         expected_args.append(device)
 
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-vsctl', expected_args)
+        self.mock_ovs_vsctl.ovs_vsctl.assert_called_once_with(expected_args)
 
     def test_del_device_from_ovs_bridge(self):
         self._test_del_device_from_ovs_bridge()
@@ -379,8 +378,8 @@ class TestOVS(test_base.TestCase):
 
         expected_flow = ('{},priority=1000,ip,dl_src=fa:16:3e:15:9e:f0,'
                          'nw_src=20.0.0.0/24'.format(self.cookie_id))
-        self.mock_ovs_vsctl.ovs_cmd.assert_called_once_with(
-            'ovs-ofctl', ['--strict', 'del-flows', self.bridge, expected_flow])
+        self.mock_ovs_vsctl.ovs_ofctl.assert_called_once_with(
+            ['--strict', 'del-flows', self.bridge, expected_flow])
 
     def test_get_flow_info(self):
         flow = ('cookie=0x3e6, duration=11.647s, table=0, n_packets=0, '
