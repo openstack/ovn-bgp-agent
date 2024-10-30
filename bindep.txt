@@ -1,0 +1,10 @@
+# This file contains runtime (non-python) dependencies
+# More info at: http://docs.openstack.org/infra/bindep/readme.html
+
+openvswitch [platform:rpm test]
+openvswitch-switch [platform:dpkg test]
+autoconf [test]
+automake [test]
+libtool [test]
+gcc [test]
+make [test]
