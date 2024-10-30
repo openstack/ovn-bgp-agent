@@ -24,9 +24,11 @@ from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import fileutils
 from oslotest import base
+from ovsdbapp.tests.functional import base as ovsdbapp_base
 
 import ovn_bgp_agent
 from ovn_bgp_agent import config
+from ovn_bgp_agent.tests.functional import fixtures
 
 
 CONF = cfg.CONF
@@ -119,3 +121,11 @@ class BaseFunctionalTestCase(base.BaseTestCase,
         group = kw.pop('group', None)
         for k, v in kw.items():
             CONF.set_override(k, v, group)
+
+
+class BaseFunctionalNorthboundTestCase(ovsdbapp_base.FunctionalTestCase):
+    schemas = ['OVN_Northbound']
+
+    def setUp(self):
+        super().setUp()
+        self.api = self.useFixture(fixtures.NbApiFixture(self.connection)).obj
