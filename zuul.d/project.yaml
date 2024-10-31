@@ -12,6 +12,7 @@
     experimental:
       jobs:
         - openstack-tox-py310-with-oslo-master
+        - ovn-bgp-agent-tempest-plugin
     periodic-weekly:
       jobs:
         - openstack-tox-py310
