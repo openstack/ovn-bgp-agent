@@ -18,6 +18,7 @@ import os
 
 import netaddr
 
+from neutron_lib import constants as n_const
 from oslo_concurrency import processutils
 from oslo_log import log as logging
 import pyroute2
@@ -412,7 +413,7 @@ def make_serializable(value):
 
 
 def _get_link_id(ifname, raise_exception=True):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     with iproute.IPRoute() as ip:
         link_id = ip.link_lookup(ifname=ifname)
     if not link_id or len(link_id) < 1:
@@ -434,7 +435,7 @@ def get_link_state(device_name):
 
 
 def get_link_device(device_name):
-    device_name = device_name[:15]
+    device_name = device_name[:n_const.DEVICE_NAME_MAX_LEN]
     for device in get_link_devices():
         if get_attr(device, 'IFLA_IFNAME') == device_name:
             return device
@@ -533,7 +534,7 @@ def _run_iproute_brport(command, ifname, **kwargs):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def create_interface(ifname, kind, **kwargs):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     try:
         with iproute.IPRoute() as ip:
             physical_interface = kwargs.pop('physical_interface', None)
@@ -547,13 +548,13 @@ def create_interface(ifname, kind, **kwargs):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_interface(ifname, **kwargs):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     _run_iproute_link('del', ifname, **kwargs)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def set_link_attribute(ifname, **kwargs):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     _run_iproute_link("set", ifname, **kwargs)
 
 
@@ -564,7 +565,7 @@ def set_brport_attribute(ifname, **kwargs):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def add_ip_address(ip_address, ifname, prefixlen=None, **kwargs):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)
@@ -580,7 +581,7 @@ def add_ip_address(ip_address, ifname, prefixlen=None, **kwargs):
 
 @ovn_bgp_agent.privileged.default.entrypoint
 def delete_ip_address(ip_address, ifname, prefixlen=None, **kwargs):
-    ifname = ifname[:15]
+    ifname = ifname[:n_const.DEVICE_NAME_MAX_LEN]
     net = netaddr.IPNetwork(ip_address)
     ip_version = l_net.get_ip_version(ip_address)
     address = str(net.ip)

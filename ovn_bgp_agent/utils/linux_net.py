@@ -18,6 +18,7 @@ import re
 import sys
 
 import netaddr
+from neutron_lib import constants as n_const
 from oslo_log import log as logging
 import pyroute2
 from pyroute2.netlink import exceptions as netlink_exceptions
@@ -420,12 +421,12 @@ def get_bridge_vlans(bridge):
 
 
 def enable_proxy_ndp(device):
-    flag = "net.ipv6.conf.{}.proxy_ndp".format(device[:15])
+    flag = f"net.ipv6.conf.{device[:n_const.DEVICE_NAME_MAX_LEN]}.proxy_ndp"
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
 def enable_proxy_arp(device):
-    flag = "net.ipv4.conf.{}.proxy_arp".format(device[:15])
+    flag = f"net.ipv4.conf.{device[:n_const.DEVICE_NAME_MAX_LEN]}.proxy_arp"
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
