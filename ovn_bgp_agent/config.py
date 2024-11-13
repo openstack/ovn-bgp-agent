@@ -231,13 +231,13 @@ local_ovn_cluster_opts = [
     cfg.ListOpt('provider_networks_pool_prefixes',
                 default=['192.168.0.0/16'],
                 help='List of prefixes for provider networks'),
-    cfg.ListOpt('bgp_chassis_id',
-                default='bgp',
-                help='The chassis_id used for the ovn-controller instance'
-                     ' related to the node-local OVN instance. Used as a'
-                     ' suffix for getting instance-specific options'
-                     ' from OVSDB. This option has effect only when the OVN'
-                     ' NB driver is used.'),
+    cfg.StrOpt('bgp_chassis_id',
+               default='bgp',
+               help='The chassis_id used for the ovn-controller instance'
+                    ' related to the node-local OVN instance. Used as a'
+                    ' suffix for getting instance-specific options'
+                    ' from OVSDB. This option has effect only when the OVN'
+                    ' NB driver is used.'),
 ]
 
 CONF = cfg.CONF

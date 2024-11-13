@@ -15,6 +15,7 @@
 
 from unittest import mock
 
+from oslo_config import cfg
 from ovsdbapp.schema.open_vswitch import impl_idl as idl_ovs
 
 from ovn_bgp_agent import constants
@@ -22,6 +23,9 @@ from ovn_bgp_agent.drivers.openstack.utils import ovs as ovs_utils
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.utils import linux_net
+
+
+CONF = cfg.CONF
 
 
 class TestOVS(test_base.TestCase):
@@ -484,7 +488,18 @@ class TestOvsIdl(test_base.TestCase):
             'Open_vSwitch', '.', 'external_ids')
 
     def test_get_ovn_bridge_mappings_bridge(self):
-        bridge = 'bgp'
+        bridge = 'bgp1'
+        self.execute_ref.return_value = {
+            'ovn-bridge-mappings-bgp1':
+            'net0:bridge0,net1:bridge1, net2:bridge2'}
+        ret = self.ovs_idl.get_ovn_bridge_mappings(bridge=bridge)
+        self.assertEqual(['net0:bridge0', 'net1:bridge1', 'net2:bridge2'], ret)
+        self.ovs_idl.idl_ovs.db_get.assert_called_once_with(
+            'Open_vSwitch', '.', 'external_ids')
+
+    def test_get_ovn_bridge_mappings_default_bridge(self):
+        # bgp_chassis_id defaults to 'bgp'
+        bridge = CONF.local_ovn_cluster.bgp_chassis_id
         self.execute_ref.return_value = {
             'ovn-bridge-mappings-bgp':
             'net0:bridge0,net1:bridge1, net2:bridge2'}
