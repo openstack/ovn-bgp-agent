@@ -302,7 +302,7 @@ class TestEVPN(test_base.TestCase):
         linux_net.set_master_for_device.assert_called_once_with(self.veth_vrf,
                                                                 self.vrf_name)
         linux_net.ensure_arp_ndp_enabled_for_bridge.assert_called_once_with(
-            self.veth_vrf, offset=vlan_tag, vlan_tag=vlan_tag_str)
+            self.veth_vrf, offset=vlan_tag)
 
         linux_net.enable_routing_for_interfaces.assert_called_once_with(
             self.veth_vrf, 'br-100')

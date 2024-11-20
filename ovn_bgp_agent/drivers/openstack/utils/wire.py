@@ -65,9 +65,13 @@ def _ensure_base_wiring_config_underlay(idl, ovs_idl, routing_tables):
             linux_net.ensure_vlan_device_for_network(bridge,
                                                      vlan_tag)
 
+            linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
+                                                        bridge_index,
+                                                        vlan_tag)
+
         linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
-                                                    bridge_index,
-                                                    vlan_tags)
+                                                    bridge_index)
+
         if not flows_info.get(bridge):
             mac = linux_net.get_interface_address(bridge)
             flows_info[bridge] = {'mac': mac, 'in_port': set()}

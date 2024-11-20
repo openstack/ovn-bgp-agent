@@ -232,7 +232,7 @@ class VlanDev:
 
         # Add 169.254.x.x address to veth_vrf for ipv4 and ipv6
         linux_net.ensure_arp_ndp_enabled_for_bridge(
-            self.veth_vrf, offset=int(self.vlan_tag), vlan_tag=self.vlan_tag
+            self.veth_vrf, offset=int(self.vlan_tag)
         )
 
         # Configure mac on the veth interface to be the same on all hosts

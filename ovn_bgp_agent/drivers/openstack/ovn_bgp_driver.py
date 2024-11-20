@@ -169,9 +169,12 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 linux_net.ensure_vlan_device_for_network(bridge,
                                                          vlan_tag)
 
+                linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
+                                                            bridge_index,
+                                                            vlan_tag)
+
             linux_net.ensure_arp_ndp_enabled_for_bridge(bridge,
-                                                        bridge_index,
-                                                        vlan_tags)
+                                                        bridge_index)
 
             if self.ovs_flows.get(bridge):
                 continue

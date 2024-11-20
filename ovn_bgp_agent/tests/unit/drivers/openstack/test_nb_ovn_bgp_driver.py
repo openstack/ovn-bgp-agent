@@ -208,8 +208,10 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_ensure_br.assert_has_calls(expected_calls)
         expected_calls = [mock.call('bridge0', 10), mock.call('bridge1', 11)]
         mock_ensure_vlan_network.assert_has_calls(expected_calls)
-        expected_calls = [mock.call('bridge0', 1, [10]),
-                          mock.call('bridge1', 2, [11])]
+        expected_calls = [mock.call('bridge0', 1, 10),
+                          mock.call('bridge0', 1),
+                          mock.call('bridge1', 2, 11),
+                          mock.call('bridge1', 2)]
         mock_ensure_arp.assert_has_calls(expected_calls)
         expected_calls = [
             mock.call('bridge0'), mock.call('bridge1')]

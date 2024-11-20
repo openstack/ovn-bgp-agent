@@ -1,0 +1,10 @@
+---
+upgrade:
+  - |
+    Loopback IP addresses for provider bridge interfaces will be changed
+    with upgrade. This should have no impact on environments.
+fixes:
+  - |
+    ARP/NDP are now will be enabled not only for the provider bridge itself,
+    but also for VLAN interfaces in case VLANs are being used as provider
+    networks instead of FLAT.
