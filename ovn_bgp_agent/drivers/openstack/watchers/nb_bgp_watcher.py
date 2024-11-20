@@ -19,6 +19,7 @@ from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import common as common_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
+from ovn_bgp_agent.drivers.openstack.utils import router as router_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
@@ -702,7 +703,7 @@ class OVNLBCreateEvent(base_watcher.OVNLBEvent):
         try:
             if not row.vips:
                 return False
-            lb_router = self._get_router(row)
+            lb_router = router_utils.get_name_from_external_ids(row)
             if lb_router not in self.agent.ovn_local_cr_lrps.keys():
                 return False
 
@@ -718,7 +719,7 @@ class OVNLBCreateEvent(base_watcher.OVNLBEvent):
 
             if hasattr(old, 'external_ids'):
                 # Check if the lb_router was added
-                old_lb_router = self._get_router(old)
+                old_lb_router = router_utils.get_name_from_external_ids(old)
                 if lb_router != old_lb_router:
                     return True
         except AttributeError:
@@ -741,7 +742,8 @@ class OVNLBCreateEvent(base_watcher.OVNLBEvent):
         # since the subnet did not have access to the public network
         if hasattr(old, 'external_ids'):
             with _SYNC_STATE_LOCK.read_lock():
-                if self._get_router(old) != self._get_router(row):
+                if (router_utils.get_name_from_external_ids(old) !=
+                        router_utils.get_name_from_external_ids(row)):
                     self.agent.expose_ovn_lb_vip(row)
 
 
@@ -759,15 +761,15 @@ class OVNLBDeleteEvent(base_watcher.OVNLBEvent):
             if event == self.ROW_DELETE:
                 if not row.vips:
                     return False
-                lb_router = self._get_router(row)
+                lb_router = router_utils.get_name_from_external_ids(row)
                 if lb_router in self.agent.ovn_local_cr_lrps.keys():
                     return True
                 return False
 
             # ROW UPDATE EVENT
-            lb_router = self._get_router(row)
+            lb_router = router_utils.get_name_from_external_ids(row)
             if hasattr(old, 'external_ids'):
-                old_lb_router = self._get_router(old)
+                old_lb_router = router_utils.get_name_from_external_ids(old)
                 if not old_lb_router:
                     return False
                 if old_lb_router not in self.agent.ovn_local_cr_lrps.keys():
@@ -812,7 +814,8 @@ class OVNLBDeleteEvent(base_watcher.OVNLBEvent):
         # router unset ext-gw
         if hasattr(old, 'external_ids'):
             with _SYNC_STATE_LOCK.read_lock():
-                if self._get_router(old) != self._get_router(row):
+                if (router_utils.get_name_from_external_ids(old) !=
+                        router_utils.get_name_from_external_ids(row)):
                     self.agent.withdraw_ovn_lb_vip(old)
 
 
@@ -834,7 +837,8 @@ class OVNPFBaseEvent(base_watcher.OVNLBEvent):
 
         if not row.vips:
             return False
-        lb_router = self._get_router(row, constants.OVN_LR_NAME_EXT_ID_KEY)
+        lb_router = router_utils.get_name_from_external_ids(
+            row, constants.OVN_LR_NAME_EXT_ID_KEY)
         return lb_router in self.agent.ovn_local_cr_lrps.keys()
 
 
