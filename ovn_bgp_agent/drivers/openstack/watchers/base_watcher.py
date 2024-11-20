@@ -49,33 +49,6 @@ class OVNLBEvent(Event):
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
 
-    def _get_ip_from_vips(self, row):
-        return [driver_utils.remove_port_from_ip(ipport)
-                for ipport in getattr(row, 'vips', {}).keys()]
-
-    def _get_diff_ip_from_vips(self, new, old):
-        """Returns a list of IPs that are present in 'new' but not in 'old'
-
-        Note: As LB VIP contains a port (e.g., '192.168.1.1:80'), the port part
-        is removed before comparison.
-        """
-        return list(set(self._get_ip_from_vips(new)) -
-                    set(self._get_ip_from_vips(old)))
-
-    def _is_vip_or_fip(self, row, ip, key):
-        try:
-            return ip == row.external_ids.get(key)
-        except AttributeError:
-            pass
-
-    def _is_vip(self, row, ip):
-        return self._is_vip_or_fip(row, ip, constants.OVN_LB_VIP_IP_EXT_ID_KEY)
-
-    def _is_fip(self, row, ip):
-        return self._is_vip_or_fip(row,
-                                   ip,
-                                   constants.OVN_LB_VIP_FIP_EXT_ID_KEY)
-
 
 class LogicalSwitchChassisEvent(Event):
     def __init__(self, bgp_agent, events):
