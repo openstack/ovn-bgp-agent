@@ -414,7 +414,7 @@ class ChassisRedirectCreateEvent(base_watcher.LRPChassisEvent):
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
-            ips_info = self._get_ips_info(row)
+            ips_info = port_utils.make_lrp_dict(row)
             ips = [net.split("/")[0] for net in row.networks]
             self.agent.expose_ip(ips, ips_info)
 
@@ -448,7 +448,7 @@ class ChassisRedirectDeleteEvent(base_watcher.LRPChassisEvent):
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
-            ips_info = self._get_ips_info(row)
+            ips_info = port_utils.make_lrp_dict(row)
             ips = [net.split("/")[0] for net in row.networks]
             self.agent.withdraw_ip(ips, ips_info)
 

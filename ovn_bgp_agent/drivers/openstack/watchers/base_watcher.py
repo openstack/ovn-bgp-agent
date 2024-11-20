@@ -16,7 +16,6 @@ from oslo_log import log as logging
 from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
-from ovn_bgp_agent.drivers.openstack.utils import common as common_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 
 
@@ -73,16 +72,6 @@ class LRPChassisEvent(Event):
         table = 'Logical_Router_Port'
         super().__init__(bgp_agent, events, table)
         self.event_name = self.__class__.__name__
-
-    def _get_ips_info(self, row):
-        return {
-            'mac': row.mac,
-            'cidrs': row.networks,
-            'type': constants.OVN_CR_LRP_PORT_TYPE,
-            'logical_switch': common_utils.get_from_external_ids(
-                row, constants.OVN_LS_NAME_EXT_ID_KEY),
-            'router': row.external_ids.get(constants.OVN_LR_NAME_EXT_ID_KEY),
-        }
 
 
 class ChassisCreateEventBase(Event):
