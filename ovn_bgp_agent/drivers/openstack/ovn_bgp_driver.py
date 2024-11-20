@@ -27,6 +27,7 @@ from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
+from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 from ovn_bgp_agent.drivers.openstack.watchers import bgp_watcher as watcher
 from ovn_bgp_agent import exceptions as agent_exc
 from ovn_bgp_agent.utils import helpers
@@ -112,8 +113,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                   watcher.FIPUnsetEvent(self),
                   watcher.OVNLBMemberCreateEvent(self),
                   watcher.OVNLBMemberDeleteEvent(self),
-                  watcher.ChassisCreateEvent(self),
-                  watcher.ChassisPrivateCreateEvent(self),
+                  base_watcher.ChassisCreateEvent(self),
+                  base_watcher.ChassisPrivateCreateEvent(self),
                   watcher.LocalnetCreateDeleteEvent(self)}
         if self._expose_tenant_networks:
             events.update({watcher.SubnetRouterAttachedEvent(self),

@@ -213,30 +213,3 @@ class LocalnetCreateDeleteEvent(base_watcher.PortBindingChassisEvent):
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             self.agent.sync()
-
-
-class ChassisCreateEventBase(base_watcher.Event):
-    table = None
-
-    def __init__(self, bgp_agent):
-        self.first_time = True
-        events = (self.ROW_CREATE,)
-        super().__init__(
-            bgp_agent, events, self.table,
-            (('name', '=', bgp_agent.chassis),))
-        self.event_name = self.__class__.__name__
-
-    def _run(self, event, row, old):
-        if self.first_time:
-            self.first_time = False
-        else:
-            LOG.info("Connection to OVSDB established, doing a full sync")
-            self.agent.sync()
-
-
-class ChassisCreateEvent(ChassisCreateEventBase):
-    table = 'Chassis'
-
-
-class ChassisPrivateCreateEvent(ChassisCreateEventBase):
-    table = 'Chassis_Private'
