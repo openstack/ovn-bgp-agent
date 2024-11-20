@@ -15,37 +15,8 @@
 
 from unittest import mock
 
-from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 from ovn_bgp_agent.tests import base as test_base
-from ovn_bgp_agent.tests import utils
-
-
-class FakeLSPChassisEvent(base_watcher.LSPChassisEvent):
-    def run(self):
-        pass
-
-
-class TestLSPChassisEvent(test_base.TestCase):
-
-    def setUp(self):
-        super(TestLSPChassisEvent, self).setUp()
-        self.lsp_event = FakeLSPChassisEvent(
-            mock.Mock(), [mock.Mock()])
-
-    def test__has_additional_binding(self):
-        row = utils.create_row(
-            options={constants.OVN_REQUESTED_CHASSIS: 'host1,host2'})
-        self.assertTrue(self.lsp_event._has_additional_binding(row))
-
-    def test__has_additional_binding_no_options(self):
-        row = utils.create_row()
-        self.assertFalse(self.lsp_event._has_additional_binding(row))
-
-    def test__has_additional_binding_single_host(self):
-        row = utils.create_row(
-            options={constants.OVN_REQUESTED_CHASSIS: 'host1'})
-        self.assertFalse(self.lsp_event._has_additional_binding(row))
 
 
 class TestChassisCreateEvent(test_base.TestCase):
