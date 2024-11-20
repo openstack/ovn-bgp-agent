@@ -26,6 +26,7 @@ from ovn_bgp_agent.drivers.openstack.utils import bgp as bgp_utils
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.drivers.openstack.utils import ovs
+from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.utils import wire as wire_utils
 from ovn_bgp_agent.drivers.openstack.watchers import nb_bgp_watcher as watcher
 from ovn_bgp_agent import exceptions
@@ -244,8 +245,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
         _, bridge_device, bridge_vlan = self._get_provider_ls_info(
             logical_switch)
 
-        ips = port.addresses[0].strip().split(' ')[1:]
-        mac = port.addresses[0].strip().split(' ')[0]
+        try:
+            ips = port_utils.get_ips_from_lsp(port)
+        except exceptions.IpAddressNotFound:
+            ips = []
+        mac = port_utils.get_mac_from_lsp(port)
         self._expose_ip(ips, mac, logical_switch, bridge_device, bridge_vlan,
                         port.type, port.external_ids.get(
                             constants.OVN_CIDRS_EXT_ID_KEY, "").split())
@@ -777,13 +781,18 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
             # Check if the ip's on this port match the address scope. As the
             # port can be dual-stack, it could be that v4 is not allowed, but
             # v6 is allowed, so then only v6 address should be exposed.
-            ips = self._ips_in_address_scope(port.addresses[0].split(' ')[1:],
-                                             subnet_info['address_scopes'])
+            try:
+                ips = self._ips_in_address_scope(
+                    port_utils.get_ips_from_lsp(port),
+                    subnet_info['address_scopes'])
+            except exceptions.IpAddressNotFound:
+                continue
+
             if not ips:
                 # All ip's have been removed due to address scope requirement
                 continue
 
-            mac = port.addresses[0].strip().split(' ')[0]
+            mac = port_utils.get_mac_from_lsp(port)
             ips_info = {
                 'mac': mac,
                 'cidrs': port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
@@ -824,8 +833,11 @@ class NBOVNBGPDriver(driver_api.AgentDriverBase):
 
         ports = self.nb_idl.get_active_lsp(subnet_info['network'])
         for port in ports:
-            ips = port.addresses[0].split(' ')[1:]
-            mac = port.addresses[0].strip().split(' ')[0]
+            try:
+                ips = port_utils.get_ips_from_lsp(port)
+            except exceptions.IpAddressNotFound:
+                continue
+            mac = port_utils.get_mac_from_lsp(port)
             ips_info = {
                 'mac': mac,
                 'cidrs': port.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,

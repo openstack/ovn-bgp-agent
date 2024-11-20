@@ -14,6 +14,7 @@
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import common
+from ovn_bgp_agent import exceptions
 
 
 def has_ip_address_defined(address):
@@ -31,10 +32,37 @@ def has_additional_binding(row):
         constants.OVN_REQUESTED_CHASSIS, '')
 
 
+def get_address_list(lsp):
+    try:
+        addrs = lsp.addresses[0].strip().split(' ')
+        # Check the first element for an empty string
+        if not addrs[0]:
+            return []
+    except (AttributeError, IndexError):
+        return []
+
+    return addrs
+
+
+def get_mac_from_lsp(lsp):
+    try:
+        return get_address_list(lsp)[0]
+    except IndexError:
+        raise exceptions.MacAddressNotFound(lsp=lsp)
+
+
+def get_ips_from_lsp(lsp):
+    addresses = get_address_list(lsp)[1:]
+    if not addresses:
+        raise exceptions.IpAddressNotFound(lsp=lsp)
+
+    return addresses
+
+
 def make_lsp_dict(row):
     # TODO(jlibosva): Stop passing around dynamic maps
     return {
-        'mac': row.addresses[0].strip().split(' ')[0],
+        'mac': get_mac_from_lsp(row),
         'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
                                       "").split(),
         'type': row.type,

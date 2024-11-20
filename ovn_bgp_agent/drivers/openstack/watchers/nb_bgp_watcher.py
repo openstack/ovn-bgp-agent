@@ -22,6 +22,7 @@ from ovn_bgp_agent.drivers.openstack.utils import loadbalancer as lb_utils
 from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.utils import router as router_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
+from ovn_bgp_agent import exceptions
 
 
 LOG = logging.getLogger(__name__)
@@ -74,7 +75,11 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
             # At this point, the port is bound on this host, it is up and
             # the logical switch is exposable by the agent.
             # Only create the ips if not already exposed.
-            ips = row.addresses[0].split(' ')[1:]
+            try:
+                ips = port_utils.get_ips_from_lsp(row)
+            except exceptions.IpAddressNotFound:
+                return False
+
             return not self.agent.is_ip_exposed(logical_switch, ips)
 
         except (IndexError, AttributeError):
@@ -82,7 +87,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.addresses[0].split(' ')[1:]
+            ips = port_utils.get_ips_from_lsp(row)
             ips_info = port_utils.make_lsp_dict(row)
             self.agent.expose_ip(ips, ips_info)
 
@@ -108,7 +113,11 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
-            ips = row.addresses[0].split(' ')[1:]
+            try:
+                ips = port_utils.get_ips_from_lsp(row)
+            except exceptions.IpAddressNotFound:
+                return False
+
             logical_switch = common_utils.get_from_external_ids(
                 row, constants.OVN_LS_NAME_EXT_ID_KEY)
 
@@ -141,7 +150,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
 
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.addresses[0].split(' ')[1:]
+            ips = port_utils.get_ips_from_lsp(row)
             ips_info = port_utils.make_lsp_dict(row)
             self.agent.withdraw_ip(ips, ips_info)
 
@@ -603,7 +612,9 @@ class LogicalSwitchPortTenantCreateEvent(base_watcher.LSPChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not port_utils.has_ip_address_defined(row.addresses[0]):
+            try:
+                port_utils.get_ips_from_lsp(row)
+            except exceptions.IpAddressNotFound:
                 return False
 
             if not bool(row.up[0]):
@@ -632,8 +643,8 @@ class LogicalSwitchPortTenantCreateEvent(base_watcher.LSPChassisEvent):
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.addresses[0].split(' ')[1:]
-            mac = row.addresses[0].strip().split(' ')[0]
+            ips = port_utils.get_ips_from_lsp(row)
+            mac = port_utils.get_mac_from_lsp(row)
             ips_info = {
                 'mac': mac,
                 'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
@@ -678,8 +689,11 @@ class LogicalSwitchPortTenantDeleteEvent(base_watcher.LSPChassisEvent):
                             constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
             return
         with _SYNC_STATE_LOCK.read_lock():
-            ips = row.addresses[0].split(' ')[1:]
-            mac = row.addresses[0].strip().split(' ')[0]
+            # The address is present because of the
+            # has_ip_address_defined() check in match_fn(), therefore
+            # there is no need for the try-except block.
+            ips = port_utils.get_ips_from_lsp(row)
+            mac = port_utils.get_mac_from_lsp(row)
             ips_info = {
                 'mac': mac,
                 'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
