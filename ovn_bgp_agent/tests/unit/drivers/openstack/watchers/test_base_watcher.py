@@ -21,29 +21,6 @@ from ovn_bgp_agent.tests import base as test_base
 from ovn_bgp_agent.tests import utils
 
 
-class FakePortBindingChassisEvent(base_watcher.PortBindingChassisEvent):
-    def run(self):
-        pass
-
-
-class TestPortBindingChassisEvent(test_base.TestCase):
-
-    def setUp(self):
-        super(TestPortBindingChassisEvent, self).setUp()
-        self.pb_event = FakePortBindingChassisEvent(
-            mock.Mock(), [mock.Mock()])
-
-    def test__check_ip_associated(self):
-        self.assertTrue(self.pb_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16'))
-        self.assertTrue(self.pb_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17'))
-        self.assertFalse(self.pb_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff'))
-        self.assertTrue(self.pb_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
-
-
 class FakeOVNLBEvent(base_watcher.OVNLBEvent):
     def run(self):
         pass
@@ -114,16 +91,6 @@ class TestLSPChassisEvent(test_base.TestCase):
         super(TestLSPChassisEvent, self).setUp()
         self.lsp_event = FakeLSPChassisEvent(
             mock.Mock(), [mock.Mock()])
-
-    def test__check_ip_associated(self):
-        self.assertTrue(self.lsp_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16'))
-        self.assertTrue(self.lsp_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17'))
-        self.assertFalse(self.lsp_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff'))
-        self.assertTrue(self.lsp_event._check_ip_associated(
-            'aa:bb:cc:dd:ee:ff 10.10.1.16 10.10.1.17 10.10.1.18'))
 
     def test__has_additional_binding(self):
         row = utils.create_row(

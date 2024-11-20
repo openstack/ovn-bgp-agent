@@ -16,6 +16,7 @@ from oslo_concurrency import lockutils
 from oslo_log import log as logging
 
 from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import port as port_utils
 from ovn_bgp_agent.drivers.openstack.watchers import base_watcher
 
 
@@ -35,7 +36,7 @@ class PortBindingChassisCreatedEvent(base_watcher.PortBindingChassisEvent):
             if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
                 return False
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             return (row.chassis[0].name == self.agent.chassis and
                     not old.chassis)
@@ -60,7 +61,7 @@ class PortBindingChassisDeletedEvent(base_watcher.PortBindingChassisEvent):
             if row.type != constants.OVN_CHASSISREDIRECT_VIF_PORT_TYPE:
                 return False
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis[0].name == self.agent.chassis and
@@ -156,7 +157,7 @@ class TenantPortCreatedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             return (not old.chassis and row.chassis and
                     self.agent.ovn_local_lrps != [])
@@ -181,7 +182,7 @@ class TenantPortDeletedEvent(base_watcher.PortBindingChassisEvent):
     def match_fn(self, event, row, old):
         try:
             # single and dual-stack format
-            if not self._check_ip_associated(row.mac[0]):
+            if not port_utils.has_ip_address_defined(row.mac[0]):
                 return False
             if event == self.ROW_UPDATE:
                 return (old.chassis and not row.chassis and
