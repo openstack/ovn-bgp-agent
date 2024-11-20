@@ -106,33 +106,6 @@ class TestLSPChassisEvent(test_base.TestCase):
             options={constants.OVN_REQUESTED_CHASSIS: 'host1'})
         self.assertFalse(self.lsp_event._has_additional_binding(row))
 
-    def test__get_network(self):
-        row = utils.create_row(
-            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-net'})
-        self.assertEqual('test-net', self.lsp_event._get_network(row))
-        row = utils.create_row(external_ids={})
-        self.assertEqual(None, self.lsp_event._get_network(row))
-
-
-class FakeLRPChassisEvent(base_watcher.LRPChassisEvent):
-    def run(self):
-        pass
-
-
-class TestLRPChassisEvent(test_base.TestCase):
-
-    def setUp(self):
-        super(TestLRPChassisEvent, self).setUp()
-        self.lrp_event = FakeLRPChassisEvent(
-            mock.Mock(), [mock.Mock()])
-
-    def test__get_network(self):
-        row = utils.create_row(
-            external_ids={constants.OVN_LS_NAME_EXT_ID_KEY: 'test-net'})
-        self.assertEqual('test-net', self.lrp_event._get_network(row))
-        row = utils.create_row(external_ids={})
-        self.assertEqual(None, self.lrp_event._get_network(row))
-
 
 class TestChassisCreateEvent(test_base.TestCase):
     _event = base_watcher.ChassisCreateEvent
