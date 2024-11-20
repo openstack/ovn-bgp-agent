@@ -67,30 +67,6 @@ class LSPChassisEvent(Event):
         return driver_utils.get_port_chassis(row, self.agent.chassis,
                                              default_port_type=default_type)
 
-    def _has_additional_binding(self, row):
-        if (hasattr(row, 'options') and
-                row.options.get(constants.OVN_REQUESTED_CHASSIS)):
-
-            # requested-chassis can be a comma separated list, so if there
-            # is a comma in the string, there is an additional binding.
-            return ',' in row.options[constants.OVN_REQUESTED_CHASSIS]
-
-        return False
-
-    def _get_ips_info(self, row):
-        return {
-            'mac': row.addresses[0].strip().split(' ')[0],
-            'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
-                                          "").split(),
-            'type': row.type,
-            'logical_switch': common_utils.get_from_external_ids(
-                row, constants.OVN_LS_NAME_EXT_ID_KEY),
-        }
-
-    def _get_port_fip(self, row):
-        return getattr(row, 'external_ids', {}).get(
-            constants.OVN_FIP_EXT_ID_KEY)
-
 
 class LRPChassisEvent(Event):
     def __init__(self, bgp_agent, events):

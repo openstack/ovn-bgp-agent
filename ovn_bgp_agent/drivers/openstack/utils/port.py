@@ -12,6 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack.utils import common
+
 
 def has_ip_address_defined(address):
     return ' ' in address.strip()
+
+
+def get_fip(lsp):
+    return common.get_from_external_ids(lsp, key=constants.OVN_FIP_EXT_ID_KEY)
+
+
+def has_additional_binding(row):
+    # requested-chassis can be a comma separated list, so if there
+    # is a comma in the string, there is an additional binding.
+    return ',' in getattr(row, 'options', {}).get(
+        constants.OVN_REQUESTED_CHASSIS, '')
+
+
+def make_lsp_dict(row):
+    # TODO(jlibosva): Stop passing around dynamic maps
+    return {
+        'mac': row.addresses[0].strip().split(' ')[0],
+        'cidrs': row.external_ids.get(constants.OVN_CIDRS_EXT_ID_KEY,
+                                      "").split(),
+        'type': row.type,
+        'logical_switch': common.get_from_external_ids(
+            row, constants.OVN_LS_NAME_EXT_ID_KEY),
+    }

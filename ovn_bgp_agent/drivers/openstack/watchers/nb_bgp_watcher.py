@@ -83,7 +83,7 @@ class LogicalSwitchPortProviderCreateEvent(base_watcher.LSPChassisEvent):
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            ips_info = self._get_ips_info(row)
+            ips_info = port_utils.make_lsp_dict(row)
             self.agent.expose_ip(ips, ips_info)
 
 
@@ -130,7 +130,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
             # 1. port went down (while only attached here)
             if (hasattr(old, 'up') and bool(old.up[0]) and   # port was up
                     not bool(row.up[0]) and                  # is now down
-                    not self._has_additional_binding(row)):  # and bound here
+                    not port_utils.has_additional_binding(row)):  # and bound
                 return True
 
             # 2. port no longer bound here
@@ -142,7 +142,7 @@ class LogicalSwitchPortProviderDeleteEvent(base_watcher.LSPChassisEvent):
     def _run(self, event, row, old):
         with _SYNC_STATE_LOCK.read_lock():
             ips = row.addresses[0].split(' ')[1:]
-            ips_info = self._get_ips_info(row)
+            ips_info = port_utils.make_lsp_dict(row)
             self.agent.withdraw_ip(ips, ips_info)
 
 
@@ -281,8 +281,8 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
             if not port_utils.has_ip_address_defined(row.addresses[0]):
                 return False
 
-            current_port_fip = self._get_port_fip(row)
-            old_port_fip = self._get_port_fip(old)
+            current_port_fip = port_utils.get_fip(row)
+            old_port_fip = port_utils.get_fip(old)
             if not current_port_fip and not old_port_fip:
                 # This port is not a floating ip update
                 return False
@@ -321,11 +321,11 @@ class LogicalSwitchPortFIPDeleteEvent(base_watcher.LSPChassisEvent):
     def _run(self, event, row, old):
         # First check to remove the fip provided in old (since this might
         # have been updated)
-        fip = self._get_port_fip(old)
+        fip = port_utils.get_fip(old)
         if not fip:
             # Remove the fip provided in the current row, probably a
             # disassociate of the fip (or a down or a move)
-            fip = self._get_port_fip(row)
+            fip = port_utils.get_fip(row)
         if not fip:
             return
         with _SYNC_STATE_LOCK.read_lock():
