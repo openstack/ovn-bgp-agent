@@ -103,3 +103,10 @@ class TestPrivilegedOvsVsctl(test_base.TestCase):
                  mock.call('ovs-ofctl', 'add-flow', 'br-ex', 'dummy-flow',
                            '-O', 'OpenFlow13')]
         self.mock_exc.assert_has_calls(calls)
+
+    def test_ovs_appctl(self):
+        ovs_vsctl.ovs_appctl(
+            ['fdb/add', 'br-fabric', 'br-fabric', '0', 'de:ad:be:ef:ca:fe'])
+        self.mock_exc.assert_called_once_with(
+            'ovs-appctl', 'fdb/add', 'br-fabric', 'br-fabric',
+            '0', 'de:ad:be:ef:ca:fe')

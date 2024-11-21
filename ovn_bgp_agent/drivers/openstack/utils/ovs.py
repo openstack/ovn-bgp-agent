@@ -241,6 +241,12 @@ def del_flow(flow, bridge, cookie):
         ['--strict', 'del-flows', bridge, f])
 
 
+def add_fdb_entry(bridge: str, port: str, mac: str, vlan: int = 0):
+    ovn_bgp_agent.privileged.ovs_vsctl.ovs_appctl(
+        ['fdb/add', bridge, port, str(vlan), mac]
+    )
+
+
 def get_flow_info(flow):
     # example:
     # cookie=0x3e7, duration=85.005s, table=0, n_packets=0,

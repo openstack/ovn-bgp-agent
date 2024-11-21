@@ -259,6 +259,7 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
             _ensure_ovn_network_link(ovn_idl, network, 'external',
                                      ip=ip, mac=mac)
             _ensure_ingress_flows(bridge, mac, network, provider_cidrs)
+            _ensure_fdb_entry(bridge, mac)
 
     return ovn_bridge_mappings, flows_info
 
@@ -455,6 +456,18 @@ def _ensure_ingress_flows(bridge, mac, switch_name, provider_cidrs):
                 constants.OVS_RULE_COOKIE, ip, provider_cidr, external_nic,
                 mac, patch_ports[0]))
         ovs.ensure_flow(bridge, flow)
+
+
+def _ensure_fdb_entry(bridge, mac):
+    """Ensure static FDB entries for internal ports of a fabric bridge.
+
+    Fabric-facing bridges need to have a static MAC entry to avoid dynamic
+    re-learning in their FDB as this will lead to drop flows being generated
+    by OVS due to flow table misses.
+    """
+    # The bridge name is also the name of its internal port. The MAC address
+    # is the MAC address of the bridge itself.
+    ovs.add_fdb_entry(bridge, bridge, mac, 0)
 
 
 def _ensure_egress_flows(bridge, patch_ports):
