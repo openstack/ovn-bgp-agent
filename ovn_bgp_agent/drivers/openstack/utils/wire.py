@@ -251,13 +251,11 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
         # and external LS (connecting to the NICs)
         if bridge in ovn_bridge_mappings.values():
             # Internal Bridge connecting to OpenStack OVN cluster
-            _ensure_ovn_network_link(ovn_idl, network, 'internal',
-                                     provider_cidrs=provider_cidrs)
+            _ensure_ovn_network_link_internal(ovn_idl, network, provider_cidrs)
         else:
             ip, mac = linux_net.get_nic_info(bridge)
             # External Bridge connecting to the external networks
-            _ensure_ovn_network_link(ovn_idl, network, 'external',
-                                     ip=ip, mac=mac)
+            _ensure_ovn_network_link_external(ovn_idl, network, ip, mac)
             _ensure_ingress_flows(bridge, mac, network, provider_cidrs)
 
     return ovn_bridge_mappings, flows_info
@@ -284,21 +282,58 @@ def _execute_commands(idl, cmds):
             txn.add(command)
 
 
-def _ensure_ovn_network_link(ovn_idl, switch_name, direction,
-                             provider_cidrs=None, ip=None, mac=None):
-    """Base configuration for connecting LR and LSs
+def _ensure_ovn_network_link_internal(ovn_idl, switch_name, provider_cidrs):
+    """Configure connecting LR and LSs internal side
 
-    This function is in charge of connecting the LR to the external or internal
-    LS
-
-    For the internal LS it configures:
     1. Creates LRP to connect to the internal switch
     2. If networks (provider_cidrs) are different, adding the new networks
     3. Create LSP related to the LRP with the right options, including the
        arp_proxy
     4. Bind the LRP to the local chassis
 
-    For the external LS it configures:
+    :param ovn_idl: The idl to communicate with local (in-node) NB DB
+    :param switch_name: the name of the logical switch to configure
+    :param provider_cidrs: CIDRs to configure the networks of the
+                           LRP, as well as to configure the ARP
+                           proxy on the internal LSP
+    """
+    cmds = []
+    # Connect BGP router to the internal logical switch
+    r_port_name = "{}-openstack".format(constants.OVN_CLUSTER_ROUTER)
+    try:
+        ovn_idl.lrp_add(constants.OVN_CLUSTER_ROUTER, r_port_name,
+                        constants.OVN_CLUSTER_ROUTER_INTERNAL_MAC,
+                        provider_cidrs, peer=[], may_exist=True).execute(
+            check_error=True)
+    except RuntimeError as rte:
+        # TODO(ltomasbo): Change OVSDBAPP to return a different error for
+        # this to avoid having to compare strings as this is error prone
+        networks_message = 'with different networks'
+        if networks_message not in str(rte):
+            raise
+        # Trying to sync the networks by adding them
+        cmds.append(ovn_idl.lrp_add_networks(r_port_name, provider_cidrs,
+                                             may_exist=True))
+
+    s_port_name = "openstack-{}".format(constants.OVN_CLUSTER_ROUTER)
+    # NOTE(ltomasbo): require v23.06.0 so that proxy-arp works as expected.
+    # If older version the provider_cidrs should contain all the provider
+    # network cidrs, pointing to the gateway IP of the network.
+    cidrs = ','.join(provider_cidrs) if provider_cidrs else '0.0.0.0/0'
+    options = {'router-port': r_port_name, 'arp_proxy': cidrs}
+    cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
+                                 'router', 'router', **options))
+    # bind to local chassis
+    # ovn-nbctl lrp-set-gateway-chassis  bgp-router-public bgp 1
+    cmds.append(ovn_idl.lrp_set_gateway_chassis(
+        r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1))
+
+    _execute_commands(ovn_idl, cmds)
+
+
+def _ensure_ovn_network_link_external(ovn_idl, switch_name, ip, mac):
+    """Configure connecting LR and LSs external side
+
     1. Creates LRP to connect to the external switch
     2. If networks (ip) is different than the nic network add the nic network
        and remove the extra ones
@@ -306,80 +341,40 @@ def _ensure_ovn_network_link(ovn_idl, switch_name, direction,
 
     :param ovn_idl: The idl to communicate with local (in-node) NB DB
     :param switch_name: the name of the logical switch to configure
-    :param direction: can be 'internal' or 'external'
-    :param provider_cidrs (optional): CIDRs to configure the networks of the
-                                      LRP, as well as to configure the ARP
-                                      proxy on the internal LSP
-                                      (only for the internal)
-    :param ip (optional): IP to configure in the LRP connected to the external
-                          switch (only for the external)
-    :param mac (optional): MAC to configure in the LRP connected to the
-                           external switch (only for the external)
+    :param ip: IP to configure in the LRP connected to the external switch
+    :param mac: MAC to configure in the LRP connected to the external switch
     """
-    # It accepts 2 values for direction: internal or external
     cmds = []
-    if direction == 'internal':
-        # Connect BGP router to the internal logical switch
-        r_port_name = "{}-openstack".format(constants.OVN_CLUSTER_ROUTER)
-        try:
-            ovn_idl.lrp_add(constants.OVN_CLUSTER_ROUTER, r_port_name,
-                            constants.OVN_CLUSTER_ROUTER_INTERNAL_MAC,
-                            provider_cidrs, peer=[], may_exist=True).execute(
-                check_error=True)
-        except RuntimeError as rte:
-            # TODO(ltomasbo): Change OVSDBAPP to return a different error for
-            # this to avoid having to compare strings as this is error prone
-            networks_message = 'with different networks'
-            if networks_message not in str(rte):
-                raise
-            # Trying to sync the networks by adding them
-            cmds.append(ovn_idl.lrp_add_networks(r_port_name, provider_cidrs,
-                                                 may_exist=True))
+    r_port_name = "{}-{}".format(constants.OVN_CLUSTER_ROUTER, switch_name)
 
-        s_port_name = "openstack-{}".format(constants.OVN_CLUSTER_ROUTER)
-        # NOTE(ltomasbo): require v23.06.0 so that proxy-arp works as expected.
-        # If older version the provider_cidrs should contain all the provider
-        # network cidrs, pointing to the gateway IP of the network.
-        cidrs = ','.join(provider_cidrs) if provider_cidrs else '0.0.0.0/0'
-        options = {'router-port': r_port_name, 'arp_proxy': cidrs}
-        cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
-                                     'router', 'router', **options))
-        # bind to local chassis
-        # ovn-nbctl lrp-set-gateway-chassis  bgp-router-public bgp 1
-        cmds.append(ovn_idl.lrp_set_gateway_chassis(
-            r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1))
-    else:  # direction == 'external'
-        # Connect BGP router to the external logical switch
-        r_port_name = "{}-{}".format(constants.OVN_CLUSTER_ROUTER, switch_name)
-        # LRP
-        try:
-            ovn_idl.lrp_add(constants.OVN_CLUSTER_ROUTER, r_port_name,
-                            mac, [ip], peer=[], may_exist=True).execute(
-                check_error=True)
-        except RuntimeError as rte:
-            # TODO(ltomasbo): Change OVSDBAPP to return a different error for
-            # this to avoid having to compare strings as this is error prone
-            networks_message = 'with different networks'
-            if networks_message not in str(rte):
-                raise
-            # Trying to sync the networks by adding them
-            cmds.append(ovn_idl.lrp_add_networks(r_port_name,
-                                                 [ip],
-                                                 may_exist=True))
-            lrp = ovn_idl.lrp_get(r_port_name).execute(check_error=True)
-            for net in lrp.networks:
-                if net != ip:
-                    cmds.append(ovn_idl.lrp_del_networks(r_port_name,
-                                                         [net],
-                                                         if_exists=True))
-        # LSP
-        s_port_name = "{}-{}".format(switch_name, constants.OVN_CLUSTER_ROUTER)
-        options = {'router-port': r_port_name}
-        cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
-                                     'router', 'router', **options))
+    # LRP
+    try:
+        ovn_idl.lrp_add(constants.OVN_CLUSTER_ROUTER, r_port_name,
+                        mac, [ip], peer=[], may_exist=True).execute(
+            check_error=True)
+    except RuntimeError as rte:
+        # TODO(ltomasbo): Change OVSDBAPP to return a different error for
+        # this to avoid having to compare strings as this is error prone
+        networks_message = 'with different networks'
+        if networks_message not in str(rte):
+            raise
+        # Trying to sync the networks by adding them
+        cmds.append(ovn_idl.lrp_add_networks(r_port_name,
+                                             [ip],
+                                             may_exist=True))
+        lrp = ovn_idl.lrp_get(r_port_name).execute(check_error=True)
+        for net in lrp.networks:
+            if net != ip:
+                cmds.append(ovn_idl.lrp_del_networks(r_port_name,
+                                                     [net],
+                                                     if_exists=True))
+    # LSP
+    s_port_name = "{}-{}".format(switch_name, constants.OVN_CLUSTER_ROUTER)
+    options = {'router-port': r_port_name}
+    cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
+                                 'router', 'router', **options))
 
-    if cmds:
-        _execute_commands(ovn_idl, cmds)
+    _execute_commands(ovn_idl, cmds)
 
 
 def _ensure_lsp_cmds(ovn_idl, port_name, switch, port_type, addresses,
