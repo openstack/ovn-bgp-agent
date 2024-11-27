@@ -12,10 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from ovn_bgp_agent import constants
+from ovn_bgp_agent.drivers.openstack import nb_exceptions
 
-class NATNotFound(Exception):
-    pass
+
+def get_gateway_lrp(nat):
+    try:
+        return nat.gateway_port[0]
+    except IndexError:
+        raise nb_exceptions.NATNotFound("Port %s has no NAT entry" % nat.uuid)
 
 
-class ChassisNotFound(Exception):
-    pass
+def get_chassis_hosting_crlrp(nat):
+    gateway_lrp = get_gateway_lrp(nat)
+    try:
+        return gateway_lrp.status[constants.OVN_STATUS_CHASSIS]
+    except KeyError:
+        raise nb_exceptions.ChassisNotFound(
+            "Gateway port %s has no chassis set in its status column.",
+            gateway_lrp)

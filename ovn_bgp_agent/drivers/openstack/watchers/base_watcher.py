@@ -17,6 +17,7 @@ from ovsdbapp.backend.ovs_idl import event as row_event
 
 from ovn_bgp_agent import constants
 from ovn_bgp_agent.drivers.openstack.utils import driver_utils
+from ovn_bgp_agent.drivers.openstack.utils import nat as nat_utils
 
 
 LOG = logging.getLogger(__name__)
@@ -101,9 +102,48 @@ class ChassisPrivateCreateEvent(ChassisCreateEventBase):
     table = 'Chassis_Private'
 
 
-class DnatSnatUpdatedBaseEvent(Event):
+class DnatSnatBaseEvent(Event):
+    events = None
+
     def __init__(self, bgp_agent):
-        events = (self.ROW_UPDATE)
         table = 'NAT'
         super().__init__(
-            bgp_agent, events, table, (('type', '=', 'dnat_and_snat'),))
+            bgp_agent,
+            self.__class__.events,
+            table,
+            (('type', '=', 'dnat_and_snat'),))
+
+
+class FipOnCRLRPBaseEvent(DnatSnatBaseEvent):
+    """Base class for NAT event.
+
+    It matches if the associated LSP is either virtual port or a normal port
+    and if the gateway chassis port is on this chassis.
+    """
+    def match_fn(self, event, row, old):
+        try:
+            lsp_uuid = row.logical_port[0]
+        except IndexError:
+            LOG.warning("NAT entry %s has no associated logical port",
+                        row.uuid)
+            return False
+        lsp = self.agent.nb_idl.lsp_get(
+            lsp_uuid).execute(check_error=True)
+        if not lsp:
+            LOG.warning("Switch Port %s cannot be found" % lsp_uuid)
+            return False
+
+        if lsp.type not in [constants.OVN_VM_VIF_PORT_TYPE,
+                            constants.OVN_VIRTUAL_VIF_PORT_TYPE]:
+            return False
+
+        if constants.OVN_FIP_NET_EXT_ID_KEY not in row.external_ids:
+            LOG.error("NAT entry %(nat)s does not have %(fip_net)s set in "
+                      "external_ids", {
+                          'nat': row.uuid,
+                          'fip_net': constants.OVN_FIP_NET_EXT_ID_KEY})
+            return False
+
+        gw_chassis = nat_utils.get_chassis_hosting_crlrp(row)
+
+        return self.agent.chassis_id == gw_chassis
