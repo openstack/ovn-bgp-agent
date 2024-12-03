@@ -1,0 +1,171 @@
+- name: Install dependencies on all nodes
+  hosts: leafs,spine
+  tasks:
+    - name: Install openvswitch
+      become: true
+      ansible.builtin.package:
+         name: "openvswitch-switch"
+         state: present
+
+- name: Figure out VXLAN endpoints
+  hosts: controller,leafs,spine
+  tasks:
+    - name: Set local IP for VXLAN tunnels
+      ansible.builtin.set_fact:
+        vxlan_local_ip: "{{ nodepool.private_ipv4 | ipv4 | default(nodepool.public_ipv4) }} "
+
+- name: Create tunnels between the controller and the leafs
+  hosts: controller
+  vars:
+    base_subnet: "172.18"
+    spine_base_subnet: "172.19"
+  tasks:
+    - name: Create local.sh script to create tunnels
+      vars:
+        # todo: get this from a variable
+        top_dir: "/opt/stack/devstack"
+      become: true
+      copy:
+        dest: "{{ top_dir }}/local.sh"
+        owner: stack
+        group: stack
+        mode: '0755'
+        content: |
+          #!/bin/bash
+
+          set -e
+
+          function configure_vxlan_endpoint() {
+            local loop_index=$1
+            local remote_ip=$2
+
+            local local_ip={{ vxlan_local_ip }}
+            local tunnel_iface=leaf${loop_index}-tunnel
+            local port_iface=leaf${loop_index}-port
+            local vlan_tag=100${loop_index}
+
+            sudo ovs-vsctl add-port br-infra $tunnel_iface -- \
+            set Interface $tunnel_iface type=vxlan options:remote_ip=$remote_ip \
+            options:key=1000${loop_index} options:local_ip=$local_ip -- \
+            set Port $tunnel_iface tag=$vlan_tag -- \
+            add-port br-infra $port_iface -- \
+            set Interface $port_iface type=internal -- \
+            set Port $port_iface tag=$vlan_tag
+
+            sudo ip addr add {{ base_subnet }}.${loop_index}.1/30 dev $port_iface
+            sudo ip link set dev $port_iface up
+
+            sudo iptables -I INPUT 1 -s {{ base_subnet }}.${loop_index}.0/30 -j ACCEPT
+            sudo iptables -I FORWARD 1 -i $port_iface -j ACCEPT
+
+            # Add routes to the spine too since we cannot use default
+            sudo ip route add {{ spine_base_subnet }}.${loop_index}.0/30 nexthop via {{ base_subnet }}.${loop_index}.2 dev $port_iface
+          }
+
+          sudo ovs-vsctl --may-exist add-br br-infra
+
+          {% for leaf in groups['leafs'] %}
+          configure_vxlan_endpoint {{ loop.index0 }}  {{ hostvars[leaf].vxlan_local_ip }}
+          {% endfor %}
+
+          sudo iptables -I FORWARD 1 -i br-ex -j ACCEPT
+
+          # When FRR started before the peer interfaces did not exist
+          sudo systemctl restart frr
+
+    - name: "Create VXLAN tunnel from {{ item.1 }} to the controller"
+      ansible.builtin.shell: |
+        set -e
+
+        tunnel_iface=controller-tunnel
+        port_iface=controller-port
+        local_ip={{ hostvars[item.1].vxlan_local_ip }}
+        remote_ip={{ vxlan_local_ip }}
+        vlan_tag=100{{ item.0 }}
+
+        ovs-vsctl --may-exist add-br br-infra -- \
+        add-port br-infra $tunnel_iface -- \
+        set Interface $tunnel_iface type=vxlan options:remote_ip=$remote_ip \
+        options:key=1000{{ item.0 }} options:local_ip=$local_ip -- \
+        set Port $tunnel_iface tag=$vlan_tag -- \
+        add-port br-infra $port_iface -- \
+        set Interface $port_iface type=internal -- \
+        set Port $port_iface tag=$vlan_tag
+
+        ip addr add {{ base_subnet }}.{{ item.0 }}.2/30 dev $port_iface
+        ip link set dev $port_iface up
+
+        iptables -I INPUT 1 -s {{ base_subnet }}.{{ item.0 }}.0/30 -j ACCEPT
+        iptables -I FORWARD 1 -i $port_iface -j ACCEPT
+      with_indexed_items: "{{ groups['leafs'] }}"
+      delegate_to: "{{ item.1 }}"
+      become: true
+
+- name: Create tunnels between the spine and the leafs
+  hosts: spine
+  vars:
+    base_subnet: "172.19"
+  become: true
+  tasks:
+    - name: "Create VXLAN tunnels from the spine to {{ item.1 }}"
+      ansible.builtin.shell: |
+        set -e
+
+        tunnel_iface=leaf{{ item.0 }}-tunnel
+        port_iface=leaf{{ item.0 }}-port
+        local_ip={{ vxlan_local_ip }}
+        remote_ip={{ hostvars[item.1].vxlan_local_ip }}
+        vlan_tag=100{{ item.0 }}
+
+        ovs-vsctl --may-exist add-br br-infra -- \
+        add-port br-infra $tunnel_iface -- \
+        set Interface $tunnel_iface type=vxlan options:remote_ip=$remote_ip \
+        options:key=1001{{ item.0 }} options:local_ip=$local_ip -- \
+        set Port $tunnel_iface tag=$vlan_tag -- \
+        add-port br-infra $port_iface -- \
+        set Interface $port_iface type=internal -- \
+        set Port $port_iface tag=$vlan_tag
+
+        ip addr add {{ base_subnet }}.{{ item.0 }}.1/30 dev $port_iface
+        ip link set dev $port_iface up
+
+        iptables -I INPUT 1 -s {{ base_subnet }}.{{ item.0 }}.0/30 -j ACCEPT
+        iptables -I FORWARD 1 -i $port_iface -j ACCEPT
+      with_indexed_items: "{{ groups['leafs'] }}"
+
+    - name: "Create VXLAN tunnel from {{ item.1 }} to the spine"
+      ansible.builtin.shell: |
+        set -e
+
+        tunnel_iface=spine-tunnel
+        port_iface=spine-port
+        local_ip={{ hostvars[item.1].vxlan_local_ip }}
+        remote_ip={{ vxlan_local_ip }}
+        vlan_tag=1001
+
+        ovs-vsctl --may-exist add-br br-infra -- \
+        add-port br-infra $tunnel_iface -- \
+        set Interface $tunnel_iface type=vxlan options:remote_ip=$remote_ip \
+        options:key=1001{{ item.0 }} options:local_ip=$local_ip -- \
+        set Port $tunnel_iface tag=$vlan_tag -- \
+        add-port br-infra $port_iface -- \
+        set Interface $port_iface type=internal -- \
+        set Port $port_iface tag=$vlan_tag
+
+        ip addr add {{ base_subnet }}.{{ item.0 }}.2/30 dev $port_iface
+        ip link set dev $port_iface up
+
+        iptables -I INPUT 1 -s {{ base_subnet }}.{{ item.0 }}.0/30 -j ACCEPT
+        iptables -I FORWARD 1 -i $port_iface -j ACCEPT
+      with_indexed_items: "{{ groups['leafs'] }}"
+      delegate_to: "{{ item.1 }}"
+
+- name: Configure the spine switch
+  hosts: spine
+  roles:
+    - spine
+
+- name: Configure the leafs switches
+  hosts: leafs
+  roles:
+    - leaf

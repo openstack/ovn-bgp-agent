@@ -39,7 +39,11 @@ function configure_frr {
     sudo install -d -o $STACK_USER $FRR_CONF_DIR
 
     # Configure frr daemons
-    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/frr/* $FRR_CONF_DIR/
+    if [[ "$FRR_USE_BFD" == "True" ]]; then
+        sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/frr_with_bfd/* $FRR_CONF_DIR/
+    else
+        sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/frr/* $FRR_CONF_DIR/
+    fi
 
 }
 
