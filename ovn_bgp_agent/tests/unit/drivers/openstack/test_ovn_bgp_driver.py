@@ -112,15 +112,16 @@ class TestOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(linux_net, 'get_ovn_ip_rules')
     @mock.patch.object(linux_net, 'get_exposed_ips')
     @mock.patch.object(linux_net, 'get_interface_address')
+    @mock.patch.object(linux_net, 'ensure_bridge')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
     def test_sync(
             self, mock_ensure_arp, mock_routing_bridge,
-            mock_ensure_vlan_network, mock_nic_address, mock_exposed_ips,
-            mock_get_ip_rules, mock_get_patch_ports, mock_ensure_mac,
-            mock_remove_flows, mock_del_exposed_ips, mock_del_ip_rules,
-            mock_del_ip_routes, mock_vlan_leftovers):
+            mock_ensure_vlan_network, mock_ensure_br, mock_nic_address,
+            mock_exposed_ips, mock_get_ip_rules, mock_get_patch_ports,
+            mock_ensure_mac, mock_remove_flows, mock_del_exposed_ips,
+            mock_del_ip_rules, mock_del_ip_routes, mock_vlan_leftovers):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
         self.sb_idl.get_network_vlan_tag_by_network_name.side_effect = (
@@ -147,6 +148,9 @@ class TestOVNBGPDriver(test_base.TestCase):
         expected_calls = [mock.call('bridge0', 1, [10]),
                           mock.call('bridge1', 2, [11])]
         mock_ensure_arp.assert_has_calls(expected_calls)
+
+        expected_calls = [mock.call('bridge0'), mock.call('bridge1')]
+        mock_ensure_br.assert_has_calls(expected_calls)
 
         expected_calls = [mock.call({}, 'bridge0', CONF.bgp_vrf_table_id),
                           mock.call({}, 'bridge1', CONF.bgp_vrf_table_id)]

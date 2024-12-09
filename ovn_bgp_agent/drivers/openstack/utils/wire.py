@@ -55,6 +55,8 @@ def _ensure_base_wiring_config_underlay(idl, ovs_idl, routing_tables):
             continue
         ovn_bridge_mappings[network] = bridge
 
+        linux_net.ensure_bridge(bridge)
+
         linux_net.ensure_routing_table_for_bridge(
             routing_tables, bridge, CONF.bgp_vrf_table_id)
         vlan_tags = idl.get_network_vlan_tag_by_network_name(network)
