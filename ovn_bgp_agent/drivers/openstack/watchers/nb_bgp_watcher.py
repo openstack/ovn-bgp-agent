@@ -1010,11 +1010,11 @@ class CrLrpChassisChangeExposeEvent(CrLrpChassisChangeBaseEvent):
 
 
 class CrLrpChassisChangeWithdrawEvent(CrLrpChassisChangeBaseEvent):
-    """A LRP event to expose floating IPs on centralized node.
+    """A LRP event to withdraw floating IPs from centralized node.
 
-    Expose all floating IPs hosted by a router with this gateway port hosted on
-    this chassis. It matches in case of gateway port changes its hosting
-    chassis to this chassis.
+    Withdraw all floating IPs hosted by a router with this gateway port hosted
+    on this chassis. It matches in case of gateway port changes its hosting
+    chassis from this chassis to a new one.
     """
     def match_fn(self, event, row, old):
         if not super().match_fn(event, row, old):
