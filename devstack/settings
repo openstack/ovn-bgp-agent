@@ -12,6 +12,7 @@ FRR_CONF_DIR=${FRR_CONF_DIR:-/etc/frr}
 FRR_SYSTEMD_SERVICE="frr.service"
 FRR_CONF_FILE=$FRR_CONF_DIR/frr.conf
 FRR_DAEMON_CONF_FILE=$FRR_CONF_DIR/daemons
+FRR_USE_BFD=$(trueorfalse False FRR_USE_BFD)
 
 # Defaults
 OVN_BGP_AGENT_DIR=$DEST/ovn-bgp-agent

@@ -1,0 +1,117 @@
+- nodeset:
+    name: ovn-bgp-agent-four-node-jammy
+    nodes:
+      - name: controller
+        label: ubuntu-jammy
+      - name: leaf-1
+        label: ubuntu-jammy
+      - name: leaf-2
+        label: ubuntu-jammy
+      - name: spine
+        label: ubuntu-jammy
+    groups:
+      - name: controller
+        nodes:
+          - controller
+      - name: subnode
+        nodes:
+          - spine
+      - name: leafs
+        nodes:
+          - leaf-1
+          - leaf-2
+      - name: tempest
+        nodes:
+          - spine
+
+- job:
+    name: ovn-bgp-agent-tempest-plugin-multinode
+    parent: neutron-tempest-plugin-ovn
+    nodeset: ovn-bgp-agent-four-node-jammy
+    timeout: 10800
+    post-timeout: 9600
+    required-projects:
+      - openstack/devstack
+      - openstack/ovn-bgp-agent
+    vars:
+      devstack_localrc:
+        ENABLE_TLS: True
+        OVN_BUILD_FROM_SOURCE: True
+        OVN_BRANCH: v24.03.4
+        OVS_BRANCH: v3.3.3
+        FRR_USE_BFD: True
+      devstack_plugins:
+        ovn-bgp-agent: https://opendev.org/openstack/ovn-bgp-agent
+      devstack_services:
+        tls-proxy: true
+        tempest: false
+      devstack_local_conf:
+        post-config:
+          "/$NEUTRON_CORE_PLUGIN_CONF":
+            ovn:
+              enable_distributed_floating_ip: True
+
+    pre-run: playbooks/configure_bgp_networking.yaml
+
+    group-vars:
+      subnode:
+        devstack_localrc:
+          LIBS_FROM_GIT: neutron-tempest-plugin
+          OVN_BUILD_FROM_SOURCE: False
+          Q_PLUGIN: "noop"
+          SERVICES_FOR_TEMPEST: neutron,nova,keystone,glance
+        devstack_plugins:
+          neutron-tempest-plugin: https://opendev.org/openstack/neutron-tempest-plugin
+        devstack_services:
+          tls-proxy: true
+          tempest: true
+          etcd3: false
+          mysql: false
+          c-api: false
+          c-bak: false
+          c-sch: false
+          c-vol: false
+          cinder: false
+          n-api: false
+          n-api-meta: false
+          n-cond: false
+          n-cpu: false
+          n-novnc: false
+          n-sch: false
+          placement-api: false
+          br-ex-tcpdump: false
+          br-int-flows: false
+          q-ovn-metadata-agent: false
+          q-ovn-agent: false
+          ovn-controller: false
+          ovn-northd: false
+          ovs-vswitchd: false
+          ovsdb-server: false
+          neutron-dns: false
+          neutron-log: false
+          neutron-qos: false
+          neutron-segments: false
+          neutron-trunk: false
+          neutron-uplink-status-propagation: false
+          neutron-network-segment-range: false
+          neutron-port-forwarding: false
+          neutron-conntrack-helper: false
+          neutron-tag-ports-during-bulk-creation: false
+          neutron-ndp-proxy: false
+          neutron-subnet-external-network: false
+          neutron-port-trusted-vif: false
+        devstack_local_conf:
+          post-config: {}
+          test-config:
+            $TEMPEST_CONFIG:
+              service_available:
+                neutron: True
+                nova: True
+                glance: True
+                key: True
+              neutron_plugin_options:
+                firewall_driver: ovn
+        tempest_test_regex: "^neutron_tempest_plugin.scenario"
+        tempest_exclude_regex: "\
+          (^neutron_tempest_plugin.scenario.test_port_forwardings)|\
+          (^neutron_tempest_plugin.scenario.test_multiple_gws)"
