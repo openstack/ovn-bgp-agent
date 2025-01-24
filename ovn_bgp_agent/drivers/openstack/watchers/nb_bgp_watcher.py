@@ -898,14 +898,23 @@ class NATMACAddedEvent(base_watcher.DnatSnatBaseEvent):
                           'nat': row.uuid})
             return False
 
-        if lsp.type != constants.OVN_VM_VIF_PORT_TYPE:
-            return False
-
-        try:
-            if lsp.options['requested-chassis'] != self.agent.chassis:
+        if lsp.type == constants.OVN_VIRTUAL_VIF_PORT_TYPE:
+            # The host it should be exposed to is set in the external_ids
+            lsp_host = lsp.external_ids.get(constants.OVN_HOST_ID_EXT_ID_KEY)
+            if lsp_host != self.agent.chassis:
+                LOG.debug('NAT LSP port is bound to host %s', lsp_host)
                 return False
-        except KeyError:
+
+        elif lsp.type != constants.OVN_VM_VIF_PORT_TYPE:
+            LOG.debug("Logical Switch Port %(lsp)s for NAT entry %(nat)s "
+                      "is not a VM port.", {'lsp': lsp_id, 'nat': row.uuid})
             return False
+        else:
+            try:
+                if lsp.options['requested-chassis'] != self.agent.chassis:
+                    return False
+            except KeyError:
+                return False
 
         try:
             if old.external_mac and old.external_mac[0] == row.external_mac[0]:
