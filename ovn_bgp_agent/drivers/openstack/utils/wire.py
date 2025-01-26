@@ -512,19 +512,37 @@ def cleanup_wiring(idl, bridge_mappings, ovs_flows, exposed_ips,
     elif CONF.exposing_method == constants.EXPOSE_METHOD_VRF:
         return _cleanup_wiring_evpn(ovs_flows, routing_tables_routes)
     elif CONF.exposing_method == constants.EXPOSE_METHOD_OVN:
-        # TODO(ltomasbo): clean up old policies, routes and proxy_arps cidrs
-        return True
+        return _cleanup_wiring_ovn(exposed_ips)
+
+
+def _cleanup_extra_ips(exposed_ips: list[str]) -> set[str]:
+    current_ips = set(linux_net.get_exposed_ips(CONF.bgp_nic))
+    expected_ips = {ip for ip_dict in exposed_ips.values()
+                    for ip in ip_dict.keys()}
+    ips_to_delete = current_ips - expected_ips
+    if ips_to_delete:
+        LOG.warning(f"Removing IPs {ips_to_delete} from {CONF.bgp_nic} as "
+                    "they are not expected to be exposed.")
+        linux_net.delete_exposed_ips(ips_to_delete, CONF.bgp_nic)
+    return expected_ips
+
+
+def _cleanup_wiring_ovn(exposed_ips):
+    """Cleanup IPs that are not expected to be exposed on the bgp_nic.
+
+    This may be needed in case ovn-bgp-agent misses updates from the OVN NB
+    database due to temporary downtime, networking issues between the
+    ovn-bgp-agent and the NB DB or otherwise.
+    """
+    _cleanup_extra_ips(exposed_ips)
+    # TODO(dmitriis): clean up other state: in the local OVN NB: logical
+    # router policies, logical router routes, ARP proxies in logical switch
+    # ports, static mac bindings.
 
 
 def _cleanup_wiring_underlay(idl, bridge_mappings, ovs_flows, exposed_ips,
                              routing_tables, routing_tables_routes):
-    current_ips = linux_net.get_exposed_ips(CONF.bgp_nic)
-    expected_ips = [ip for ip_dict in exposed_ips.values()
-                    for ip in ip_dict.keys()]
-
-    ips_to_delete = [ip for ip in current_ips if ip not in expected_ips]
-    linux_net.delete_exposed_ips(ips_to_delete, CONF.bgp_nic)
-
+    expected_ips = _cleanup_extra_ips(exposed_ips)
     extra_routes = {}
     for bridge in bridge_mappings.values():
         extra_routes[bridge] = (

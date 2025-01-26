@@ -230,7 +230,7 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         mock_expose_ovn_lb_vip.assert_called_once_with(lb1)
         mock_expose_ovn_lb_fip.assert_called_once_with(lb1)
         mock_del_exposed_ips.assert_called_once_with(
-            ips, CONF.bgp_nic)
+            set(ips), CONF.bgp_nic)
         mock_del_ip_rules.assert_called_once_with(fake_ip_rules)
         mock_del_ip_routes.assert_called_once()
         bridge = set(self.nb_bgp_driver.ovn_bridge_mappings.values()).pop()

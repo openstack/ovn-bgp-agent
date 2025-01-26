@@ -328,18 +328,27 @@ class TestWire(test_base.TestCase):
             self.sb_idl, self.bridge_mappings, ovs_flows, exposed_ips,
             routing_tables, routing_tables_routes)
 
-    def test_cleanup_wiring_ovn(self):
+    @mock.patch.object(linux_net, 'get_exposed_ips')
+    @mock.patch.object(linux_net, 'delete_exposed_ips')
+    def test_cleanup_wiring_ovn(self, _delete_exposed_ips, _get_exposed_ips):
         CONF.set_override('exposing_method', 'ovn')
         self.addCleanup(CONF.clear_override, 'exposing_method')
 
+        # Both IPs are present on the NIC but .42 is not expected
+        # to be exposed.
+        _get_exposed_ips.return_value = ['192.0.2.42', '192.0.2.24']
+
         ovs_flows = {}
-        exposed_ips = {}
+        exposed_ips = {
+            "fakels": {"192.0.2.24": {'bridge_device': "br-example"}}}
         routing_tables = {}
         routing_tables_routes = {}
-        ret = wire.cleanup_wiring(self.sb_idl, self.bridge_mappings, ovs_flows,
-                                  exposed_ips, routing_tables,
-                                  routing_tables_routes)
-        self.assertTrue(ret)
+        wire.cleanup_wiring(self.sb_idl, self.bridge_mappings, ovs_flows,
+                            exposed_ips, routing_tables,
+                            routing_tables_routes)
+        # Make sure we only delete the IP that isn't supposed to be exposed.
+        _delete_exposed_ips.assert_called_once_with({"192.0.2.42"},
+                                                    CONF.bgp_nic)
 
     def test_cleanup_wiring_evpn(self):
         CONF.set_override('exposing_method', 'vrf')
