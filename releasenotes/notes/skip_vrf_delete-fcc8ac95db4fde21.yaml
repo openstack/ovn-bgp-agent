@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Added configuration option ``delete_vrf_on_disconnect`` which prevents
+    deletion of VRF from FRR and Linux kernel networking. This allows to
+    establish a peering session within VRF as well as externally enslave
+    additional interfaces into VRF in case EVPN integration with the rest of
+    infrastructure is not preferable.

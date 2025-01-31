@@ -102,6 +102,12 @@ agent_opts = [
                 help='If enabled, all routes are removed from the VRF table'
                      '(specified by bgp_vrf_table_id option) at startup.',
                 default=False),
+    cfg.BoolOpt('delete_vrf_on_disconnect',
+                help='If enabled agent will take care of completely deleting'
+                     'VRF from both kernel and FRR configuration.'
+                     'Disabling option will keep VRF even when agent considers'
+                     'its presence as redundant',
+                default=True),
     cfg.StrOpt('bgp_nic',
                default='bgp-nic',
                help='The name of the interface used within the VRF '

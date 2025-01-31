@@ -219,6 +219,19 @@ class TestEVPN(test_base.TestCase):
 
         self.assertFalse(bridge._setup_done)
 
+    def test_evpnbridge_disconnect_keep_vrf(self):
+        bridge = self._create_bridge()
+        bridge._setup_done = True
+        CONF.set_override('delete_vrf_on_disconnect', False)
+        bridge.disconnect()
+
+        calls = [mock.call('br-100'),
+                 mock.call('vxlan-100')]
+        self.mock_linux_net.delete_device.assert_has_calls(calls)
+        self.mock_frr.vrf_reconfigure.assert_not_called()
+
+        self.assertFalse(bridge._setup_done)
+
     def test_evpnbridge_connect_vlan_again(self):
         port, bridge, evpn_vlan = self._create_bridge_and_vlan()
 
