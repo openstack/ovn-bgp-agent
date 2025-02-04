@@ -233,7 +233,16 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
     _execute_commands(ovn_idl, cmds)
     cmds = []
     cmds.extend(_ensure_ovn_policies(ovn_idl, CONF.local_ovn_cluster.peer_ips))
-    cmds.extend(_ensure_ovn_routes(ovn_idl, CONF.local_ovn_cluster.peer_ips))
+
+    ovs_idl.get_ovn_bridge_mappings(
+        bridge=CONF.local_ovn_cluster.bgp_chassis_id)
+
+    bfds = _ensure_bfds(ovn_idl, zip(
+        CONF.local_ovn_cluster.peer_ips,
+        ovs_idl.get_ovn_bridge_mappings(
+            bridge=CONF.local_ovn_cluster.bgp_chassis_id)))
+    cmds.extend(
+        _ensure_ovn_routes(ovn_idl, CONF.local_ovn_cluster.peer_ips, bfds))
     # Creation of all router related cmds in a single transaction
     _execute_commands(ovn_idl, cmds)
 
@@ -259,6 +268,21 @@ def _ensure_base_wiring_config_ovn(ovs_idl, ovn_idl):
             _ensure_ingress_flows(bridge, mac, network, provider_cidrs)
 
     return ovn_bridge_mappings, flows_info
+
+
+def _ensure_bfds(ovn_idl, nic_infos):
+    bfds = []
+    for peer_ip, bm in nic_infos:
+        network, bridge = helpers.parse_bridge_mapping(bm)
+        # the port name is hardcoded
+        r_port_name = "{}-{}".format(
+            constants.OVN_CLUSTER_ROUTER, network)
+        bfds.append(
+            ovn_idl.bfd_add(
+                logical_port=r_port_name, dst_ip=peer_ip,
+                may_exist=True).execute(check_error=True))
+
+    return bfds
 
 
 def _ensure_ovn_router(ovn_idl):
@@ -374,6 +398,11 @@ def _ensure_ovn_network_link_external(ovn_idl, switch_name, ip, mac):
     cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
                                  'router', 'router', **options))
 
+    # bind to local chassis
+    # ovn-nbctl lrp-set-gateway-chassis  bgp-router-public bgp 1
+    cmds.append(ovn_idl.lrp_set_gateway_chassis(
+        r_port_name, CONF.local_ovn_cluster.bgp_chassis_id, 1))
+
     _execute_commands(ovn_idl, cmds)
 
 
@@ -402,12 +431,13 @@ def _ensure_ovn_policies(ovn_idl, next_hops):
                                   match, action, may_exist=True, **columns)]
 
 
-def _ensure_ovn_routes(ovn_idl, peer_ips):
+def _ensure_ovn_routes(ovn_idl, peer_ips, bfds):
     prefix = '0.0.0.0/0'
     cmds = []
-    for ip in peer_ips:
+    for bfd, ip in zip(bfds, peer_ips):
         cmds.append(ovn_idl.lr_route_add(constants.OVN_CLUSTER_ROUTER, prefix,
-                                         ip, ecmp=True, may_exist=True))
+                                         ip, ecmp=True, may_exist=True,
+                                         bfd=bfd.uuid))
     return cmds
 
 

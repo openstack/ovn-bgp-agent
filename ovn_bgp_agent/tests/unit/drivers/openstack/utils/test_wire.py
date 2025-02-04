@@ -249,10 +249,11 @@ class TestWire(test_base.TestCase):
     @mock.patch.object(wire, '_execute_commands')
     def test_ensure_ovn_routes(self, m_cmds):
         peer_ips = ['1.1.1.1']
-        wire._ensure_ovn_routes(self.nb_idl, peer_ips)
+        bfds = [test_utils.create_row(uuid='bfd')]
+        wire._ensure_ovn_routes(self.nb_idl, peer_ips, bfds)
         self.nb_idl.lr_route_add.assert_called_once_with(
             constants.OVN_CLUSTER_ROUTER, '0.0.0.0/0', peer_ips[0],
-            ecmp=True, may_exist=True)
+            ecmp=True, may_exist=True, bfd=bfds[0].uuid)
 
     @mock.patch.object(ovs_utils, 'ensure_flow')
     @mock.patch.object(linux_net, 'get_ip_version')
