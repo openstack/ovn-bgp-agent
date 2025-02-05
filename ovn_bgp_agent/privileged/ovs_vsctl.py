@@ -42,3 +42,7 @@ def ovs_ofctl(args, timeout=None):
         return ovs_cmd('ovs-ofctl', args, timeout)
     except processutils.ProcessExecutionError:
         return ovs_cmd('ovs-ofctl', args + ['-O', 'OpenFlow13'], timeout)
+
+
+def ovs_appctl(args):
+    return ovs_cmd('ovs-appctl', args)
