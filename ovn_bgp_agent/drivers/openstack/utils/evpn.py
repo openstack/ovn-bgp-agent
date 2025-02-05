@@ -112,15 +112,20 @@ class EvpnBridge:
         LOG.info('Disconnecting evpn bridge %s',
                  self.vrf_name)
 
-        for devname in [self.bridge_name, self.vxlan_name, self.vrf_name]:
+        disconnect_devices = [self.bridge_name, self.vxlan_name]
+        if CONF.delete_vrf_on_disconnect:
+            disconnect_devices.append(self.vrf_name)
+
+        for devname in disconnect_devices:
             LOG.info('Delete device %s', devname)
             linux_net.delete_device(devname)
 
-        # We need to do the frr reconfigure after deleting all devices.
-        # otherwise, frr will throw an error that it can only delete
-        # inactive vrf's
-        LOG.debug('Configure FRR VRF (del)')
-        frr.vrf_reconfigure(self.evpn_opts, action="del-vrf")
+        if CONF.delete_vrf_on_disconnect:
+            # We need to do the frr reconfigure after deleting all devices.
+            # otherwise, frr will throw an error that it can only delete
+            # inactive vrf's
+            LOG.debug('Configure FRR VRF (del)')
+            frr.vrf_reconfigure(self.evpn_opts, action="del-vrf")
 
         self._setup_done = False
 
