@@ -1656,6 +1656,12 @@ class TestNATMACAddedEvent(test_base.TestCase):
         lsp.options = {'requested-chassis': 'foo'}
         self.assertFalse(self._call_match())
 
+    def test_match_fn_different_chassis_virtual_port(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VIRTUAL_VIF_PORT_TYPE
+        lsp.external_ids = {constants.OVN_HOST_ID_EXT_ID_KEY: 'foo'}
+        self.assertFalse(self._call_match())
+
     def test_match_fn_external_mac_untouched(self):
         lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
         lsp.type = constants.OVN_VM_VIF_PORT_TYPE
@@ -1707,6 +1713,16 @@ class TestNATMACAddedEvent(test_base.TestCase):
         )
         self.nat_entry.external_ip = ""
         self.assertFalse(self._call_match(old))
+
+    def test_match_fn_passed_virtual_port(self):
+        lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
+        lsp.type = constants.OVN_VIRTUAL_VIF_PORT_TYPE
+        lsp.external_ids = {constants.OVN_HOST_ID_EXT_ID_KEY: self.chassis}
+        old = utils.create_row(
+            _uuid='uuid',
+            external_mac=""
+        )
+        self.assertTrue(self._call_match(old))
 
     def test_match_fn_passed(self):
         lsp = self.agent.nb_idl.lsp_get.return_value.execute.return_value
