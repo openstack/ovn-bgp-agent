@@ -17,6 +17,7 @@ import abc
 import functools
 import inspect
 import os
+import shutil
 import sys
 from unittest import mock
 
@@ -35,9 +36,9 @@ from ovn_bgp_agent.drivers.openstack import nb_ovn_bgp_driver
 from ovn_bgp_agent.drivers.openstack.utils import ovn
 from ovn_bgp_agent.tests.functional import fixtures
 
-
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
+PRIVSEP_HELPER_CMD = 'privsep-helper'
 
 
 def _get_test_log_path():
@@ -83,6 +84,14 @@ def sanitize_log_path(path):
     return path.replace(' ', '-').replace('(', '_').replace(')', '_')
 
 
+def get_privsep_helper_executable_path():
+    """Return privsep-helper path based on the used venv."""
+    privsep_path = shutil.which(PRIVSEP_HELPER_CMD)
+    if privsep_path is None:
+        raise RuntimeError("%s executable not found" % PRIVSEP_HELPER_CMD)
+    return privsep_path
+
+
 def configure_functional_test(id_):
     def flags(**kw):
         """Override some configuration values.
@@ -112,9 +121,7 @@ def configure_functional_test(id_):
     config.register_opts()
     flags(log_file=log_file)
     config.setup_privsep()
-    privsep_helper = os.path.join(
-        os.getenv('VIRTUAL_ENV', os.path.dirname(sys.executable)[:-4]),
-        'bin', 'privsep-helper')
+    privsep_helper = get_privsep_helper_executable_path()
     flags(
         helper_command=' '.join(['sudo', '-E', privsep_helper]),
         group=PRIVILEGED_GROUP)
