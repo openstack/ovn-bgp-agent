@@ -14,6 +14,8 @@
 
 import socket
 
+from neutron_lib import constants as n_const
+
 
 OVN_VIF_PORT_TYPES = ("", "chassisredirect", "virtual")
 
@@ -92,6 +94,8 @@ OVN_EVPN_VETH_OVS_PREFIX = "veth-ovs-"
 OVN_INTEGRATION_BRIDGE = 'br-int'
 OVN_LRP_PORT_NAME_PREFIX = 'lrp-'
 OVN_CRLRP_PORT_NAME_PREFIX = 'cr-lrp-'
+OVN_VLAN_DEVICE_MAX_LENGTH = n_const.DEVICE_NAME_MAX_LEN - len(
+    f".{n_const.MAX_VLAN_TAG}")
 
 # the new prefix will get the first 11 chars of the localnet port prefixed,
 # neutron-tap style
