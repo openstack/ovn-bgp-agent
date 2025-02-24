@@ -403,13 +403,15 @@ def get_extra_routing_table_for_bridge(ovn_routing_tables, bridge):
 def ensure_vlan_device_for_network(bridge, vlan_tag):
     ovn_bgp_agent.privileged.linux_net.ensure_vlan_device_for_network(bridge,
                                                                       vlan_tag)
-    device = "{}/{}".format(bridge, vlan_tag)
+    device = "{}/{}".format(
+        bridge[:constants.OVN_VLAN_DEVICE_MAX_LENGTH], vlan_tag)
     enable_proxy_arp(device)
     enable_proxy_ndp(device)
 
 
 def delete_vlan_device_for_network(bridge, vlan_tag):
-    vlan_device_name = '{}.{}'.format(bridge, vlan_tag)
+    vlan_device_name = '{}.{}'.format(
+        bridge[:constants.OVN_VLAN_DEVICE_MAX_LENGTH], vlan_tag)
     delete_device(vlan_device_name)
 
 
@@ -418,12 +420,12 @@ def get_bridge_vlans(bridge):
 
 
 def enable_proxy_ndp(device):
-    flag = "net.ipv6.conf.{}.proxy_ndp".format(device)
+    flag = "net.ipv6.conf.{}.proxy_ndp".format(device[:15])
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
 def enable_proxy_arp(device):
-    flag = "net.ipv4.conf.{}.proxy_arp".format(device)
+    flag = "net.ipv4.conf.{}.proxy_arp".format(device[:15])
     ovn_bgp_agent.privileged.linux_net.set_kernel_flag(flag, 1)
 
 
@@ -550,8 +552,9 @@ def delete_bridge_ip_routes(routing_tables, routing_tables_routes,
         for route_info in routes_info:
             oif = get_interface_index(device)
             if route_info['vlan']:
-                vlan_device_name = '{}.{}'.format(device,
-                                                  route_info['vlan'])
+                vlan_device_name = '{}.{}'.format(
+                    device[:constants.OVN_VLAN_DEVICE_MAX_LENGTH],
+                    route_info['vlan'])
                 oif = get_interface_index(vlan_device_name)
             if 'gateway' in route_info['route'].keys():  # subnet route
                 possible_matchings = [
@@ -745,7 +748,8 @@ def add_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
                 ip, strict=False).network_address)
 
     if vlan:
-        oif_name = '{}.{}'.format(dev, vlan)
+        oif_name = '{}.{}'.format(
+            dev[:constants.OVN_VLAN_DEVICE_MAX_LENGTH], vlan)
         try:
             oif = get_interface_index(oif_name)
         except agent_exc.NetworkInterfaceNotFound:
@@ -799,7 +803,8 @@ def del_ip_route(ovn_routing_tables_routes, ip_address, route_table, dev,
 
     try:
         if vlan:
-            oif_name = '{}.{}'.format(dev, vlan)
+            oif_name = '{}.{}'.format(
+                dev[:constants.OVN_VLAN_DEVICE_MAX_LENGTH], vlan)
             oif = get_interface_index(oif_name)
         else:
             oif = get_interface_index(dev)
