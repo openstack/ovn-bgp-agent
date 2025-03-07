@@ -132,11 +132,6 @@ To run OVN BGP Agent with NB driver and EVPN L3 mode, the following configuratio
   # The exposing mechanism to be used.
   exposing_method = 'vrf'
 
-  # When using exposing_method vrf and l3 mode on networks, then one can create
-  # anycast mac addresses, basically using the same mac address on all nodes for
-  # use with routing.
-  anycast_evpn_gateway_mode = True
-
   [ovn]
   # The connection string for the OVN_Northbound OVSDB.
   # Use tcp:IP:PORT for TCP connection.
