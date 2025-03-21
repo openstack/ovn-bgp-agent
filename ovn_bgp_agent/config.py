@@ -68,6 +68,7 @@ agent_opts = [
                default='ovn_bgp_driver'),
     cfg.StrOpt('ovsdb_connection',
                default='unix:/usr/local/var/run/openvswitch/db.sock',
+               regex=r'^(tcp|ssl|unix):.+',
                help='The connection string for the native OVSDB backend.\n'
                     'Use tcp:IP:PORT for TCP connection.\n'
                     'Use unix:FILE for unix domain socket connection.'),
@@ -192,8 +193,8 @@ ovn_opts = [
                help='The PEM file with CA certificate that OVN should use to'
                     ' verify certificates presented to it by SSL peers'),
     cfg.StrOpt('ovn_sb_connection',
-               default='',
                deprecated_group='DEFAULT',
+               regex=r'^(tcp|ssl|unix):.+',
                help='The connection string for the OVN_Southbound OVSDB.\n'
                     'Use tcp:IP:PORT for TCP connection.\n'
                     'Use unix:FILE for unix domain socket connection.'),
@@ -213,8 +214,8 @@ ovn_opts = [
                help='The PEM file with CA certificate that OVN should use to'
                     ' verify certificates presented to it by SSL peers'),
     cfg.StrOpt('ovn_nb_connection',
-               default='',
                deprecated_group='DEFAULT',
+               regex=r'^(tcp|ssl|unix):.+',
                help='The connection string for the OVN_Northbound OVSDB.\n'
                     'Use tcp:IP:PORT for TCP connection.\n'
                     'Use unix:FILE for unix domain socket connection.'),
@@ -223,6 +224,7 @@ ovn_opts = [
 local_ovn_cluster_opts = [
     cfg.StrOpt('ovn_nb_connection',
                default='unix:/var/run/ovn/ovnnb_db.sock',
+               regex=r'^(tcp|ssl|unix):.+',
                help='The connection string for the OVN_Northbound OVSDB.\n'
                     'Use tcp:IP:PORT for TCP connection.\n'
                     'Use unix:FILE for unix domain socket connection.'),
