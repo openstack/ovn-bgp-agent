@@ -138,19 +138,7 @@ Once a VRF is exposed on the host, the following will be done (per VRF):
 
       $ ovs-ofctl add-flow br-ex cookie=0x3e7,priority=900,ip,in_port=<OVN_PATCH_PORT_ID>,actions=mod_dl_dst:VETH|VLAN_MAC,NORMAL
 
-5. If ``CONF.anycast_evpn_gateway_mode`` is enabled, it will make sure that the
-   mac address on the vrf12345678-12 interface is equal on all nodes, using the
-   VLAN id and VNI id as an offset while generating a MAC address.
-
-   .. code-block:: bash
-
-     $ ip link set address 02:00:03:e7:00:7b dev vrf12345678-12  # generated mac for vni 1001 and vlan 123
-
-     # Replace link local address and update to generated vlan mac (used for ipv6 router advertisements)
-     $ ip -6 address del <some fe80::/10 address> dev vrf12345678-12
-     $ ip -6 address add fe80::200:3e7:65/64 dev vrf12345678-12
-
-6. If IPv6 subnets are defined (checked in dhcp opts once again), then configure
+5. If IPv6 subnets are defined (checked in dhcp opts once again), then configure
    FRR to handle neighbor discovery (and do router advertisements for us)
 
    .. code-block:: jinja
@@ -166,7 +154,7 @@ Once a VRF is exposed on the host, the following will be done (per VRF):
       no ipv6 nd suppress-ra
      exit
 
-7. Then, finally, add the routes to expose to the VRF, since we use full
+6. Then, finally, add the routes to expose to the VRF, since we use full
    kernel routing in this VRF, we also expose the MAC address that belongs
    to this route, so we do not rely on ARP proxies in OVN.
 
