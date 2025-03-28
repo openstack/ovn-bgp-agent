@@ -346,7 +346,7 @@ def _ensure_ovn_network_link_internal(ovn_idl, switch_name, provider_cidrs):
     # NOTE(ltomasbo): require v23.06.0 so that proxy-arp works as expected.
     # If older version the provider_cidrs should contain all the provider
     # network cidrs, pointing to the gateway IP of the network.
-    cidrs = ','.join(provider_cidrs) if provider_cidrs else '0.0.0.0/0'
+    cidrs = ' '.join(provider_cidrs) if provider_cidrs else '0.0.0.0/0'
     options = {'router-port': r_port_name, 'arp_proxy': cidrs}
     cmds.extend(_ensure_lsp_cmds(ovn_idl, s_port_name, switch_name,
                                  'router', 'router', **options))
