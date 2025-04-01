@@ -1063,14 +1063,20 @@ class DistributedFlagChangedEvent(base_watcher.Event):
         try:
             if (old.external_ids.get(constants.OVN_FIP_DISTRIBUTED) ==
                     row.external_ids[constants.OVN_FIP_DISTRIBUTED]):
-                return False
+                return False  # no change
+
+            distributed = row.external_ids[constants.OVN_FIP_DISTRIBUTED]
+            distributed_mode = (distributed == "True")
         except KeyError:
-            # Distributed flag was deleted, behave like distributed agent
-            pass
+            # Distributed flag was not present, behave like distributed agent
+            distributed_mode = True
         except AttributeError:
+            # external_ids was not set in old, not our event
             return False
 
-        return True
+        # Only match if we are changing the distributed flag to prevent
+        # unnecessary syncs
+        return self.agent.distributed != distributed_mode
 
     def run(self, event, row, old):
         if row.external_ids.get(constants.OVN_FIP_DISTRIBUTED) == "True":

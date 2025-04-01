@@ -1733,3 +1733,81 @@ class TestNATMACAddedEvent(test_base.TestCase):
             external_mac=""
         )
         self.assertTrue(self._call_match(old))
+
+
+class TestDistributedFlagChangedEvent(test_base.TestCase):
+    def setUp(self):
+        super(TestDistributedFlagChangedEvent, self).setUp()
+        self.chassis = "fake-chassis"
+        self.agent = mock.Mock(chassis=self.chassis)
+        self.agent.distributed = True  # unless configured, this is the default
+        self.event = nb_bgp_watcher.DistributedFlagChangedEvent(self.agent)
+
+    def test_match_fn_distributed_key_unrelated_change(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            external_ids={
+                "someother-key": "bar-value",
+            },
+        )
+        old = utils.create_row(
+            external_ids={
+                "someother-key": "foo-value",
+            },
+        )
+        self.assertFalse(self.event.match_fn(event, row, old))
+
+        # Another unrelated change is if external_ids is not in the row.
+        self.assertFalse(self.event.match_fn(event, row, utils.create_row()))
+
+    def test_match_fn_distributed_key_no_change(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_DISTRIBUTED: "True",
+            },
+        )
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_DISTRIBUTED: "True",
+            },
+        )
+        self.assertFalse(self.event.match_fn(event, row, old))
+
+    def test_match_fn_distributed_changed(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_DISTRIBUTED: "False",
+            },
+        )
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_DISTRIBUTED: "True",
+            },
+        )
+        self.assertTrue(self.event.match_fn(event, row, old))
+        self.agent.distributed = False
+
+        # Same change should not match again
+        self.assertFalse(self.event.match_fn(event, row, old))
+
+        # But changing back should match.
+        self.assertTrue(self.event.match_fn(event, old, row))
+
+    def test_match_fn_distributed_appear(self):
+        event = self.event.ROW_UPDATE
+        row = utils.create_row(
+            external_ids={
+                "someother-key": "foo-value",
+            },
+        )
+        old = utils.create_row(
+            external_ids={
+                constants.OVN_FIP_DISTRIBUTED: "False",
+            },
+        )
+        self.agent.distributed = False
+        self.assertTrue(self.event.match_fn(event, row, old))
+        self.agent.distributed = True
+        self.assertTrue(self.event.match_fn(event, old, row))
