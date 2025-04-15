@@ -148,32 +148,9 @@ agent_opts = [
 root_helper_opts = [
     cfg.StrOpt('root_helper', default='sudo',
                help=("Root helper application. "
-                     "Use 'sudo ovn-bgp-agent-rootwrap  "
-                     "/etc/ovn-bgp-agent/rootwrap.conf' to use the real "
-                     "root filter facility. Change to 'sudo' to skip the "
-                     "filtering and just run the command directly.")),
-    cfg.BoolOpt('use_helper_for_ns_read',
-                default=True,
-                help=("Use the root helper when listing the namespaces on a "
-                      "system. This may not be required depending on the "
-                      "security configuration. If the root helper is "
-                      "not required, set this to False for a performance "
-                      "improvement.")),
-    # We can't just use root_helper=sudo ovn-bgp-agent-rootwrap-daemon $cfg
-    # because it isn't appropriate for long-lived processes spawned with
-    # create_process. Having a bool use_rootwrap_daemon option precludes
-    # specifying the rootwrap daemon command, which may be necessary for Xen?
-    cfg.StrOpt('root_helper_daemon',
-               help=("""
-Root helper daemon application to use when possible.
-
-Use 'sudo ovn-bgp-agent-rootwrap-daemon /etc/ovn-bgp-agent/rootwrap.conf'
-to run rootwrap in "daemon mode" which has been reported to improve
-performance at scale. For more information on running rootwrap in
-"daemon mode", see:
-
-https://docs.openstack.org/oslo.rootwrap/latest/user/usage.html#daemon-mode
-""")),
+                     "List of command and arguments to prefix privsep-helper "
+                     "with, in order to run helper as root. Use 'sudo' to "
+                     "skip the filtering and just run the command directly.")),
 ]
 
 ovn_opts = [

@@ -136,13 +136,6 @@ function configure_ovn_bgp_agent {
     iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_certificate "$INT_CA_DIR/$DEVSTACK_CERT_NAME.crt"
     iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_private_key "$INT_CA_DIR/private/$DEVSTACK_CERT_NAME.key"
     iniset $OVN_BGP_AGENT_CONF_FILE ovn ovn_nb_connection $OVN_BGP_AGENT_OVN_NB_DB
-
-    # Configure rootwrap
-    sudo install -d -o root -g root -m 755 $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
-    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.d/*.filters $OVN_BGP_AGENT_CONF_DIR/rootwrap.d
-    sudo install -o root -g root -m 644 $OVN_BGP_AGENT_DIR/etc/ovn-bgp-agent/rootwrap.conf $OVN_BGP_AGENT_CONF_DIR
-    iniset $OVN_BGP_AGENT_CONF_FILE agent root_helper "$OVN_BGP_AGENT_ROOTWRAP_COMMAND"
-    iniset $OVN_BGP_AGENT_CONF_FILE agent root_helper_daemon "$OVN_BGP_AGENT_ROOTWRAP_DAEMON"
 }
 
 function init_ovn_bgp_agent {
