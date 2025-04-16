@@ -61,3 +61,5 @@ ChangeLog
 
 # Files created by releasenotes build
 releasenotes/build
+RELEASENOTES.rst
+releasenotes/notes/reno.cache
