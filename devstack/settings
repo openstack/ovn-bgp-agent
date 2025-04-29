@@ -18,6 +18,3 @@ FRR_USE_BFD=$(trueorfalse False FRR_USE_BFD)
 OVN_BGP_AGENT_DIR=$DEST/ovn-bgp-agent
 OVN_BGP_AGENT_SYSTEMD_SERVICE="devstack@ovn-bgp-agent.service"
 OVN_BGP_AGENT_CONF_FILE=$OVN_BGP_AGENT_CONF_DIR/bgp-agent.conf
-OVN_BGP_AGENT_ROOTWRAP=$(get_rootwrap_location ovn-bgp-agent)
-OVN_BGP_AGENT_ROOTWRAP_COMMAND="sudo $OVN_BGP_AGENT_ROOTWRAP $OVN_BGP_AGENT_CONF_DIR/rootwrap.conf"
-OVN_BGP_AGENT_ROOTWRAP_DAEMON="sudo $OVN_BGP_AGENT_ROOTWRAP-daemon $OVN_BGP_AGENT_CONF_DIR/rootwrap.conf"

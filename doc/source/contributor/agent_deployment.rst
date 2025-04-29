@@ -60,10 +60,6 @@ below:
       ovn_nb_connection = tcp:172.17.0.30:6641
       ovn_sb_connection = tcp:172.17.0.30:6642
 
-      [agent]
-      root_helper=sudo ovn-bgp-agent-rootwrap /etc/ovn-bgp-agent/rootwrap.conf
-      root_helper_daemon=sudo ovn-bgp-agent-rootwrap-daemon /etc/ovn-bgp-agent/rootwrap.conf
-
       $ sudo bgp-agent --config-dir bgp-agent.conf
       Starting BGP Agent...
       Loaded chassis 51c8480f-c573-4c1c-b96e-582f9ca21e70.
