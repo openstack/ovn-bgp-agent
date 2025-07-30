@@ -136,25 +136,37 @@ def delete_device(device):
 
 
 def ensure_arp_ndp_enabled_for_bridge(bridge, offset, vlan_tag=None):
+
+    if vlan_tag:
+        device_name = '{}.{}'.format(
+            bridge[:constants.OVN_VLAN_DEVICE_MAX_LENGTH],
+            vlan_tag
+        )
+        device_index = vlan_tag % constants.IPV4_OCTET_RANGE
+
+    else:
+        device_name = bridge[:n_const.DEVICE_NAME_MAX_LEN]
+        device_index = offset
+
     ipv4 = "%s%d.%s" % (
-        constants.ARP_IPV4_PREFIX, offset / constants.IPV4_OCTET_RANGE,
-        offset % constants.IPV4_OCTET_RANGE)
-    ipv6 = "%s%x" % (constants.NDP_IPV6_PREFIX, offset)
+        constants.ARP_IPV4_PREFIX, offset % constants.IPV4_OCTET_RANGE,
+        device_index % constants.IPV4_OCTET_RANGE)
+    ipv6 = "%s%x:%x" % (constants.NDP_IPV6_PREFIX, offset, device_index)
 
     for ip in (ipv4, ipv6):
         try:
-            ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ip, bridge)
+            ovn_bgp_agent.privileged.linux_net.add_ip_to_dev(ip, device_name)
         except agent_exc.IpAddressAlreadyExists:
-            LOG.debug("IP %s already added on bridge %s", ip, bridge)
+            LOG.debug("IP %s already added on device %s", ip, device_name)
         except KeyError as e:
             if "object exists" not in str(e):
-                LOG.error("Unable to add IP on bridge %s to enable arp/ndp. "
-                          "Exception: %s", bridge, e)
+                LOG.error("Unable to add IP on device %s to enable arp/ndp. "
+                          "Exception: %s", device_name, e)
                 raise
 
-    # also enable the arp/ndp on the bridge in case there are flat networks
-    enable_proxy_arp(bridge)
-    enable_proxy_ndp(bridge)
+    # also enable the arp/ndp on the device
+    enable_proxy_arp(device_name.replace('.', '/'))
+    enable_proxy_ndp(device_name.replace('.', '/'))
 
 
 def ensure_anycast_mac_for_interface(intf, offset):
