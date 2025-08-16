@@ -550,6 +550,9 @@ def get_ovn_ip_rules(routing_tables):
 
 
 def delete_exposed_ips(ips, nic):
+    # NOTE(frct1): ips has to be list type
+    if isinstance(ips, set):
+        ips = list(ips)
     ovn_bgp_agent.privileged.linux_net.delete_exposed_ips(ips, nic)
 
 
