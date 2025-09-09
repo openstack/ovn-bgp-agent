@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from neutron_lib._i18n import _
 from oslo_config import cfg
 from oslo_log import log as logging
 from ovs.stream import Stream
@@ -191,8 +192,8 @@ class StaticMACBindingAddCommand(command.AddCommand):
                 # With the current database schema, this cannot happen, but
                 # better safe than sorry.
                 raise RuntimeError(
-                    "Unexpected duplicates in database for port %s "
-                    "and ip %s" % (self.port, self.ip))
+                    _("Unexpected duplicates in database for port %s "
+                      "and ip %s" % (self.port, self.ip)))
             binding = static_mac_binding_result[0]
             if self.may_exist:
                 # When no changes are made to a record, the parent
@@ -204,8 +205,8 @@ class StaticMACBindingAddCommand(command.AddCommand):
                 return
             else:
                 raise RuntimeError(
-                    "Static MAC Binding entry for port %s and ip %s exists" % (
-                        self.port, self.ip))
+                    _("Static MAC Binding entry for port %s and ip %s exists" %
+                      (self.port, self.ip)))
         binding = txn.insert(self.api.tables[self.table_name])
         binding.logical_port = self.port
         binding.ip = self.ip
@@ -239,8 +240,8 @@ class StaticMACBindingDelCommand(command.BaseCommand):
                 # With the current database schema, this cannot happen, but
                 # better safe than sorry.
                 raise RuntimeError(
-                    "Unexpected duplicates in database for port %s "
-                    "and ip %s" % (self.port, self.ip))
+                    _("Unexpected duplicates in database for port %s "
+                      "and ip %s" % (self.port, self.ip)))
             binding = static_mac_binding_result[0]
             binding.delete()
             return
@@ -248,8 +249,8 @@ class StaticMACBindingDelCommand(command.BaseCommand):
             return
         else:
             raise RuntimeError(
-                "Static MAC Binding entry for port %s and ip %s does not "
-                "exist" % (self.port, self.ip))
+                _("Static MAC Binding entry for port %s and ip %s does not "
+                  "exist" % (self.port, self.ip)))
 
 
 class GetLSPsForGwChassisCommand(command.ReadOnlyCommand):

@@ -280,7 +280,8 @@ class TestEVPN(test_base.TestCase):
         self.assertTrue(vlan_dev._veth_created)
         self.assertTrue(vlan_dev._setup_done)
 
-    def test_evpnbridge_vlan_setup_l3(self, custom_ips=[]):
+    def test_evpnbridge_vlan_setup_l3(self, custom_ips=None):
+        custom_ips = custom_ips or []
         vlan_tag = 4094
         vlan_tag_str = '4094'
         _, evpn_bridge, vlan_dev = self._create_bridge_and_vlan(vlan_tag)

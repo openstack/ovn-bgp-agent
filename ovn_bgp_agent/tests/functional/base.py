@@ -49,6 +49,8 @@ def _get_test_log_path():
 DEFAULT_LOG_DIR = os.path.join(_get_test_log_path(), 'functional-logs')
 
 
+# NOTE(ralonsoh): this timeout catch method needs to be reimplemented without
+# using eventlet.
 class _CatchTimeoutMetaclass(abc.ABCMeta):
     def __init__(cls, name, bases, dct):
         super(_CatchTimeoutMetaclass, cls).__init__(name, bases, dct)

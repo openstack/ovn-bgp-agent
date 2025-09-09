@@ -31,7 +31,8 @@ CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
 
-def ensure_base_wiring_config(idl, ovs_idl, ovn_idl=None, routing_tables={}):
+def ensure_base_wiring_config(idl, ovs_idl, ovn_idl=None, routing_tables=None):
+    routing_tables = routing_tables or {}
     if CONF.exposing_method == constants.EXPOSE_METHOD_UNDERLAY:
         return _ensure_base_wiring_config_underlay(idl, ovs_idl,
                                                    routing_tables)

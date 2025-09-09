@@ -46,7 +46,8 @@ def get_ip_version(ip):
     wait=tenacity.wait_exponential(multiplier=0.02, max=1),
     stop=tenacity.stop_after_delay(8),
     reraise=True)
-def get_interfaces(filter_out=[]):
+def get_interfaces(filter_out=None):
+    filter_out = filter_out or []
     with pyroute2.IPRoute() as ipr:
         return [iface.get_attr('IFLA_IFNAME') for iface in ipr.get_links()
                 if iface.get_attr('IFLA_IFNAME') not in filter_out]

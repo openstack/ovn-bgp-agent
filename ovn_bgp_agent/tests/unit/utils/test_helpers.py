@@ -33,15 +33,15 @@ class TestHelpers(test_base.TestCase):
         bridge_mappings = ""
         ret_net, ret_bridge = helpers.parse_bridge_mapping(bridge_mappings)
 
-        self.assertEqual(ret_net, None)
-        self.assertEqual(ret_bridge, None)
+        self.assertIsNone(ret_net)
+        self.assertIsNone(ret_bridge)
 
     def test_parse_bridge_mappings_wrong_format(self):
         bridge_mappings = "provider-1:br-ex:extra_field"
         ret_net, ret_bridge = helpers.parse_bridge_mapping(bridge_mappings)
 
-        self.assertEqual(ret_net, None)
-        self.assertEqual(ret_bridge, None)
+        self.assertIsNone(ret_net)
+        self.assertIsNone(ret_bridge)
 
 
 class TestHelperGetLBDatapaths(test_base.TestCase):

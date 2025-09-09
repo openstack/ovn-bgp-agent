@@ -15,6 +15,7 @@
 import collections
 import netaddr
 
+from neutron_lib._i18n import _
 from oslo_config import cfg
 from oslo_log import log as logging
 
@@ -513,10 +514,10 @@ def _offset_for_vni_and_vlan(vni: int, vlan: str):
 
 
 def setup(ovs_bridge, vni, evpn_opts, mode=constants.OVN_EVPN_TYPE_L3,
-          ovs_flows={}) -> EvpnBridge:
+          ovs_flows=None) -> EvpnBridge:
     # This method will either create the EvpnBridge or return the one that
     # already exists for the current vni.
-
+    ovs_flows = ovs_flows or {}
     vni = int(vni)  # make sure the vni is a int, for lookup purposes
 
     if local_bridges.get(vni, None) is None:
@@ -537,8 +538,8 @@ def lookup(ovs_bridge: str, vlan: str) -> EvpnBridge:
             if str(vlan) in br.vlans:
                 return br
 
-    raise KeyError('Could not locate EVPN for bridge %s and/or vlan %s' % (
-                   ovs_bridge, vlan))
+    raise KeyError(_('Could not locate EVPN for bridge %s and/or vlan %s' %
+                     (ovs_bridge, vlan)))
 
 
 def lookup_vlan(ovs_bridge: str, vlan: str) -> VlanDev:

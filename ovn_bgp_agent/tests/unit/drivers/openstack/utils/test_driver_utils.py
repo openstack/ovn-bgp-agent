@@ -103,8 +103,7 @@ class TestDriverUtils(test_base.TestCase):
 
     def test_get_port_chassis_no_information(self):
         row = utils.create_row()
-        self.assertEqual(driver_utils.get_port_chassis(row, chassis='foo'),
-                         None)
+        self.assertIsNone(driver_utils.get_port_chassis(row, chassis='foo'))
 
     def test_check_name_prefix(self):
         lb = utils.create_row(name='some-name')

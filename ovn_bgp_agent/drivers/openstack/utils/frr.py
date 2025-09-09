@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import json
 import tempfile
 
 from jinja2 import Template
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_serialization import jsonutils
 
 from ovn_bgp_agent import constants
 import ovn_bgp_agent.privileged.vtysh
@@ -116,7 +116,7 @@ router bgp {{ bgp_as }} vrf {{ vrf_name }}
 def _get_router_id():
     output = ovn_bgp_agent.privileged.vtysh.run_vtysh_command(
         command='show ip bgp summary json')
-    return json.loads(output).get('ipv4Unicast', {}).get('routerId')
+    return jsonutils.loads(output).get('ipv4Unicast', {}).get('routerId')
 
 
 def _run_vtysh_config_with_tempfile(vrf_config):

@@ -16,6 +16,7 @@ import collections
 import ipaddress
 import threading
 
+from neutron_lib._i18n import _
 from oslo_concurrency import lockutils
 from oslo_config import cfg
 from oslo_log import log as logging
@@ -53,8 +54,8 @@ LOCAL_CLUSTER_OVN_TABLES = ['Logical_Switch', 'Logical_Switch_Port',
 def _validate_ovn_version(distributed, idl):
     if not distributed and 'gateway_port' not in idl.tables['NAT'].columns:
         raise RuntimeError(
-            "Centralized routing requires gateway_port column in the "
-            "OVN_Northbound schema. Please update OVN to 23.09.0 or later.")
+            _("Centralized routing requires gateway_port column in the "
+              "OVN_Northbound schema. Please update OVN to 23.09.0 or later."))
 
 
 class NATExposer:
@@ -63,11 +64,11 @@ class NATExposer:
 
     def expose_fip_from_nat(self, nat):
         raise RuntimeError(
-            "The exposer does not have distributed flag set yet")
+            _("The exposer does not have distributed flag set yet"))
 
     def withdraw_fip_from_nat(self, nat):
         raise RuntimeError(
-            "The exposer does not have distributed flag set yet")
+            _("The exposer does not have distributed flag set yet"))
 
     @property
     def distributed(self):
@@ -83,7 +84,7 @@ class NATExposer:
             self.withdraw_fip_from_nat = self._withdraw_nat_centralized
 
     def _expose_nat_distributed(self, nat):
-        raise NotImplementedError("Distributed NAT is not implemented yet.")
+        raise NotImplementedError(_("Distributed NAT is not implemented yet."))
 
     def _expose_nat_centralized(self, nat):
         net_id = nat.external_ids[constants.OVN_FIP_NET_EXT_ID_KEY]
@@ -104,7 +105,7 @@ class NATExposer:
         self.agent.expose_fip(nat.external_ip, mac, ls_name, lsp)
 
     def _withdraw_nat_distributed(self, nat):
-        raise NotImplementedError("Distributed NAT is not implemented yet.")
+        raise NotImplementedError(_("Distributed NAT is not implemented yet."))
 
     def _withdraw_nat_centralized(self, nat):
         lsp = self.agent.nb_idl.lsp_get(nat.logical_port[0]).execute()

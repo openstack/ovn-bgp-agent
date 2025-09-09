@@ -460,8 +460,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
 
         bridge_device, bridge_vlan = (
             self.nb_bgp_driver._get_bridge_for_localnet_port(localnet))
-        self.assertEqual(bridge_device, None)
-        self.assertEqual(bridge_vlan, None)
+        self.assertIsNone(bridge_device)
+        self.assertIsNone(bridge_vlan)
 
     def test_is_ip_exposed(self):
         self.nb_bgp_driver._exposed_ips['fake-switch'] = {'fake-ip': {}}
