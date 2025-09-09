@@ -1,14 +1,14 @@
 - nodeset:
-    name: ovn-bgp-agent-four-node-jammy
+    name: ovn-bgp-agent-four-node-noble
     nodes:
       - name: controller
-        label: ubuntu-jammy
+        label: ubuntu-noble
       - name: leaf-1
-        label: ubuntu-jammy
+        label: ubuntu-noble
       - name: leaf-2
-        label: ubuntu-jammy
+        label: ubuntu-noble
       - name: spine
-        label: ubuntu-jammy
+        label: ubuntu-noble
     groups:
       - name: controller
         nodes:
@@ -27,7 +27,7 @@
 - job:
     name: ovn-bgp-agent-tempest-plugin-multinode
     parent: neutron-tempest-plugin-ovn
-    nodeset: ovn-bgp-agent-four-node-jammy
+    nodeset: ovn-bgp-agent-four-node-noble
     timeout: 10800
     post-timeout: 9600
     required-projects:
