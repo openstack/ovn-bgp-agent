@@ -155,6 +155,8 @@ class OVNBGPDriver(driver_api.AgentDriverBase):
                 continue
             self.ovn_bridge_mappings[network] = bridge
 
+            linux_net.ensure_bridge(bridge)
+
             if not extra_routes.get(bridge):
                 extra_routes[bridge] = (
                     linux_net.ensure_routing_table_for_bridge(

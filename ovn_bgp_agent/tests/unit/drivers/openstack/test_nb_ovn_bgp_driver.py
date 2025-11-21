@@ -141,13 +141,14 @@ class TestNBOVNBGPDriver(test_base.TestCase):
     @mock.patch.object(ovs, 'get_ovs_patch_ports_info')
     @mock.patch.object(linux_net, 'get_interface_address')
     @mock.patch.object(linux_net, 'ensure_arp_ndp_enabled_for_bridge')
+    @mock.patch.object(linux_net, 'ensure_bridge')
     @mock.patch.object(linux_net, 'ensure_vlan_device_for_network')
     @mock.patch.object(linux_net, 'ensure_routing_table_for_bridge')
     def test_sync(self, mock_routing_bridge, mock_ensure_vlan_network,
-                  mock_ensure_arp, mock_nic_address, mock_get_patch_ports,
-                  mock_ensure_mac, mock_remove_flows, mock_exposed_ips,
-                  mock_get_ip_rules, mock_del_exposed_ips, mock_del_ip_rules,
-                  mock_del_ip_routes, mock_get_extra_route,
+                  mock_ensure_br, mock_ensure_arp, mock_nic_address,
+                  mock_get_patch_ports, mock_ensure_mac, mock_remove_flows,
+                  mock_exposed_ips, mock_get_ip_rules, mock_del_exposed_ips,
+                  mock_del_ip_rules, mock_del_ip_routes, mock_get_extra_route,
                   mock_get_bridge_vlans, mock_delete_vlan_dev):
         self.mock_ovs_idl.get_ovn_bridge_mappings.return_value = [
             'net0:bridge0', 'net1:bridge1']
@@ -203,6 +204,8 @@ class TestNBOVNBGPDriver(test_base.TestCase):
         expected_calls = [mock.call({}, 'bridge0', CONF.bgp_vrf_table_id),
                           mock.call({}, 'bridge1', CONF.bgp_vrf_table_id)]
         mock_routing_bridge.assert_has_calls(expected_calls)
+        expected_calls = [mock.call('bridge0'), mock.call('bridge1')]
+        mock_ensure_br.assert_has_calls(expected_calls)
         expected_calls = [mock.call('bridge0', 10), mock.call('bridge1', 11)]
         mock_ensure_vlan_network.assert_has_calls(expected_calls)
         expected_calls = [mock.call('bridge0', 1, [10]),
