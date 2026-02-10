@@ -15,6 +15,7 @@
 import errno
 import ipaddress
 import os
+import shutil
 
 import netaddr
 
@@ -321,6 +322,24 @@ def add_unreachable_route(vrf_name):
                   'proto': 'boot',
                   'priority': 4278198272}
         route_create(kwargs)
+
+
+@ovn_bgp_agent.privileged.default.entrypoint
+def ensure_routing_tables_file():
+    """Ensure the routing tables file exists, creating it if necessary."""
+    rt_tables_path = constants.ROUTING_TABLES_FILE
+    rt_tables_dir = os.path.dirname(rt_tables_path)
+    default_rt_tables = '/usr/share/iproute2/rt_tables'
+
+    if not os.path.exists(rt_tables_dir):
+        os.makedirs(rt_tables_dir, mode=0o755)
+
+    if not os.path.exists(rt_tables_path):
+        # Copy default rt_tables file from /usr/share/iproute2/rt_tables
+        if not os.path.exists(default_rt_tables):
+            raise agent_exc.RoutingTablesFileNotFound(path=default_rt_tables)
+        shutil.copy2(default_rt_tables, rt_tables_path)
+        os.chmod(rt_tables_path, 0o644)
 
 
 @ovn_bgp_agent.privileged.default.entrypoint

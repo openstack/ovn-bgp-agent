@@ -167,3 +167,12 @@ class MacAddressNotFound(OVNBGPAgentException):
 class IpAddressNotFound(OVNBGPAgentException):
     message = _("Addresses column has no IP addresses or is not set for port"
                 " %(lsp)s")
+
+
+class RoutingTablesFileNotFound(OVNBGPAgentException):
+    """Default routing tables file not found.
+
+    :param path: The path where the default routing tables file was expected
+    """
+    message = _("Default routing tables file not found at %(path)s. "
+                "Please ensure iproute2 package is properly installed.")

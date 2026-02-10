@@ -232,6 +232,9 @@ def disable_learning_vxlan_intf(intf):
 def ensure_routing_table_for_bridge(ovn_routing_tables, bridge, vrf_table):
     # check a routing table with the bridge name exists on
     # /etc/iproute2/rt_tables
+    # Ensure the file exists before reading it
+    ovn_bgp_agent.privileged.linux_net.ensure_routing_tables_file()
+
     found_tables = {vrf_table}
 
     with open(constants.ROUTING_TABLES_FILE, 'r') as rt_file:
