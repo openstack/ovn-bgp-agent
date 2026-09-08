@@ -819,6 +819,11 @@ class TestEnsureRoutingTableForBridge(test_base.TestCase):
             "2",
         ]
 
+        # Mock ensure_routing_tables_file to avoid permission issues in tests
+        mock.patch(
+            'ovn_bgp_agent.privileged.linux_net.ensure_routing_tables_file'
+        ).start()
+
         self.m_ensure_rt_routes = mock.patch.object(
             linux_net, '_ensure_routing_table_routes').start()
 
