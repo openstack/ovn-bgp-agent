@@ -24,7 +24,8 @@ class OvsdbNbOvnIdl(base.BaseFunctionalNorthboundTestCase):
         # lsp_add requires parent to be specified with the tag, work it
         # around with the db_set
         self.nb_api.db_set(
-            'Logical_Switch_Port', lsp_name, ('tag', tag)).execute(
+            'Logical_Switch_Port', lsp_name, ('tag_request', tag),
+            ('tag', tag)).execute(
                 check_error=True)
 
     def test_get_network_vlan_tags(self):
